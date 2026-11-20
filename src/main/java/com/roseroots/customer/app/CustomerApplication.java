@@ -11,14 +11,16 @@ import com.roseroots.customer.services.DiningSessionService;
 import com.roseroots.customer.services.mock.MockMenuService;
 import com.roseroots.customer.services.mock.LocalDiningSessionService;
 import com.roseroots.customer.services.mock.LocalTakeawaySessionService;
-import com.roseroots.customer.services.api.SpringBootTakeawaySessionService;
+import com.roseroots.customer.services.LocalDeviceConfiguration;
+import com.roseroots.customer.services.LocalDraftSessionService;
+import com.roseroots.customer.models.TerminalDevice;
 import com.roseroots.customer.services.TakeawaySessionService;
 import com.roseroots.customer.models.ServiceMode;
 import com.roseroots.customer.components.CustomerShell;
 import com.roseroots.customer.state.CustomerState;
 import com.roseroots.customer.utils.Messages;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
+
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
@@ -43,10 +45,11 @@ public final class CustomerApplication extends Application {
         boolean demoTable = args.contains("--demo-table");
         boolean demoTakeaway = demoTable || args.contains("--demo-takeaway");
         var menuService = new MockMenuService(demoTakeaway);
-        DiningSessionService sessions = new LocalDiningSessionService(demoTable);
+        var drafts = new LocalDraftSessionService(demoTable
+                ? new TerminalDevice("demo-only", null, false) : loadInstallation());
+        DiningSessionService sessions = demoTable ? new LocalDiningSessionService(true) : drafts;
         TakeawaySessionService takeaway = demoTakeaway ? new LocalTakeawaySessionService("demo-takeaway-terminal")
-                : new SpringBootTakeawaySessionService(mode -> CompletableFuture.failedFuture(
-                        new IllegalStateException("Terminal transport is not configured")));
+                : () -> drafts.openOrResume(ServiceMode.TAKEAWAY);
         state.setLocale(settings.languages().getFirst());
         var content = new StackPane();
         var navigator = new Navigator(content);
@@ -111,6 +114,16 @@ public final class CustomerApplication extends Application {
         stage.centerOnScreen();
     }
 
+    private static TerminalDevice loadInstallation() {
+        try {
+            return LocalDeviceConfiguration.load(LocalDeviceConfiguration.defaultPath());
+        } catch (java.io.IOException | IllegalArgumentException error) {
+            System.getLogger(CustomerApplication.class.getName()).log(System.Logger.Level.WARNING,
+                    "Terminal configuration could not be loaded. Using an unassigned local draft.");
+            return new TerminalDevice(java.util.UUID.randomUUID().toString(), null, false);
+        }
+    }
+
     public static void main(String[] args) {
         launch(args);
     }
@@ -123,7 +136,7 @@ public final class CustomerApplication extends Application {
         var request = mode == ServiceMode.TAKEAWAY ? takeaway.openOrResume() : dining.openOrResume(mode);
         request.whenComplete((session, error) -> Platform.runLater(() -> {
             content.setDisable(false);
-            if (error != null || session == null || (state.wouldDiscardCart(session) && !session.isOpen())) {
+            if (error != null || session == null || (state.wouldDiscardCart(session) && !session.allowsCart())) {
                 var welcome = content.getChildren().getFirst();
                 var message = new javafx.scene.control.Label(messages.text(mode == ServiceMode.TAKEAWAY
                         ? "session.takeawayRetry" : "session.connectionFailed"));

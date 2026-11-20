@@ -92,7 +92,7 @@ public final class DishCustomizer extends VBox {
                 total.setText(messages.text("cart.total") + "  " + MenuText.price(dish.total(), settings.currency(), state.locale()));
                 var own = dish.review(dish.allergy());
                 var visit = dish.review(state.sessionAllergy());
-                boolean hasSession = state.terminalSession() != null && state.terminalSession().isOpen();
+                boolean hasSession = state.terminalSession() != null && state.terminalSession().allowsCart();
                 boolean available = item.availability() == MenuItem.Availability.AVAILABLE;
                 var direct = java.util.stream.Stream.concat(own.ingredients().stream(), visit.ingredients().stream())
                         .distinct().map(value -> MenuText.label(messages, value)).sorted().collect(Collectors.joining(", "));
@@ -150,7 +150,7 @@ public final class DishCustomizer extends VBox {
             update.run();
         });
         remember.disableProperty().bind(javafx.beans.binding.Bindings.createBooleanBinding(
-                () -> state.terminalSession() == null || !state.terminalSession().isOpen()
+                () -> state.terminalSession() == null || !state.terminalSession().allowsCart()
                         || (!declaration.get().none() && !declaration.get().disclosed()),
                 java.util.stream.Stream.concat(selectedAllergens.values().stream().map(CheckBox::selectedProperty),
                         java.util.stream.Stream.of(none.selectedProperty(), other.textProperty()))

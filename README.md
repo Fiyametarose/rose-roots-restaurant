@@ -54,7 +54,7 @@ The bundled `restaurant.properties` controls the name, logo, tagline, provisiona
 
 ## Inspect the demo catalog
 
-1. Launch with `--demo-table`, then choose **Dine In** for **Table 07 · Demo**, or **Takeaway** for a demo pickup reference. A regular launch allows browsing and prompts staff to configure an unassigned terminal before ordering.
+1. Launch with `--demo-table`, then choose **Dine In** for **Table 07 · Demo**, or **Takeaway** for a demo pickup reference. A regular launch supports both service modes as local drafts, with optional installation table configuration described below.
 2. Browse **Main Courses**, or switch to **Drinks** and pick **Hot Drinks**. Type `cardamom` to find Spiced Chai by ingredient.
 3. Open **Filters** and exclude **Milk** to see the empty state for the Spiced Chai search. **Reset filters** clears search, drink subtype, facets and sort while keeping the current top-level category.
 4. Select a food photo or **View details**. **Back to menu** restores the query, selected filters, subcategory and sort.
@@ -63,8 +63,8 @@ The bundled `restaurant.properties` controls the name, logo, tagline, provisiona
 ## Terminal sessions and draft cart
 
 - `--demo-table` reads the separate `demo-terminal.properties` fixture. The bundled device ID, table ID and display number are demo values. Production will provision and authenticate each installation through Spring Boot. The client passes service mode to the session adapter and receives the server-resolved assignment and visit.
-- `--demo-takeaway` enables a labeled local pickup reference without assigning a demo dine-in table. `--demo-table` enables both scenarios. Demo pickup references last for the current visit and cannot authorize real orders. Without a configured authenticated Spring Boot transport, takeaway offers retry and cancel.
-- Full fixture food-safety metadata appears only when an explicit demo option is enabled. The regular, unprovisioned preview withholds fixture dietary and allergen claims and retains the incomplete-information warning.
+- `--demo-takeaway` enables a labeled local pickup reference without assigning a demo dine-in table. `--demo-table` enables both scenarios. Demo pickup references last for the current visit and cannot authorize real orders. Normal Takeaway creates a local draft with no pickup reference until a server can issue one.
+- Full fixture food-safety metadata appears only when an explicit demo option is enabled. Normal mode withholds unverified fixture dietary and allergen claims, retains the incomplete-information warning, and allows allergy declarations on a local draft.
 - Returning to Welcome keeps the selected language, active visit and draft. Reopening the same visit restores its context. Switching modes with items in the draft requires confirmation, and accepted orders belong to their original session ID.
 - The demo provider keeps session IDs in process memory. A new visit follows a staff-authorized close. Staff provisioning, persistent order history and payment settlement require the backend.
 - The footer shows draft count and total. The demo can add available dishes and review the draft. Checkout, customization and order submission are pending.
@@ -77,3 +77,16 @@ See [Parallel development and integration plan](docs/parallel-development.md) fo
 - The dining session can retain multiple submitted order IDs while the cart represents the next order in progress. REST and WebSocket integrations can retrieve order status and backend estimates that account for workload, available chefs and preparation times.
 - Future service interfaces can cover assistance, payments, receipts and reviews. Screens render data supplied by state and services.
 - The Spring Boot backend owns PostgreSQL access. The JavaFX client integrates through REST APIs and WebSockets.
+
+### Normal startup and local table configuration
+
+Run `.\gradlew.bat run` and choose Dine In or Takeaway. Both modes can build a local cart without Spring Boot. The header shows Local draft. Place Order remains unavailable until there is a backend connection and a confirmed session.
+
+The app reads `%USERPROFILE%\.rose-roots\terminal.properties` at startup. It generates a unique installation ID in a new file when that file is absent. To use an admin-provisioned file, set `ROSE_ROOTS_TERMINAL_CONFIG` to its path before launching. For local development, keep the generated ID and assign Table 07 by adding:
+
+```properties
+table.id=table-07
+table.displayNumber=07
+```
+
+Restart after editing. Preserve a different `device.id` on each tablet. In production the operator should provision the ID and protect the file with OS permissions. The future authenticated backend must validate the device and table mapping and issue its own session ID and pickup reference. Local drafts stay in memory. Returning to Welcome and selecting the same mode restores the draft. Changing service modes with items prompts before discarding the previous draft.

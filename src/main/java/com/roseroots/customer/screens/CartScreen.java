@@ -88,7 +88,8 @@ public final class CartScreen extends StackPane {
                         == com.roseroots.customer.models.ServiceMode.DINE_IN ? "service.dineIn" : "service.takeaway"), null),
                 FoodCard.label(CustomerShell.sessionContext(state, messages), "catalog-muted"),
                 pricing, FoodCard.label(messages.text("cart.waitTitle"), "dish-section-heading"), waitTime,
-                FoodCard.label(messages.text("custom.visitAllergies"), "dish-section-heading"), allergy, place);
+                FoodCard.label(messages.text("custom.visitAllergies"), "dish-section-heading"), allergy, place,
+                FoodCard.label(messages.text("cart.connectionRequired"), "catalog-muted"));
         order.getStyleClass().add("dish-information");
         var right = scroller(order);
         var columns = new HBox(13, left, right);
@@ -296,7 +297,7 @@ public final class CartScreen extends StackPane {
         expiry.stop();
         waitTime.setText(messages.text("cart.waitUnavailable"));
         var session = state.terminalSession();
-        if (getScene() == null || session == null || !session.isOpen() || state.cart().lines().isEmpty()) return;
+        if (getScene() == null || session == null || !session.canSubmitOrders() || state.cart().lines().isEmpty()) return;
         var items = state.cart().lines().stream().map(line -> new WaitEstimate.Item(line.item().id(),
                 line.quantity(), line.dish().selections(), pending(review(line)))).toList();
         estimates.estimate(new WaitEstimate.Request(session.sessionId(), items)).whenComplete((result, error) ->

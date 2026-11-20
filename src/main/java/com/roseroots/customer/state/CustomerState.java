@@ -45,9 +45,9 @@ public final class CustomerState {
     public TerminalSession terminalSession() { return terminalSession; }
 
     public boolean wouldDiscardCart(TerminalSession next) {
-        return cart.count() > 0 && (!next.isOpen() || terminalSession == null
+        return cart.count() > 0 && (!next.allowsCart() || terminalSession == null
                 || next.mode() != terminalSession.mode()
-                || !Objects.equals(next.sessionId(), terminalSession.sessionId()));
+                || !Objects.equals(next.cartContextId(), terminalSession.cartContextId()));
     }
 
     public boolean activateSession(TerminalSession next, boolean discardConfirmed) {
@@ -65,7 +65,7 @@ public final class CustomerState {
     public CartDraft cart() { return cart; }
 
     public boolean addToDraft(MenuItem item) {
-        if (terminalSession == null || !terminalSession.isOpen()
+        if (terminalSession == null || !terminalSession.allowsCart()
                 || item.availability() != MenuItem.Availability.AVAILABLE) {
             return false;
         }
@@ -74,17 +74,17 @@ public final class CustomerState {
 
     public AllergyDeclaration sessionAllergy() {
         return terminalSession == null ? AllergyDeclaration.unreviewed()
-                : declarations.getOrDefault(terminalSession.sessionId(), AllergyDeclaration.unreviewed());
+                : declarations.getOrDefault(terminalSession.cartContextId(), AllergyDeclaration.unreviewed());
     }
 
     public void rememberAllergy(AllergyDeclaration declaration) {
-        if (terminalSession != null && terminalSession.isOpen()) {
-            declarations.put(terminalSession.sessionId(), declaration);
+        if (terminalSession != null && terminalSession.allowsCart()) {
+            declarations.put(terminalSession.cartContextId(), declaration);
         }
     }
 
     public boolean saveDish(UUID line, ConfiguredDish dish) {
-        if (terminalSession == null || !terminalSession.isOpen()
+        if (terminalSession == null || !terminalSession.allowsCart()
                 || dish.item().availability() != MenuItem.Availability.AVAILABLE
                 || (line != null && cart.line(line) == null)) {
             return false;

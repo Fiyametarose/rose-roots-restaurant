@@ -46,6 +46,8 @@ Image generation prompt
 
 ## Session and menu refinement
 
+Normal startup now creates an explicitly labeled local draft for Dine In or Takeaway. Previously the normal dining service returned `UNASSIGNED` and the takeaway adapter failed because its transport was unconfigured. Both the customization button and cart writes required `TerminalSession.isOpen()`, so neither route could add items. The cart now checks local draft eligibility separately. Draft IDs are distinct from server session IDs, and confirmed switching discards the previous cart rather than carrying it across contexts. The same draft resumes from Welcome during the current app run. Place Order remains unavailable until authenticated session creation, server price and availability validation, allergy-review handoff, and order submission are implemented.
+
 ### Allergy disclosure in customization and checkout
 
 Task 3 implements per-item customization, visit and item allergy declarations, and a local cart with itemized prices, clear confirmation and a pre-order review. Allergy information stays attached even when a customer adds a dish with a conflict. Upcoming order integration must start disclosed or unresolved items in `PENDING_ALLERGY_REVIEW` and keep them out of preparation. Staff can approve, request clarification, defer, decline, or propose a substitution for customer approval. The server must publish status changes and reconcile declined items with billing. The desktop client cannot approve a review.

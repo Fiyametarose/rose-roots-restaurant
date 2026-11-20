@@ -256,6 +256,13 @@ public final class CustomerShell extends BorderPane {
 
     public static String sessionContext(CustomerState state, Messages messages) {
         var session = state.terminalSession();
+        if (session != null && session.status() == com.roseroots.customer.models.TerminalSession.Status.LOCAL_DRAFT) {
+            String label = session.device().table() == null
+                    ? messages.text(state.serviceMode() == ServiceMode.DINE_IN
+                            ? "service.dineIn" : "service.takeaway")
+                    : messages.text("session.table") + " " + session.device().table().displayNumber();
+            return label + "  ·  " + messages.text("session.localDraft");
+        }
         if (state.serviceMode() == ServiceMode.DINE_IN) {
             if (session == null || session.device().table() == null) {
                 return messages.text("service.dineIn");
