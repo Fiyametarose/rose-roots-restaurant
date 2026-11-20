@@ -3,5 +3,6 @@ package com.roseroots.customer.navigation;
 public enum Route {
     WELCOME,
     MENU,
-    DISH_DETAILS
+    DISH_DETAILS,
+    CART
 }

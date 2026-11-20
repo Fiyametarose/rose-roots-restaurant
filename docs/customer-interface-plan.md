@@ -48,6 +48,12 @@ Image generation prompt
 
 ### Allergy disclosure in customization and checkout
 
+Task 3 implements per-item customization, visit and item allergy declarations, and a local cart with itemized prices, clear confirmation and a pre-order review. Allergy information stays attached even when a customer adds a dish with a conflict. Upcoming order integration must start disclosed or unresolved items in `PENDING_ALLERGY_REVIEW` and keep them out of preparation. Staff can approve, request clarification, defer, decline, or propose a substitution for customer approval. The server must publish status changes and reconcile declined items with billing. The desktop client cannot approve a review.
+
+The wait-estimate request identifies the session, item quantities and options, and review holds. Spring Boot will calculate the interval using qualified available chefs, station assignments, queued and preparing work, recipe durations, concurrent capacity and Rush/Delayed priority. Its response includes the calculation timestamp and validity deadline. Changing the cart invalidates the previous result. The local production-default adapter reports the estimate unavailable. No kitchen schedule is simulated in the customer interface.
+
+The optional `cart.charge.service.percent` and `cart.charge.tax.percent` restaurant settings apply independently to the subtotal when explicitly configured. The bundled configuration leaves both absent.
+
 Dish Details shows ingredients, catalog dietary labels, known allergens and possible cross-contact. Empty allergen fields indicate missing entries, and incomplete catalog data retains an inline warning.
 
 In the customization and cart milestone, add a compact, touch-friendly Food Allergies & Special Instructions form in the botanical theme. Support multiple allergens, an explicit “No known allergies to declare” choice, and optional free text for additional allergies and preparation requests. Retain disclosures within the dining session and attach the relevant information to each order item. Free text is a request and does not change verified ingredients. Compare selected allergens against structured ingredient allergen and possible cross-contact data. Show which kind of match was found and require an appropriate safety review before submission can proceed. Ordinary customization should stay within the ordering flow.

@@ -24,6 +24,7 @@ java -version
 .\gradlew.bat test
 .\gradlew.bat run
 .\gradlew.bat run --args="--fullscreen"
+.\gradlew.bat runDemo
 .\gradlew.bat run --args="--demo-table"
 .\gradlew.bat run --args="--demo-takeaway"
 .\gradlew.bat run --args="--demo-table --fullscreen"

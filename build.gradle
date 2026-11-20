@@ -46,3 +46,13 @@ application {
 test {
     useJUnitPlatform()
 }
+
+tasks.register('runDemo', JavaExec) {
+    group = 'application'
+    description = 'Launch Customer with a demo table and a working local cart.'
+    classpath = files(tasks.named('jar')) + configurations.runtimeClasspath
+    mainModule = application.mainModule
+    mainClass = application.mainClass
+    javaLauncher = javaToolchains.launcherFor(java.toolchain)
+    args '--demo-table'
+}

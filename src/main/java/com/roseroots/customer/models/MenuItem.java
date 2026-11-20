@@ -41,7 +41,14 @@ public record MenuItem(String id, String categoryId, Cuisine cuisine, LocalizedT
 
         public enum Selection { PORTION, SPICE, SIDE, EXTRA }
 
-        public record Choice(String id, LocalizedText name, BigDecimal priceAdjustment) {
+        public record Choice(String id, LocalizedText name, BigDecimal priceAdjustment, Set<Allergen> contains) {
+            public Choice {
+                contains = Set.copyOf(contains);
+            }
+
+            public Choice(String id, LocalizedText name, BigDecimal priceAdjustment) {
+                this(id, name, priceAdjustment, Set.of());
+            }
         }
     }
 }

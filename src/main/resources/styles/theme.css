@@ -673,6 +673,7 @@
 .catalog-status-row .button.catalog-refresh { -fx-min-height: 32; }
 
 .filter-overlay {
+    -catalog-ink: #173e2a;
     -fx-background-color: #18281948;
     -fx-padding: 16;
     -catalog-card: #fffbf3;
@@ -694,6 +695,43 @@
 .food-card-body { -fx-padding: 9 12 10; }
 .food-tag, .food-highlight { -fx-font-size: 12px; }
 .dish-add-draft { -fx-min-height: 49; -fx-font-size: 15px; }
+.customization-warning {
+    -fx-padding: 10 12;
+    -fx-background-color: #f8e0d5;
+    -fx-background-radius: 8;
+    -fx-border-color: #9a3d30;
+    -fx-border-radius: 8;
+    -fx-text-fill: #71291f;
+    -fx-font-weight: bold;
+}
+.cart-line {
+    -fx-padding: 10;
+}
+.cart-line-heading, .cart-summary-heading {
+    -fx-font-family: "Georgia";
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -rr-forest-green;
+}
+.cart-summary-heading, .cart-final-total, .cart-empty {
+    -fx-background-color: #f4e7ca;
+    -fx-background-radius: 10;
+    -fx-padding: 8 12;
+}
+.cart-final-total, .cart-amount {
+    -fx-font-weight: bold;
+    -fx-text-fill: -rr-forest-green;
+}
+.cart-final-total {
+    -fx-font-size: 19px;
+}
+.cart-wait {
+    -fx-text-fill: #61491e;
+}
+.dish-information .check-box, .dish-information .radio-button {
+    -fx-min-height: 36;
+    -fx-padding: 4 7;
+}
  
 /* Popup content has its own scene and receives this stylesheet directly. */
 .combo-box-popup > .list-view, .rose-dropdown-list {

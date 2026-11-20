@@ -3,6 +3,7 @@ package com.roseroots.customer.app;
 import com.roseroots.customer.navigation.Navigator;
 import com.roseroots.customer.navigation.Route;
 import com.roseroots.customer.screens.DishDetailsScreen;
+import com.roseroots.customer.screens.CartScreen;
 import com.roseroots.customer.screens.MenuScreen;
 import com.roseroots.customer.screens.WelcomeScreen;
 import com.roseroots.customer.services.LocalRestaurantSettings;
@@ -62,22 +63,37 @@ public final class CustomerApplication extends Application {
         });
         Runnable goHome = () -> navigator.show(Route.WELCOME);
         Runnable goMenu = () -> navigator.show(Route.MENU);
+        Runnable goCart = () -> navigator.show(Route.CART);
+        var editing = new java.util.concurrent.atomic.AtomicReference<java.util.UUID>();
+        java.util.function.Consumer<String> chooseCategory = category -> {
+            state.menu().selectCategory(category);
+            state.menu().rememberScroll(0);
+            goMenu.run();
+        };
+        navigator.register(Route.CART, () -> new CartScreen(settings, state, com.roseroots.customer.services.WaitEstimateService.unavailable(), locale -> {
+            state.setLocale(locale);
+            goCart.run();
+        }, goHome, goMenu, id -> {
+            editing.set(id);
+            navigator.show(Route.DISH_DETAILS);
+        }, chooseCategory));
         navigator.register(Route.MENU, () -> new MenuScreen(settings, state, menuService, locale -> {
             state.setLocale(locale);
             goMenu.run();
         }, goHome, itemId -> {
+            editing.set(null);
             state.menu().selectItem(itemId);
             navigator.show(Route.DISH_DETAILS);
-        }));
-        navigator.register(Route.DISH_DETAILS, () -> new DishDetailsScreen(settings, state,
-                state.menu().catalog().item(state.menu().itemId()), locale -> {
-                    state.setLocale(locale);
-                    navigator.show(Route.DISH_DETAILS);
-                }, goHome, goMenu, category -> {
-                    state.menu().selectCategory(category);
-                    state.menu().rememberScroll(0);
-                    goMenu.run();
-                }));
+        }, goCart));
+        navigator.register(Route.DISH_DETAILS, () -> {
+            var lineId = editing.get();
+            var line = lineId == null ? null : state.cart().line(lineId);
+            var item = line == null ? state.menu().catalog().item(state.menu().itemId()) : line.item();
+            return new DishDetailsScreen(settings, state, item, locale -> {
+                state.setLocale(locale);
+                navigator.show(Route.DISH_DETAILS);
+            }, goHome, lineId == null ? goMenu : goCart, chooseCategory, goCart, lineId);
+        });
         navigator.show(Route.WELCOME);
 
         var workArea = Screen.getPrimary().getVisualBounds();

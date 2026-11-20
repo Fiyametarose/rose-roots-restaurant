@@ -38,14 +38,14 @@ public final class CustomerShell extends BorderPane {
     private final VBox categories = new VBox();
     private final CustomerState state;
     private final CartSummaryBar cartSummary;
-    private final Label cart;
+    private final Button cart;
     private final Messages messages;
 
     public CustomerShell(RestaurantSettings settings, CustomerState state, Messages messages,
-                         Consumer<Locale> chooseLanguage, Runnable goHome) {
+                         Consumer<Locale> chooseLanguage, Runnable goHome, Runnable goCart) {
         this.state = state;
         this.messages = messages;
-        cartSummary = new CartSummaryBar(state, settings, messages);
+        cartSummary = new CartSummaryBar(state, settings, messages, goCart);
         getStyleClass().add("catalog-shell");
         if (messages.language().equals("am")) {
             getStyleClass().add("ethiopic");
@@ -139,7 +139,13 @@ public final class CustomerShell extends BorderPane {
         });
         assistance.setGraphic(new InterfaceIcon(InterfaceIcon.Kind.MAIN));
         assistance.getStyleClass().add("catalog-assistance");
-        cart = new Label("", new InterfaceIcon(InterfaceIcon.Kind.CART));
+        cart = action("", false, () -> {
+            if (goCart != null) {
+                goCart.run();
+            }
+        });
+        cart.setId("header-cart");
+        cart.setGraphic(new InterfaceIcon(InterfaceIcon.Kind.CART));
         cart.getStyleClass().add("catalog-cart");
         refreshCart();
         var tools = new FlowPane(8, 5, locale, assistance, cart);
@@ -248,7 +254,7 @@ public final class CustomerShell extends BorderPane {
         };
     }
 
-    private static String sessionContext(CustomerState state, Messages messages) {
+    public static String sessionContext(CustomerState state, Messages messages) {
         var session = state.terminalSession();
         if (state.serviceMode() == ServiceMode.DINE_IN) {
             if (session == null || session.device().table() == null) {

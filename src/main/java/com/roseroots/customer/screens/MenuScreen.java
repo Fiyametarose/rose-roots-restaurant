@@ -61,14 +61,14 @@ public final class MenuScreen extends StackPane {
     private MenuFilterPane filterPane;
 
     public MenuScreen(RestaurantSettings settings, CustomerState state, MenuService menuService,
-                      Consumer<Locale> onLanguage, Runnable goHome, Consumer<String> openDish) {
+                      Consumer<Locale> onLanguage, Runnable goHome, Consumer<String> openDish, Runnable goCart) {
         this.settings = settings;
         this.menuService = menuService;
         this.openDish = openDish;
         browse = state.menu();
         locale = state.locale();
         messages = new Messages(locale);
-        shell = new CustomerShell(settings, state, messages, onLanguage, goHome);
+        shell = new CustomerShell(settings, state, messages, onLanguage, goHome, goCart);
         filterOverlay.getStyleClass().add("filter-overlay");
         filterOverlay.setAlignment(Pos.CENTER);
         if (messages.language().equals("am")) {

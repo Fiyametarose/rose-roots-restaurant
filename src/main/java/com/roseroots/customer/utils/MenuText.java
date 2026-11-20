@@ -19,7 +19,8 @@ public final class MenuText {
         int digits = amount.stripTrailingZeros().scale() > 0 ? Math.max(0, currency.getDefaultFractionDigits()) : 0;
         formatter.setMinimumFractionDigits(digits);
         formatter.setMaximumFractionDigits(Math.max(digits, amount.stripTrailingZeros().scale()));
-        return currency.getCurrencyCode() + "\u00A0" + formatter.format(amount);
+        return (currency.getCurrencyCode().equals("KES") ? "KSh" : currency.getCurrencyCode())
+                + "\u00A0" + formatter.format(amount);
     }
 
     public static String languageName(Locale locale) {

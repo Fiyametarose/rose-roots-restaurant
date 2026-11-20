@@ -4,6 +4,11 @@ import com.roseroots.customer.models.ServiceMode;
 import com.roseroots.customer.models.MenuItem;
 import com.roseroots.customer.models.TerminalSession;
 import java.util.Locale;
+import java.util.UUID;
+import java.util.HashMap;
+import java.util.Map;
+import com.roseroots.customer.models.AllergyDeclaration;
+import com.roseroots.customer.models.ConfiguredDish;
 import java.util.Objects;
 
 public final class CustomerState {
@@ -11,6 +16,7 @@ public final class CustomerState {
     private ServiceMode serviceMode;
     private TerminalSession terminalSession;
     private final CartDraft cart = new CartDraft();
+    private final Map<String, AllergyDeclaration> declarations = new HashMap<>();
     private final MenuBrowseState menu = new MenuBrowseState();
 
     public Locale locale() {
@@ -63,8 +69,50 @@ public final class CustomerState {
                 || item.availability() != MenuItem.Availability.AVAILABLE) {
             return false;
         }
-        cart.add(item);
+        return saveDish(null, new ConfiguredDish(item, 1, ConfiguredDish.defaults(item), "", sessionAllergy()));
+    }
+
+    public AllergyDeclaration sessionAllergy() {
+        return terminalSession == null ? AllergyDeclaration.unreviewed()
+                : declarations.getOrDefault(terminalSession.sessionId(), AllergyDeclaration.unreviewed());
+    }
+
+    public void rememberAllergy(AllergyDeclaration declaration) {
+        if (terminalSession != null && terminalSession.isOpen()) {
+            declarations.put(terminalSession.sessionId(), declaration);
+        }
+    }
+
+    public boolean saveDish(UUID line, ConfiguredDish dish) {
+        if (terminalSession == null || !terminalSession.isOpen()
+                || dish.item().availability() != MenuItem.Availability.AVAILABLE
+                || (line != null && cart.line(line) == null)) {
+            return false;
+        }
+        cart.save(line, dish);
         return true;
+    }
+
+    public void removeDish(UUID line) { cart.remove(line); }
+
+    public boolean clearDraft(boolean confirmed) {
+        if (!confirmed) {
+            return false;
+        }
+        cart.clear();
+        return true;
+    }
+
+    public boolean changeQuantity(UUID id, int quantity) {
+        var line = cart.line(id);
+        if (line == null || quantity < 1 || quantity > ConfiguredDish.MAX_QUANTITY) {
+            return false;
+        }
+        if (quantity < line.quantity()) {
+            cart.save(id, line.dish().withQuantity(quantity));
+            return true;
+        }
+        return saveDish(id, line.dish().withQuantity(quantity));
     }
 
     public MenuBrowseState menu() { return menu; }
