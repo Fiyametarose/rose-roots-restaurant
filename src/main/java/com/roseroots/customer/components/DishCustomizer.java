@@ -33,7 +33,7 @@ public final class DishCustomizer extends VBox {
         var count = FoodCard.label(Integer.toString(quantity[0]), "dish-section-heading");
         count.setId("dish-quantity");
         var selectors = new LinkedHashMap<String, Map<String, javafx.beans.value.ObservableBooleanValue>>();
-        var warning = FoodCard.label("", "customization-warning");
+        var warning = FoodCard.label("", "dish-allergen-warning");
         warning.setId("allergy-conflict");
         warning.managedProperty().bind(warning.visibleProperty());
         var notice = FoodCard.label("", "catalog-muted");
@@ -92,26 +92,20 @@ public final class DishCustomizer extends VBox {
                 total.setText(messages.text("cart.total") + "  " + MenuText.price(dish.total(), settings.currency(), state.locale()));
                 var own = dish.review(dish.allergy());
                 var visit = dish.review(state.sessionAllergy());
-                boolean needsReview = dish.allergy().disclosed() || state.sessionAllergy().disclosed()
-                        || own.requiresReview() || visit.requiresReview();
                 boolean hasSession = state.terminalSession() != null && state.terminalSession().isOpen();
                 boolean available = item.availability() == MenuItem.Availability.AVAILABLE;
-                warning.setVisible(needsReview || !hasSession || !available);
-                if (needsReview) {
-                    var direct = java.util.stream.Stream.concat(own.ingredients().stream(), visit.ingredients().stream())
-                            .distinct().map(value -> MenuText.label(messages, value)).sorted().collect(Collectors.joining(", "));
-                    var cross = java.util.stream.Stream.concat(own.crossContact().stream(), visit.crossContact().stream())
-                            .distinct().map(value -> MenuText.label(messages, value)).sorted().collect(Collectors.joining(", "));
-                    warning.setText(messages.text("custom.reviewNeeded")
-                            + (direct.isBlank() ? "" : "\n" + messages.text("catalog.contains") + ": " + direct)
-                            + (cross.isBlank() ? "" : "\n" + messages.text("catalog.crossContact") + ": " + cross)
-                            + (own.uncertain() || visit.uncertain() ? "\n" + messages.text("custom.uncertain") : ""));
-                }
-                if (!hasSession) {
-                    warning.setText(messages.text("custom.noSession"));
-                } else if (!available) {
-                    warning.setText(messages.text("custom.unavailable"));
-                }
+                var direct = java.util.stream.Stream.concat(own.ingredients().stream(), visit.ingredients().stream())
+                        .distinct().map(value -> MenuText.label(messages, value)).sorted().collect(Collectors.joining(", "));
+                var cross = java.util.stream.Stream.concat(own.crossContact().stream(), visit.crossContact().stream())
+                        .distinct().map(value -> MenuText.label(messages, value)).sorted().collect(Collectors.joining(", "));
+                var status = !hasSession ? messages.text("custom.noSession")
+                        : !available ? messages.text("custom.unavailable") : "";
+                var detail = java.util.stream.Stream.of(
+                        direct.isBlank() ? "" : messages.text("catalog.contains") + ": " + direct,
+                        cross.isBlank() ? "" : messages.text("catalog.crossContact") + ": " + cross,
+                        status).filter(value -> !value.isBlank()).collect(Collectors.joining("\n"));
+                warning.setText(detail);
+                warning.setVisible(!detail.isEmpty());
                 add.setDisable(!hasSession || !available);
             } catch (IllegalArgumentException invalid) {
                 warning.setText(messages.text("custom.selectionRequired"));

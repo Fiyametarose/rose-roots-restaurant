@@ -695,6 +695,10 @@
 .food-card-body { -fx-padding: 9 12 10; }
 .food-tag, .food-highlight { -fx-font-size: 12px; }
 .dish-add-draft { -fx-min-height: 49; -fx-font-size: 15px; }
+.dish-allergen-warning {
+    -fx-text-fill: #71291f;
+    -fx-font-weight: bold;
+}
 .customization-warning {
     -fx-padding: 10 12;
     -fx-background-color: #f8e0d5;
