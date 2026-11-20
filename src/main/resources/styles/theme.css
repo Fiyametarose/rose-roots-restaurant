@@ -1,0 +1,743 @@
+.root {
+    -rr-forest-green: #0f3d29;
+    -rr-cream: #fbf3e6;
+    -rr-gold: #b77718;
+    -rr-line: #d9ba81;
+    -fx-background-color: -rr-cream;
+    -fx-font-family: "Segoe UI";
+}
+
+.welcome-screen, .welcome-screen .scroll-pane, .welcome-screen .viewport {
+    -fx-background-color: -rr-cream;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
+.welcome-content {
+    -fx-padding: 22 28 36;
+    -fx-spacing: 15;
+}
+
+.brand-name, .brand-descriptor, .welcome-heading, .language-heading, .service-title {
+    -fx-font-family: "Georgia";
+    -fx-text-fill: -rr-forest-green;
+}
+
+.brand-name {
+    -fx-font-size: 46px;
+    -fx-text-alignment: center;
+}
+
+.brand-descriptor {
+    -fx-font-size: 15px;
+}
+
+.brand-rule {
+    -fx-background-color: -rr-gold;
+    -fx-min-height: 1;
+    -fx-max-height: 1;
+    -fx-pref-width: 52;
+}
+
+.welcome-heading {
+    -fx-font-size: 100px;
+    -fx-font-style: italic;
+    -fx-font-weight: bold;
+    -fx-text-alignment: center;
+}
+
+.welcome-divider {
+    -fx-background-color: -rr-gold;
+    -fx-background-radius: 50%;
+    -fx-min-height: 3;
+    -fx-max-height: 3;
+    -fx-max-width: 258;
+}
+
+.welcome-language-heading {
+    -fx-padding: 8 0 0;
+}
+
+.welcome-language-rule {
+    -fx-background-color: -rr-line;
+    -fx-min-height: 1;
+    -fx-max-height: 1;
+    -fx-pref-width: 92;
+}
+
+.welcome-tagline {
+    -fx-font-size: 21px;
+    -fx-text-fill: -rr-forest-green;
+    -fx-text-alignment: center;
+}
+
+.service-options {
+    -fx-hgap: 18;
+    -fx-vgap: 12;
+}
+
+.button.action-primary, .button.action-secondary {
+    -fx-background-insets: 0;
+    -fx-background-radius: 18;
+    -fx-border-radius: 18;
+    -fx-border-width: 1.5;
+    -fx-cursor: hand;
+}
+
+.button.action-primary {
+    -fx-background-color: -rr-forest-green;
+    -fx-border-color: -rr-forest-green;
+    -fx-text-fill: -rr-cream;
+}
+
+.button.action-secondary {
+    -fx-background-color: -rr-cream;
+    -fx-border-color: -rr-forest-green;
+    -fx-text-fill: -rr-forest-green;
+}
+
+.button.service-choice {
+    -fx-padding: 14 18;
+    -fx-min-height: 108;
+    -fx-min-width: 308;
+    -fx-effect: dropshadow(gaussian, #51341f38, 8, 0, 0, 3);
+}
+
+.service-title {
+    -fx-font-size: 27px;
+    -fx-font-weight: bold;
+}
+
+.service-description {
+    -fx-font-size: 13px;
+}
+
+.service-arrow {
+    -fx-font-size: 32px;
+}
+
+.action-primary .label { -fx-text-fill: -rr-cream; }
+.action-secondary .label { -fx-text-fill: -rr-forest-green; }
+.service-icon { -fx-fill: transparent; -fx-stroke-width: 2.2; }
+.action-primary .service-icon { -fx-stroke: -rr-cream; }
+.action-secondary .service-icon { -fx-stroke: -rr-forest-green; }
+
+.language-heading {
+    -fx-font-size: 21px;
+    -fx-font-weight: bold;
+}
+
+.choice-bar {
+    -fx-hgap: 10;
+    -fx-vgap: 8;
+}
+
+.choice-bar .toggle-button {
+    -fx-background-color: -rr-cream;
+    -fx-background-radius: 24;
+    -fx-border-radius: 24;
+    -fx-border-color: -rr-line;
+    -fx-text-fill: -rr-forest-green;
+    -fx-min-width: 108;
+    -fx-min-height: 44;
+    -fx-font-size: 16px;
+    -fx-cursor: hand;
+}
+
+.choice-bar .toggle-button:selected {
+    -fx-background-color: -rr-forest-green;
+    -fx-border-color: -rr-forest-green;
+    -fx-text-fill: -rr-cream;
+}
+
+.button.action-primary:hover, .button.action-secondary:hover,
+.choice-bar .toggle-button:hover {
+    -fx-border-color: -rr-gold;
+}
+
+.button.action-primary:focused, .button.action-secondary:focused,
+.choice-bar .toggle-button:focused {
+    -fx-border-color: -rr-gold;
+    -fx-border-width: 3;
+}
+
+.language-fallback, .service-context { -fx-text-fill: -rr-forest-green; }
+.menu-shell { -fx-padding: 24; }
+.menu-header .button { -fx-padding: 9 22; }
+
+.choice-bar .ethiopic-choice, .list-cell.ethiopic-choice, .ethiopic .welcome-heading,
+.ethiopic .welcome-tagline, .ethiopic .language-heading,
+.ethiopic .service-title, .ethiopic .service-description,
+.ethiopic .menu-header .button, .ethiopic .service-context,
+.ethiopic .screen-heading, .ethiopic .menu-availability {
+    -fx-font-family: "Noto Sans Ethiopic";
+}
+
+.ethiopic .welcome-heading {
+    -fx-font-size: 64px;
+    -fx-font-style: normal;
+}
+
+.welcome-screen:compact .welcome-content {
+    -fx-padding: 16 18 24 18;
+    -fx-spacing: 12;
+}
+
+.welcome-screen:compact .brand-name { -fx-font-size: 34px; }
+.welcome-screen:compact .welcome-heading { -fx-font-size: 55px; }
+.welcome-screen:compact .welcome-tagline { -fx-font-size: 17px; }
+.welcome-screen:compact .welcome-language-rule { -fx-pref-width: 45; }
+
+.screen-heading {
+    -fx-font-size: 44px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -rr-forest-green;
+    -fx-text-alignment: center;
+}
+
+/* Catalog shell */
+.catalog-shell {
+    -fx-background-color: -rr-cream;
+    -fx-font-size: 14px;
+    -catalog-card: #fffbf3;
+    -catalog-edge: #e4d3b9;
+    -catalog-ink: #182d22;
+    -catalog-muted: #565a4c;
+    -catalog-accent: #fae8c7;
+}
+
+.catalog-rail-surface {
+    -fx-background-color: linear-gradient(to bottom right, #133d28, #08291c);
+}
+
+.catalog-rail-edge {
+    -fx-background-color: #e1c99b;
+}
+
+.catalog-rail .scroll-pane, .catalog-rail .viewport {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
+.catalog-rail-content {
+    -fx-padding: 24 26 24 14;
+}
+
+.catalog-rail .brand-name {
+    -fx-font-size: 26px;
+    -fx-text-fill: -rr-cream;
+}
+
+.catalog-rail .brand-descriptor {
+    -fx-font-size: 10px;
+    -fx-text-fill: -rr-cream;
+}
+
+.catalog-rail .brand-rule {
+    -fx-pref-width: 12;
+}
+
+.catalog-categories {
+    -fx-spacing: 7;
+}
+
+.catalog-category, .catalog-home {
+    -fx-text-fill: -rr-cream;
+    -fx-background-color: transparent;
+    -fx-background-radius: 14;
+    -fx-border-radius: 14;
+    -fx-border-color: transparent;
+    -fx-min-height: 54;
+    -fx-font-size: 16px;
+    -fx-alignment: center-left;
+    -fx-graphic-text-gap: 12;
+    -fx-padding: 6 12;
+    -fx-cursor: hand;
+}
+
+.catalog-category:hover, .catalog-home:hover,
+.catalog-category:focused, .catalog-home:focused {
+    -fx-border-color: -rr-line;
+}
+
+.catalog-category.category-active {
+    -fx-background-color: linear-gradient(to bottom, #fff5df, #f7deac);
+    -fx-border-color: -rr-gold;
+    -fx-text-fill: -rr-forest-green;
+    -fx-font-weight: bold;
+}
+
+.catalog-home {
+    -fx-font-size: 14px;
+    -fx-alignment: center;
+    -fx-min-height: 44;
+}
+
+.catalog-header {
+    -fx-padding: 12 21 12 15;
+    -fx-border-color: -catalog-edge;
+    -fx-border-width: 0 0 1 0;
+    -fx-background-color: -rr-cream;
+}
+
+.catalog-context, .catalog-cart {
+    -fx-padding: 9 13;
+    -fx-background-color: -catalog-card;
+    -fx-background-radius: 18;
+    -fx-border-color: -catalog-edge;
+    -fx-border-radius: 18;
+    -fx-text-fill: -rr-forest-green;
+    -fx-font-weight: bold;
+}
+
+.catalog-context { -fx-border-color: #b7c4ae; }
+.catalog-cart { -fx-graphic-text-gap: 6; }
+.catalog-assistance .interface-icon, .catalog-cart .interface-icon { -fx-stroke: #995c22; }
+
+.interface-icon {
+    -fx-fill: transparent;
+    -fx-stroke: -rr-forest-green;
+    -fx-stroke-width: 1.55;
+}
+
+.catalog-category .interface-icon, .catalog-home .interface-icon,
+.subcategory-tabs .toggle-button:selected .interface-icon {
+    -fx-stroke: -rr-cream;
+}
+
+.catalog-category.category-active .interface-icon {
+    -fx-stroke: -rr-forest-green;
+}
+
+.catalog-shell:compact .catalog-rail-content { -fx-padding: 18 17 17 7; }
+.catalog-shell:compact .catalog-category {
+    -fx-font-size: 12px;
+    -fx-padding: 4 3;
+    -fx-content-display: top;
+    -fx-alignment: center;
+    -fx-text-alignment: center;
+    -fx-graphic-text-gap: 2;
+}
+.catalog-shell:compact .catalog-home { -fx-content-display: top; -fx-graphic-text-gap: 2; }
+.catalog-shell:compact .catalog-category .interface-icon { -fx-scale-x: .78; -fx-scale-y: .78; }
+.catalog-shell:compact .catalog-rail .brand-name { -fx-font-size: 20px; }
+.catalog-shell:compact .catalog-rail .brand-descriptor { -fx-font-size: 8px; }
+.catalog-shell:compact .catalog-rail .brand-rule { -fx-pref-width: 3; }
+.catalog-shell:compact .catalog-rail .brand-subtitle { -fx-spacing: 3; }
+.catalog-shell:compact .catalog-heading { -fx-font-size: 34px; }
+
+.catalog-header .combo-box, .filter-pane .combo-box {
+    -fx-background-color: -catalog-card;
+    -fx-background-radius: 14;
+    -fx-border-color: -catalog-edge;
+    -fx-border-radius: 14;
+    -fx-min-height: 44;
+}
+
+.catalog-scroll, .catalog-scroll .viewport {
+    -fx-background-color: -rr-cream;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
+.catalog-content {
+    -fx-padding: 12 22 27 15;
+}
+
+.catalog-heading {
+    -fx-font-family: "Georgia";
+    -fx-font-size: 48px;
+    -fx-font-style: italic;
+    -fx-font-weight: bold;
+    -fx-text-fill: -rr-forest-green;
+}
+
+.catalog-title-row {
+    -fx-border-color: -rr-line;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 0 0 6 0;
+}
+
+
+.catalog-muted {
+    -fx-text-fill: -catalog-muted;
+}
+
+/* Search and filters */
+.filter-pane {
+    -fx-spacing: 6;
+}
+
+.filter-pane .text-field {
+    -fx-pref-width: 298;
+    -fx-min-height: 44;
+    -fx-background-color: -catalog-card;
+    -fx-background-radius: 14;
+    -fx-border-color: -catalog-edge;
+    -fx-border-radius: 14;
+    -fx-padding: 7 13 7 42;
+}
+
+.catalog-search .text-field { -fx-prompt-text-fill: #666757; }
+.catalog-search .interface-icon { -fx-stroke: #6e6d55; }
+.catalog-status-row { -fx-padding: 0 0 2; }
+.button.catalog-refresh {
+    -fx-border-color: transparent;
+    -fx-background-color: transparent;
+    -fx-text-fill: #27573f;
+    -fx-underline: true;
+    -fx-padding: 4 6;
+    -fx-min-height: 38;
+}
+
+.catalog-action, .catalog-filter-toggle {
+    -fx-min-height: 44;
+    -fx-padding: 7 14;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+}
+
+.catalog-filter-toggle, .cuisine-filters .toggle-button {
+    -fx-background-color: -catalog-card;
+    -fx-background-radius: 18;
+    -fx-border-color: -catalog-edge;
+    -fx-border-radius: 18;
+    -fx-text-fill: -rr-forest-green;
+    -fx-cursor: hand;
+}
+
+.cuisine-filters .toggle-button {
+    -fx-padding: 7 13;
+    -fx-min-height: 44;
+}
+
+.catalog-filter-toggle:selected, .cuisine-filters .toggle-button:selected {
+    -fx-background-color: -rr-forest-green;
+    -fx-border-color: -rr-forest-green;
+    -fx-text-fill: -rr-cream;
+}
+
+.catalog-filter-toggle:focused, .cuisine-filters .toggle-button:focused,
+.filter-pane .text-field:focused, .catalog-shell .combo-box:focused {
+    -fx-border-color: -rr-gold;
+}
+
+.catalog-shell .subcategory-tabs {
+    -fx-alignment: center-left;
+}
+
+.catalog-shell .subcategory-tabs .toggle-button {
+    -fx-font-size: 14px;
+}
+
+.advanced-filter-panel, .dish-information {
+    -fx-padding: 14 16;
+    -fx-background-color: -catalog-card;
+    -fx-background-radius: 16;
+    -fx-border-color: -catalog-edge;
+    -fx-border-radius: 16;
+}
+
+.advanced-filter-panel .check-box {
+    -fx-min-height: 43;
+    -fx-padding: 4 8;
+    -fx-cursor: hand;
+}
+
+.diet-quick-filter {
+    -fx-min-height: 44;
+    -fx-padding: 3 8 3 12;
+    -fx-text-fill: -rr-forest-green;
+    -fx-cursor: hand;
+}
+
+.diet-quick-filter:focused {
+    -fx-border-color: -rr-gold;
+    -fx-border-radius: 14;
+}
+
+.diet-quick-filter > .box {
+    -fx-min-width: 27;
+    -fx-padding: 3 7;
+    -fx-background-radius: 10;
+    -fx-background-color: #e6ddcb;
+}
+
+.diet-quick-filter:selected > .box {
+    -fx-background-color: -rr-forest-green;
+}
+
+.diet-quick-filter > .box > .mark {
+    -fx-shape: "M 7,0 A 7,7 0 1,1 7,14 A 7,7 0 1,1 7,0 Z";
+    -fx-scale-shape: true;
+    -fx-background-color: #fffaf1;
+    -fx-padding: 6 6;
+    -fx-translate-x: -4;
+}
+
+.diet-quick-filter:selected > .box > .mark { -fx-translate-x: 4; }
+
+.check-box:selected > .box { -fx-background-color: -rr-forest-green; }
+.check-box:selected > .box > .mark { -fx-background-color: -rr-cream; }
+
+.filter-group-label, .dish-section-heading {
+    -fx-font-weight: bold;
+    -fx-text-fill: -rr-forest-green;
+}
+
+/* Food cards and details */
+.food-grid {
+    -fx-hgap: 14;
+    -fx-vgap: 14;
+}
+
+.food-card {
+    -fx-background-color: -catalog-card;
+    -fx-background-insets: 0;
+    -fx-background-radius: 14;
+    -fx-border-color: -catalog-edge;
+    -fx-border-radius: 14;
+    -fx-padding: 1;
+    -fx-alignment: top-center;
+    -fx-cursor: hand;
+    -fx-effect: dropshadow(gaussian, #462d1415, 7, 0, 0, 2);
+}
+
+.food-card:hover {
+    -fx-border-color: -rr-gold;
+    -fx-effect: dropshadow(gaussian, #74491642, 10, 0, 0, 2);
+}
+
+.food-card-body {
+    -fx-padding: 10 12 13;
+    -fx-alignment: top-left;
+}
+
+.catalog-photo {
+    -fx-background-color: #e7d6ba;
+    -fx-background-radius: 12;
+}
+
+.food-cuisine {
+    -fx-padding: 5 10;
+    -fx-background-color: -catalog-card;
+    -fx-background-radius: 16;
+    -fx-text-fill: -rr-forest-green;
+    -fx-font-weight: bold;
+    -fx-font-size: 12px;
+}
+
+.food-title, .dish-name {
+    -fx-font-family: "Georgia";
+    -fx-text-fill: -rr-forest-green;
+    -fx-font-weight: bold;
+}
+
+.food-title { -fx-font-size: 22px; }
+.dish-name { -fx-font-size: 36px; }
+
+.food-price, .dish-price {
+    -fx-font-weight: bold;
+    -fx-text-fill: -rr-forest-green;
+}
+
+.food-price { -fx-font-size: 17px; }
+.dish-price { -fx-font-size: 23px; }
+
+.food-summary, .dish-description {
+    -fx-text-fill: -catalog-ink;
+}
+
+.food-summary { -fx-font-size: 14px; -fx-line-spacing: 1px; }
+.dish-description { -fx-font-size: 15px; }
+
+.food-tag, .food-highlight, .food-available, .food-unavailable, .food-details-action {
+    -fx-padding: 3 7;
+    -fx-background-radius: 12;
+    -fx-font-size: 12px;
+}
+
+.food-tag, .food-available {
+    -fx-background-color: #e5ecde;
+    -fx-text-fill: #19442c;
+}
+
+.food-highlight {
+    -fx-background-color: -catalog-accent;
+    -fx-text-fill: #67400e;
+}
+
+.food-unavailable {
+    -fx-background-color: #f3e0d9;
+    -fx-text-fill: #782d25;
+}
+
+.button.food-details-action {
+    -fx-padding: 5 12;
+    -fx-min-height: 44;
+    -fx-background-color: -rr-forest-green;
+    -fx-text-fill: -rr-cream;
+    -fx-font-weight: bold;
+}
+
+.dish-section-heading {
+    -fx-font-size: 16px;
+}
+
+.dish-panel-title {
+    -fx-font-family: "Georgia";
+    -fx-font-size: 25px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -rr-forest-green;
+}
+
+.dish-section {
+    -fx-padding: 6 0 0;
+    -fx-border-color: -catalog-edge;
+    -fx-border-width: 1 0 0;
+}
+
+
+.catalog-shell.ethiopic .label, .catalog-shell.ethiopic .button,
+.catalog-shell.ethiopic .toggle-button, .catalog-shell.ethiopic .check-box,
+.catalog-shell.ethiopic .combo-box {
+    -fx-font-family: "Noto Sans Ethiopic";
+}
+ 
+.catalog-footer { -fx-padding: 5 19 12 12; }
+
+.cart-summary {
+    -fx-background-color: linear-gradient(to right, #092c1a, #14432b);
+    -fx-background-radius: 20;
+    -fx-border-color: #fff6df;
+    -fx-border-radius: 20;
+    -fx-border-width: 1.5;
+    -fx-padding: 8 12;
+    -fx-effect: dropshadow(gaussian, #34260e36, 12, 0, 0, 3);
+}
+.cart-summary-title, .cart-summary-total {
+    -fx-text-fill: #fff5e1;
+    -fx-font-weight: bold;
+    -fx-font-size: 17px;
+}
+.cart-summary-title .interface-icon { -fx-stroke: #f6d79f; }
+.cart-summary-count {
+    -fx-background-color: #fae8c7;
+    -fx-background-radius: 13;
+    -fx-text-fill: #123d29;
+    -fx-font-weight: bold;
+    -fx-padding: 4 9;
+}
+.button.cart-summary-action {
+    -fx-background-color: #fae8c7;
+    -fx-border-color: #e9c385;
+    -fx-text-fill: #173b26;
+    -fx-padding: 7 19;
+}
+.button.cart-summary-action:disabled { -fx-opacity: .62; }
+.session-notice {
+    -fx-background-color: #f7e6c7;
+    -fx-background-radius: 10;
+    -fx-padding: 7 11;
+    -fx-text-fill: #70450e;
+    -fx-font-weight: bold;
+}
+.catalog-shell:compact .cart-summary-title, .catalog-shell:compact .cart-summary-total {
+    -fx-font-size: 13px;
+}
+.catalog-shell:compact .button.cart-summary-action { -fx-padding: 6 9; }
+.catalog-shell:compact .catalog-footer { -fx-padding: 4 7 7; }
+
+.catalog-home-bottom {
+    -fx-border-color: #b69254;
+    -fx-background-color: #103824;
+    -fx-background-radius: 14;
+    -fx-font-weight: bold;
+    -fx-min-height: 50;
+}
+.catalog-home-bottom:hover, .catalog-home-bottom:focused {
+    -fx-background-color: #1d4d35;
+    -fx-border-color: #f0cc8d;
+}
+.header-cuisine {
+    -fx-text-fill: #263c2d;
+    -fx-font-family: "Georgia";
+    -fx-font-size: 15px;
+}
+.catalog-category .interface-icon { -fx-scale-x: 1.12; -fx-scale-y: 1.12; }
+.catalog-rail-content { -fx-padding: 30 25 24 14; }
+.catalog-categories { -fx-spacing: 10; }
+.catalog-category { -fx-min-height: 58; }
+.catalog-shell:compact .catalog-home-bottom { -fx-font-size: 12px; -fx-padding: 4 3; }
+.catalog-status-row .button.catalog-refresh { -fx-min-height: 32; }
+
+.filter-overlay {
+    -fx-background-color: #18281948;
+    -fx-padding: 16;
+    -catalog-card: #fffbf3;
+    -catalog-edge: #e4d3b9;
+    -catalog-muted: #565a4c;
+}
+.advanced-filter-panel {
+    -fx-padding: 13 14;
+    -fx-effect: dropshadow(gaussian, #17261d55, 20, 0, 0, 5);
+}
+.advanced-filter-panel .scroll-pane, .advanced-filter-panel .viewport {
+    -fx-background-color: -catalog-card;
+    -fx-background-insets: 0;
+}
+.advanced-filter-content { -fx-padding: 8 3 2; }
+.advanced-filter-panel .check-box { -fx-font-size: 13px; -fx-min-height: 39; }
+.advanced-filter-panel .filter-group-label { -fx-font-size: 14px; }
+
+.food-card-body { -fx-padding: 9 12 10; }
+.food-tag, .food-highlight { -fx-font-size: 12px; }
+.dish-add-draft { -fx-min-height: 49; -fx-font-size: 15px; }
+ 
+/* Popup content has its own scene and receives this stylesheet directly. */
+.combo-box-popup > .list-view, .rose-dropdown-list {
+    -fx-background-color: #d8c5a5, #fffaf0;
+    -fx-background-insets: 0, 1;
+    -fx-background-radius: 10, 9;
+    -fx-padding: 5;
+}
+.combo-box-popup > .list-view .list-cell, .rose-dropdown-list .list-cell {
+    -fx-background-color: #fffaf0;
+    -fx-background-radius: 6;
+    -fx-text-fill: #173e2a;
+    -fx-padding: 8 12;
+    -fx-min-height: 43;
+}
+.combo-box-popup > .list-view .list-cell:filled:hover, .rose-dropdown-list .list-cell:filled:hover {
+    -fx-background-color: #f2e2c3;
+    -fx-text-fill: #173e2a;
+}
+.combo-box-popup > .list-view .list-cell:filled:selected,
+.combo-box-popup > .list-view .list-cell:filled:selected:hover,
+.rose-dropdown-list .list-cell:filled:selected, .rose-dropdown-list .list-cell:filled:selected:hover {
+    -fx-background-color: #184631;
+    -fx-text-fill: #fff5df;
+}
+.combo-box-popup > .list-view .list-cell:filled:focused, .rose-dropdown-list .list-cell:filled:focused {
+    -fx-border-color: #c59b57;
+    -fx-border-radius: 6;
+    -fx-border-insets: 1;
+}
+.catalog-shell .combo-box:focused, .catalog-shell .combo-box:showing {
+    -fx-border-color: #b77718;
+}
+.catalog-filter-toggle:filtered {
+    -fx-background-color: #e5ecdc;
+    -fx-border-color: #8fa885;
+}
+.filter-dialog-actions {
+    -fx-padding: 10 0 0;
+    -fx-border-color: #e4d3b9;
+    -fx-border-width: 1 0 0;
+}
+.filter-overlay.ethiopic .label, .filter-overlay.ethiopic .button,
+.filter-overlay.ethiopic .check-box { -fx-font-family: "Noto Sans Ethiopic"; }
+
+
+
