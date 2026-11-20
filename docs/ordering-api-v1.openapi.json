@@ -1,0 +1,3508 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Rose & Roots shared ordering API",
+    "version": "1.0.0-draft.1",
+    "description": "Review draft for Customer, Staff and Spring Boot. No endpoint in this document is declared implemented."
+  },
+  "servers": [
+    {
+      "url": "/api/v1",
+      "description": "Relative API base on the trusted restaurant server"
+    }
+  ],
+  "paths": {
+    "/device": {
+      "get": {
+        "operationId": "getMyDevice",
+        "summary": "Read the authenticated installation and table mapping",
+        "security": [
+          {
+            "terminalBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Device assignment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Device"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000012",
+                  "table": {
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "displayNumber": "07"
+                  },
+                  "version": 1
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/sessions": {
+      "post": {
+        "operationId": "openSession",
+        "summary": "Start or resume the device session for the selected service mode",
+        "security": [
+          {
+            "terminalBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartSession"
+              },
+              "example": {
+                "mode": "TAKEAWAY"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Existing open session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000021",
+                  "status": "OPEN",
+                  "createdAt": "2026-11-20T18:00:00Z",
+                  "expiresAt": "2026-11-20T20:00:00Z",
+                  "closedAt": null,
+                  "mode": "TAKEAWAY",
+                  "pickupReference": "P-042"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "New session or pickup reference",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000021",
+                  "status": "OPEN",
+                  "createdAt": "2026-11-20T18:00:00Z",
+                  "expiresAt": "2026-11-20T20:00:00Z",
+                  "closedAt": null,
+                  "mode": "TAKEAWAY",
+                  "pickupReference": "P-042"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/sessions/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Id"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getSession",
+        "summary": "Retrieve a session owned by the authenticated device",
+        "security": [
+          {
+            "terminalBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000001",
+                  "status": "OPEN",
+                  "createdAt": "2026-11-20T18:00:00Z",
+                  "expiresAt": "2026-11-20T20:00:00Z",
+                  "closedAt": null,
+                  "mode": "DINE_IN",
+                  "table": {
+                    "id": "00000000-0000-4000-8000-000000000002",
+                    "displayNumber": "07"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/sessions/{id}/close": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Id"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "closeSession",
+        "summary": "Close a session after order and bill checks",
+        "security": [
+          {
+            "staffBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloseSession"
+              },
+              "example": {
+                "reason": "Visit ended"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Closed session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/sessions/{id}/orders": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        {
+          "name": "cursor",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 50
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listSessionOrders",
+        "summary": "List the independently submitted orders in a session",
+        "security": [
+          {
+            "terminalBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session order page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderList"
+                },
+                "example": {
+                  "orders": [
+                    {
+                      "id": "00000000-0000-4000-8000-000000000008",
+                      "sessionId": "00000000-0000-4000-8000-000000000001",
+                      "mode": "DINE_IN",
+                      "status": "RECEIVED",
+                      "acceptedAt": "2026-11-20T18:00:00Z",
+                      "version": 1,
+                      "visitAllergy": {
+                        "kind": "NONE",
+                        "allergens": [],
+                        "other": ""
+                      },
+                      "lines": [
+                        {
+                          "id": "00000000-0000-4000-8000-000000000009",
+                          "pricing": {
+                            "clientLineId": "00000000-0000-4000-8000-000000000003",
+                            "menuItemId": "00000000-0000-4000-8000-000000000004",
+                            "name": "Doro Wat",
+                            "quantity": 2,
+                            "baseUnitMinor": 145000,
+                            "options": [
+                              {
+                                "groupId": "00000000-0000-4000-8000-000000000005",
+                                "optionId": "00000000-0000-4000-8000-000000000006",
+                                "name": "Yogurt",
+                                "unitAdjustmentMinor": 12000
+                              }
+                            ],
+                            "extendedMinor": 314000
+                          },
+                          "allergy": {
+                            "kind": "DISCLOSED",
+                            "allergens": [
+                              "MILK"
+                            ],
+                            "other": "Sesame"
+                          },
+                          "preparationInstructions": "Less oil",
+                          "preparationStatus": "RECEIVED",
+                          "allergyReviewStatus": "PENDING_ALLERGY_REVIEW",
+                          "allergyRisk": {
+                            "ingredientMatches": [
+                              "MILK"
+                            ],
+                            "crossContactMatches": [],
+                            "unresolved": true
+                          },
+                          "billable": true,
+                          "version": 1,
+                          "activeSubstitution": null
+                        }
+                      ],
+                      "totals": {
+                        "subtotalMinor": 314000,
+                        "serviceMinor": 0,
+                        "taxMinor": 0,
+                        "totalMinor": 314000,
+                        "currency": "KES"
+                      }
+                    }
+                  ],
+                  "nextCursor": null
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/sessions/{id}/bill": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Id"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getSessionBill",
+        "summary": "Read the authoritative combined session bill",
+        "security": [
+          {
+            "terminalBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current bill",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionBill"
+                },
+                "example": {
+                  "sessionId": "00000000-0000-4000-8000-000000000001",
+                  "asOf": "2026-11-20T18:00:00Z",
+                  "orders": [
+                    {
+                      "orderId": "00000000-0000-4000-8000-000000000008",
+                      "totals": {
+                        "subtotalMinor": 314000,
+                        "serviceMinor": 0,
+                        "taxMinor": 0,
+                        "totalMinor": 314000,
+                        "currency": "KES"
+                      }
+                    }
+                  ],
+                  "totals": {
+                    "subtotalMinor": 314000,
+                    "serviceMinor": 0,
+                    "taxMinor": 0,
+                    "totalMinor": 314000,
+                    "currency": "KES"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/order-quotes": {
+      "post": {
+        "operationId": "quoteOrder",
+        "summary": "Validate a draft and calculate server prices without placing it",
+        "security": [
+          {
+            "terminalBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderDraft"
+              },
+              "example": {
+                "sessionId": "00000000-0000-4000-8000-000000000001",
+                "visitAllergy": {
+                  "kind": "NONE",
+                  "allergens": [],
+                  "other": ""
+                },
+                "lines": [
+                  {
+                    "clientLineId": "00000000-0000-4000-8000-000000000003",
+                    "menuItemId": "00000000-0000-4000-8000-000000000004",
+                    "quantity": 2,
+                    "selections": [
+                      {
+                        "groupId": "00000000-0000-4000-8000-000000000005",
+                        "optionIds": [
+                          "00000000-0000-4000-8000-000000000006"
+                        ]
+                      }
+                    ],
+                    "allergy": {
+                      "kind": "DISCLOSED",
+                      "allergens": [
+                        "MILK"
+                      ],
+                      "other": "Sesame"
+                    },
+                    "preparationInstructions": "Less oil"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Price and selection quote",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderQuote"
+                },
+                "example": {
+                  "quoteId": "00000000-0000-4000-8000-000000000007",
+                  "sessionId": "00000000-0000-4000-8000-000000000001",
+                  "expiresAt": "2026-11-20T18:05:00Z",
+                  "lines": [
+                    {
+                      "clientLineId": "00000000-0000-4000-8000-000000000003",
+                      "menuItemId": "00000000-0000-4000-8000-000000000004",
+                      "name": "Doro Wat",
+                      "quantity": 2,
+                      "baseUnitMinor": 145000,
+                      "options": [
+                        {
+                          "groupId": "00000000-0000-4000-8000-000000000005",
+                          "optionId": "00000000-0000-4000-8000-000000000006",
+                          "name": "Yogurt",
+                          "unitAdjustmentMinor": 12000
+                        }
+                      ],
+                      "extendedMinor": 314000
+                    }
+                  ],
+                  "totals": {
+                    "subtotalMinor": 314000,
+                    "serviceMinor": 0,
+                    "taxMinor": 0,
+                    "totalMinor": 314000,
+                    "currency": "KES"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/orders": {
+      "post": {
+        "operationId": "submitOrder",
+        "summary": "Submit one order round with an idempotency key",
+        "security": [
+          {
+            "terminalBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitOrder"
+              },
+              "example": {
+                "sessionId": "00000000-0000-4000-8000-000000000001",
+                "visitAllergy": {
+                  "kind": "NONE",
+                  "allergens": [],
+                  "other": ""
+                },
+                "lines": [
+                  {
+                    "clientLineId": "00000000-0000-4000-8000-000000000003",
+                    "menuItemId": "00000000-0000-4000-8000-000000000004",
+                    "quantity": 2,
+                    "selections": [
+                      {
+                        "groupId": "00000000-0000-4000-8000-000000000005",
+                        "optionIds": [
+                          "00000000-0000-4000-8000-000000000006"
+                        ]
+                      }
+                    ],
+                    "allergy": {
+                      "kind": "DISCLOSED",
+                      "allergens": [
+                        "MILK"
+                      ],
+                      "other": "Sesame"
+                    },
+                    "preparationInstructions": "Less oil"
+                  }
+                ],
+                "quoteId": "00000000-0000-4000-8000-000000000007",
+                "allergyReviewed": true
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Replay returns the original accepted order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000008",
+                  "sessionId": "00000000-0000-4000-8000-000000000001",
+                  "mode": "DINE_IN",
+                  "status": "RECEIVED",
+                  "acceptedAt": "2026-11-20T18:00:00Z",
+                  "version": 1,
+                  "visitAllergy": {
+                    "kind": "NONE",
+                    "allergens": [],
+                    "other": ""
+                  },
+                  "lines": [
+                    {
+                      "id": "00000000-0000-4000-8000-000000000009",
+                      "pricing": {
+                        "clientLineId": "00000000-0000-4000-8000-000000000003",
+                        "menuItemId": "00000000-0000-4000-8000-000000000004",
+                        "name": "Doro Wat",
+                        "quantity": 2,
+                        "baseUnitMinor": 145000,
+                        "options": [
+                          {
+                            "groupId": "00000000-0000-4000-8000-000000000005",
+                            "optionId": "00000000-0000-4000-8000-000000000006",
+                            "name": "Yogurt",
+                            "unitAdjustmentMinor": 12000
+                          }
+                        ],
+                        "extendedMinor": 314000
+                      },
+                      "allergy": {
+                        "kind": "DISCLOSED",
+                        "allergens": [
+                          "MILK"
+                        ],
+                        "other": "Sesame"
+                      },
+                      "preparationInstructions": "Less oil",
+                      "preparationStatus": "RECEIVED",
+                      "allergyReviewStatus": "PENDING_ALLERGY_REVIEW",
+                      "allergyRisk": {
+                        "ingredientMatches": [
+                          "MILK"
+                        ],
+                        "crossContactMatches": [],
+                        "unresolved": true
+                      },
+                      "billable": true,
+                      "version": 1,
+                      "activeSubstitution": null
+                    }
+                  ],
+                  "totals": {
+                    "subtotalMinor": 314000,
+                    "serviceMinor": 0,
+                    "taxMinor": 0,
+                    "totalMinor": 314000,
+                    "currency": "KES"
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Accepted and durably persisted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000008",
+                  "sessionId": "00000000-0000-4000-8000-000000000001",
+                  "mode": "DINE_IN",
+                  "status": "RECEIVED",
+                  "acceptedAt": "2026-11-20T18:00:00Z",
+                  "version": 1,
+                  "visitAllergy": {
+                    "kind": "NONE",
+                    "allergens": [],
+                    "other": ""
+                  },
+                  "lines": [
+                    {
+                      "id": "00000000-0000-4000-8000-000000000009",
+                      "pricing": {
+                        "clientLineId": "00000000-0000-4000-8000-000000000003",
+                        "menuItemId": "00000000-0000-4000-8000-000000000004",
+                        "name": "Doro Wat",
+                        "quantity": 2,
+                        "baseUnitMinor": 145000,
+                        "options": [
+                          {
+                            "groupId": "00000000-0000-4000-8000-000000000005",
+                            "optionId": "00000000-0000-4000-8000-000000000006",
+                            "name": "Yogurt",
+                            "unitAdjustmentMinor": 12000
+                          }
+                        ],
+                        "extendedMinor": 314000
+                      },
+                      "allergy": {
+                        "kind": "DISCLOSED",
+                        "allergens": [
+                          "MILK"
+                        ],
+                        "other": "Sesame"
+                      },
+                      "preparationInstructions": "Less oil",
+                      "preparationStatus": "RECEIVED",
+                      "allergyReviewStatus": "PENDING_ALLERGY_REVIEW",
+                      "allergyRisk": {
+                        "ingredientMatches": [
+                          "MILK"
+                        ],
+                        "crossContactMatches": [],
+                        "unresolved": true
+                      },
+                      "billable": true,
+                      "version": 1,
+                      "activeSubstitution": null
+                    }
+                  ],
+                  "totals": {
+                    "subtotalMinor": 314000,
+                    "serviceMinor": 0,
+                    "taxMinor": 0,
+                    "totalMinor": 314000,
+                    "currency": "KES"
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Location": {
+                "description": "Relative order resource URL",
+                "schema": {
+                  "type": "string",
+                  "format": "uri-reference"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/orders/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Id"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getOrder",
+        "summary": "Read customer-visible order status and allergy review",
+        "security": [
+          {
+            "terminalBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000008",
+                  "sessionId": "00000000-0000-4000-8000-000000000001",
+                  "mode": "DINE_IN",
+                  "status": "RECEIVED",
+                  "acceptedAt": "2026-11-20T18:00:00Z",
+                  "version": 1,
+                  "visitAllergy": {
+                    "kind": "NONE",
+                    "allergens": [],
+                    "other": ""
+                  },
+                  "lines": [
+                    {
+                      "id": "00000000-0000-4000-8000-000000000009",
+                      "pricing": {
+                        "clientLineId": "00000000-0000-4000-8000-000000000003",
+                        "menuItemId": "00000000-0000-4000-8000-000000000004",
+                        "name": "Doro Wat",
+                        "quantity": 2,
+                        "baseUnitMinor": 145000,
+                        "options": [
+                          {
+                            "groupId": "00000000-0000-4000-8000-000000000005",
+                            "optionId": "00000000-0000-4000-8000-000000000006",
+                            "name": "Yogurt",
+                            "unitAdjustmentMinor": 12000
+                          }
+                        ],
+                        "extendedMinor": 314000
+                      },
+                      "allergy": {
+                        "kind": "DISCLOSED",
+                        "allergens": [
+                          "MILK"
+                        ],
+                        "other": "Sesame"
+                      },
+                      "preparationInstructions": "Less oil",
+                      "preparationStatus": "RECEIVED",
+                      "allergyReviewStatus": "PENDING_ALLERGY_REVIEW",
+                      "allergyRisk": {
+                        "ingredientMatches": [
+                          "MILK"
+                        ],
+                        "crossContactMatches": [],
+                        "unresolved": true
+                      },
+                      "billable": true,
+                      "version": 1,
+                      "activeSubstitution": null
+                    }
+                  ],
+                  "totals": {
+                    "subtotalMinor": 314000,
+                    "serviceMinor": 0,
+                    "taxMinor": 0,
+                    "totalMinor": 314000,
+                    "currency": "KES"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/orders/{id}/items/{itemId}/review-response": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        {
+          "name": "itemId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Id"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "respondToAllergyReview",
+        "summary": "Clarify an allergy request or respond to a proposed substitution",
+        "security": [
+          {
+            "terminalBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerReview"
+              },
+              "example": {
+                "action": "CLARIFY",
+                "message": "Sesame is a food allergy.",
+                "expectedVersion": 2
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/kitchen/orders": {
+      "parameters": [
+        {
+          "name": "cursor",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 50
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listKitchenOrders",
+        "summary": "Load outstanding tickets, including allergy holds, for sync and reconnect",
+        "security": [
+          {
+            "staffBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Kitchen queue page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KitchenPage"
+                },
+                "example": {
+                  "tickets": [
+                    {
+                      "order": {
+                        "id": "00000000-0000-4000-8000-000000000008",
+                        "sessionId": "00000000-0000-4000-8000-000000000001",
+                        "mode": "DINE_IN",
+                        "status": "RECEIVED",
+                        "acceptedAt": "2026-11-20T18:00:00Z",
+                        "version": 1,
+                        "visitAllergy": {
+                          "kind": "NONE",
+                          "allergens": [],
+                          "other": ""
+                        },
+                        "lines": [
+                          {
+                            "id": "00000000-0000-4000-8000-000000000009",
+                            "pricing": {
+                              "clientLineId": "00000000-0000-4000-8000-000000000003",
+                              "menuItemId": "00000000-0000-4000-8000-000000000004",
+                              "name": "Doro Wat",
+                              "quantity": 2,
+                              "baseUnitMinor": 145000,
+                              "options": [
+                                {
+                                  "groupId": "00000000-0000-4000-8000-000000000005",
+                                  "optionId": "00000000-0000-4000-8000-000000000006",
+                                  "name": "Yogurt",
+                                  "unitAdjustmentMinor": 12000
+                                }
+                              ],
+                              "extendedMinor": 314000
+                            },
+                            "allergy": {
+                              "kind": "DISCLOSED",
+                              "allergens": [
+                                "MILK"
+                              ],
+                              "other": "Sesame"
+                            },
+                            "preparationInstructions": "Less oil",
+                            "preparationStatus": "RECEIVED",
+                            "allergyReviewStatus": "PENDING_ALLERGY_REVIEW",
+                            "allergyRisk": {
+                              "ingredientMatches": [
+                                "MILK"
+                              ],
+                              "crossContactMatches": [],
+                              "unresolved": true
+                            },
+                            "billable": true,
+                            "version": 1,
+                            "activeSubstitution": null
+                          }
+                        ],
+                        "totals": {
+                          "subtotalMinor": 314000,
+                          "serviceMinor": 0,
+                          "taxMinor": 0,
+                          "totalMinor": 314000,
+                          "currency": "KES"
+                        }
+                      },
+                      "serviceDestination": "Table 07",
+                      "priority": "NORMAL",
+                      "delayed": false
+                    }
+                  ],
+                  "nextCursor": null
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/kitchen/items/{id}/status": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Id"
+          }
+        }
+      ],
+      "patch": {
+        "operationId": "updatePreparationStatus",
+        "summary": "Change item preparation state if its safety review permits",
+        "security": [
+          {
+            "staffBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KitchenStatusChange"
+              },
+              "example": {
+                "status": "PREPARING",
+                "expectedVersion": 2
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated ticket",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KitchenTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/kitchen/items/{id}/allergy-review": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Id"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "reviewAllergy",
+        "summary": "Record a permitted allergy-review decision",
+        "security": [
+          {
+            "staffBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffReview"
+              },
+              "example": {
+                "decision": "REQUEST_CLARIFICATION",
+                "reason": "Confirm whether sesame is an allergy.",
+                "expectedVersion": 1
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated ticket",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KitchenTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/kitchen/orders/{id}/rush": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Id"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "setRushPriority",
+        "summary": "Update ticket priority with a staff reason",
+        "security": [
+          {
+            "staffBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RushChange"
+              },
+              "example": {
+                "priority": "RUSH",
+                "reason": "Supervisor prioritization",
+                "expectedVersion": 1
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated ticket",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KitchenTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/wait-estimates": {
+      "post": {
+        "operationId": "estimateWait",
+        "summary": "Estimate an order-ready range using current station capacity and workload",
+        "security": [
+          {
+            "terminalBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WaitRequest"
+              },
+              "example": {
+                "sessionId": "00000000-0000-4000-8000-000000000001",
+                "lines": [
+                  {
+                    "clientLineId": "00000000-0000-4000-8000-000000000003",
+                    "menuItemId": "00000000-0000-4000-8000-000000000004",
+                    "quantity": 2,
+                    "selections": [
+                      {
+                        "groupId": "00000000-0000-4000-8000-000000000005",
+                        "optionIds": [
+                          "00000000-0000-4000-8000-000000000006"
+                        ]
+                      }
+                    ],
+                    "allergy": {
+                      "kind": "DISCLOSED",
+                      "allergens": [
+                        "MILK"
+                      ],
+                      "other": "Sesame"
+                    },
+                    "preparationInstructions": "Less oil"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Estimated range or no reliable estimate",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaitEstimate"
+                },
+                "example": {
+                  "state": "UNAVAILABLE",
+                  "reason": "ALLERGY_REVIEW",
+                  "calculatedAt": "2026-11-20T18:00:00Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/admin/devices/{id}/assignment": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Id"
+          }
+        }
+      ],
+      "patch": {
+        "operationId": "assignDevice",
+        "summary": "Assign or unassign a provisioned device",
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignDevice"
+              },
+              "example": {
+                "tableId": "00000000-0000-4000-8000-000000000002",
+                "expectedVersion": 1
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated device",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Device"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/admin/stations": {
+      "get": {
+        "operationId": "listStations",
+        "summary": "Read configured stations and active qualified capacity",
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Station"
+                  },
+                  "minItems": 0,
+                  "maxItems": 200
+                },
+                "example": [
+                  {
+                    "id": "00000000-0000-4000-8000-000000000013",
+                    "name": "Hot line",
+                    "active": true,
+                    "qualifiedAvailableChefs": 2,
+                    "parallelSlots": 3,
+                    "version": 1
+                  }
+                ]
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/admin/stations/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Id"
+          }
+        }
+      ],
+      "patch": {
+        "operationId": "updateCapacity",
+        "summary": "Set current qualified chef and parallel slot capacity",
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StationCapacity"
+              },
+              "example": {
+                "qualifiedAvailableChefs": 2,
+                "parallelSlots": 3,
+                "expectedVersion": 1
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated station",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Station"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/admin/prep-times": {
+      "get": {
+        "operationId": "listPrepTimes",
+        "summary": "Read menu-item preparation profiles",
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Preparation profiles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PrepTime"
+                  },
+                  "minItems": 0,
+                  "maxItems": 200
+                },
+                "example": [
+                  {
+                    "menuItemId": "00000000-0000-4000-8000-000000000004",
+                    "stationId": "00000000-0000-4000-8000-000000000013",
+                    "durationSeconds": 720,
+                    "version": 1
+                  }
+                ]
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/admin/prep-times/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Id"
+          }
+        }
+      ],
+      "patch": {
+        "operationId": "savePrepTime",
+        "summary": "Save the station and duration for a menu item ID",
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrepTimeUpdate"
+              },
+              "example": {
+                "stationId": "00000000-0000-4000-8000-000000000013",
+                "durationSeconds": 720,
+                "expectedVersion": 1
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated preparation profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrepTime"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "format": "uuid"
+      },
+      "Timestamp": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "Z$"
+      },
+      "AmountMinor": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      },
+      "Currency": {
+        "type": "string",
+        "const": "KES"
+      },
+      "ServiceMode": {
+        "type": "string",
+        "enum": [
+          "DINE_IN",
+          "TAKEAWAY"
+        ]
+      },
+      "SessionStatus": {
+        "type": "string",
+        "enum": [
+          "OPEN",
+          "CLOSED",
+          "EXPIRED"
+        ]
+      },
+      "Table": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "displayNumber"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "displayNumber": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 24
+          }
+        }
+      },
+      "Device": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "table",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "table": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Table"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "AssignDevice": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "tableId",
+          "expectedVersion"
+        ],
+        "properties": {
+          "tableId": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "StartSession": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mode"
+        ],
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/ServiceMode"
+          }
+        }
+      },
+      "CloseSession": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 180
+          }
+        }
+      },
+      "Session": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "status",
+              "createdAt",
+              "expiresAt",
+              "closedAt",
+              "mode",
+              "table"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "status": {
+                "$ref": "#/components/schemas/SessionStatus"
+              },
+              "createdAt": {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              "expiresAt": {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              "closedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Timestamp"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "mode": {
+                "type": "string",
+                "const": "DINE_IN"
+              },
+              "table": {
+                "$ref": "#/components/schemas/Table"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "status",
+              "createdAt",
+              "expiresAt",
+              "closedAt",
+              "mode",
+              "pickupReference"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "status": {
+                "$ref": "#/components/schemas/SessionStatus"
+              },
+              "createdAt": {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              "expiresAt": {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              "closedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Timestamp"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "mode": {
+                "type": "string",
+                "const": "TAKEAWAY"
+              },
+              "pickupReference": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              }
+            }
+          }
+        ]
+      },
+      "Selection": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "groupId",
+          "optionIds"
+        ],
+        "properties": {
+          "groupId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "optionIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Id"
+            },
+            "minItems": 1,
+            "maxItems": 30,
+            "uniqueItems": true
+          }
+        }
+      },
+      "Declaration": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "allergens",
+              "other"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "UNREVIEWED",
+                  "NONE"
+                ]
+              },
+              "allergens": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "MILK",
+                    "EGGS",
+                    "WHEAT",
+                    "PEANUTS",
+                    "TREE_NUTS",
+                    "SOY",
+                    "FISH",
+                    "SHELLFISH",
+                    "NUTS_UNSPECIFIED"
+                  ]
+                },
+                "minItems": 0,
+                "maxItems": 0
+              },
+              "other": {
+                "type": "string",
+                "const": ""
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "allergens",
+              "other"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "DISCLOSED"
+              },
+              "allergens": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "MILK",
+                    "EGGS",
+                    "WHEAT",
+                    "PEANUTS",
+                    "TREE_NUTS",
+                    "SOY",
+                    "FISH",
+                    "SHELLFISH",
+                    "NUTS_UNSPECIFIED"
+                  ]
+                },
+                "minItems": 0,
+                "maxItems": 9,
+                "uniqueItems": true
+              },
+              "other": {
+                "type": "string",
+                "maxLength": 240
+              }
+            },
+            "anyOf": [
+              {
+                "properties": {
+                  "allergens": {
+                    "minItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "other": {
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "DraftLine": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "clientLineId",
+          "menuItemId",
+          "quantity",
+          "selections",
+          "allergy",
+          "preparationInstructions"
+        ],
+        "properties": {
+          "clientLineId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "menuItemId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 99
+          },
+          "selections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Selection"
+            },
+            "minItems": 0,
+            "maxItems": 30
+          },
+          "allergy": {
+            "$ref": "#/components/schemas/Declaration"
+          },
+          "preparationInstructions": {
+            "type": "string",
+            "maxLength": 240
+          }
+        }
+      },
+      "OrderDraft": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sessionId",
+          "visitAllergy",
+          "lines"
+        ],
+        "properties": {
+          "sessionId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "visitAllergy": {
+            "$ref": "#/components/schemas/Declaration"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DraftLine"
+            },
+            "minItems": 1,
+            "maxItems": 100
+          }
+        }
+      },
+      "SubmitOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sessionId",
+          "visitAllergy",
+          "lines",
+          "quoteId",
+          "allergyReviewed"
+        ],
+        "properties": {
+          "sessionId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "visitAllergy": {
+            "$ref": "#/components/schemas/Declaration"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DraftLine"
+            },
+            "minItems": 1,
+            "maxItems": 100
+          },
+          "quoteId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "allergyReviewed": {
+            "type": "boolean",
+            "const": true
+          }
+        }
+      },
+      "OrderStatus": {
+        "type": "string",
+        "enum": [
+          "RECEIVED",
+          "PREPARING",
+          "READY",
+          "SERVED",
+          "COLLECTED",
+          "CANCELLED"
+        ]
+      },
+      "PreparationStatus": {
+        "type": "string",
+        "enum": [
+          "RECEIVED",
+          "PREPARING",
+          "READY",
+          "SERVED",
+          "COLLECTED",
+          "CANCELLED"
+        ]
+      },
+      "AllergyReviewStatus": {
+        "type": "string",
+        "enum": [
+          "NOT_REQUIRED",
+          "PENDING_ALLERGY_REVIEW",
+          "CLARIFICATION_REQUESTED",
+          "DEFERRED",
+          "CUSTOMER_APPROVAL_REQUIRED",
+          "APPROVED_FOR_PREPARATION",
+          "DECLINED"
+        ]
+      },
+      "AllergyRisk": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ingredientMatches",
+          "crossContactMatches",
+          "unresolved"
+        ],
+        "properties": {
+          "ingredientMatches": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "MILK",
+                "EGGS",
+                "WHEAT",
+                "PEANUTS",
+                "TREE_NUTS",
+                "SOY",
+                "FISH",
+                "SHELLFISH",
+                "NUTS_UNSPECIFIED"
+              ]
+            },
+            "minItems": 0,
+            "maxItems": 9
+          },
+          "crossContactMatches": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "MILK",
+                "EGGS",
+                "WHEAT",
+                "PEANUTS",
+                "TREE_NUTS",
+                "SOY",
+                "FISH",
+                "SHELLFISH",
+                "NUTS_UNSPECIFIED"
+              ]
+            },
+            "minItems": 0,
+            "maxItems": 9
+          },
+          "unresolved": {
+            "type": "boolean"
+          }
+        }
+      },
+      "UnitOption": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "groupId",
+          "optionId",
+          "name",
+          "unitAdjustmentMinor"
+        ],
+        "properties": {
+          "groupId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "optionId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "unitAdjustmentMinor": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "PricedLine": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "clientLineId",
+          "menuItemId",
+          "name",
+          "quantity",
+          "baseUnitMinor",
+          "options",
+          "extendedMinor"
+        ],
+        "properties": {
+          "clientLineId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "menuItemId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 99
+          },
+          "baseUnitMinor": {
+            "$ref": "#/components/schemas/AmountMinor"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UnitOption"
+            },
+            "minItems": 0,
+            "maxItems": 100
+          },
+          "extendedMinor": {
+            "$ref": "#/components/schemas/AmountMinor"
+          }
+        }
+      },
+      "Totals": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "subtotalMinor",
+          "serviceMinor",
+          "taxMinor",
+          "totalMinor",
+          "currency"
+        ],
+        "properties": {
+          "subtotalMinor": {
+            "$ref": "#/components/schemas/AmountMinor"
+          },
+          "serviceMinor": {
+            "$ref": "#/components/schemas/AmountMinor"
+          },
+          "taxMinor": {
+            "$ref": "#/components/schemas/AmountMinor"
+          },
+          "totalMinor": {
+            "$ref": "#/components/schemas/AmountMinor"
+          },
+          "currency": {
+            "type": "string",
+            "const": "KES"
+          }
+        }
+      },
+      "OrderQuote": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "quoteId",
+          "sessionId",
+          "expiresAt",
+          "lines",
+          "totals"
+        ],
+        "properties": {
+          "quoteId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "sessionId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "expiresAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PricedLine"
+            },
+            "minItems": 1,
+            "maxItems": 100
+          },
+          "totals": {
+            "$ref": "#/components/schemas/Totals"
+          }
+        }
+      },
+      "OrderLine": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "pricing",
+          "allergy",
+          "preparationInstructions",
+          "preparationStatus",
+          "allergyReviewStatus",
+          "allergyRisk",
+          "billable",
+          "version",
+          "activeSubstitution"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "pricing": {
+            "$ref": "#/components/schemas/PricedLine"
+          },
+          "allergy": {
+            "$ref": "#/components/schemas/Declaration"
+          },
+          "preparationInstructions": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "preparationStatus": {
+            "$ref": "#/components/schemas/PreparationStatus"
+          },
+          "allergyReviewStatus": {
+            "$ref": "#/components/schemas/AllergyReviewStatus"
+          },
+          "allergyRisk": {
+            "$ref": "#/components/schemas/AllergyRisk"
+          },
+          "billable": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "activeSubstitution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Substitution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reviewMessage": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 240,
+            "description": "Customer-visible clarification or review outcome. Internal staff audit notes are kept separately."
+          }
+        }
+      },
+      "Substitution": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "proposalId",
+          "description",
+          "selections",
+          "revisedLineTotalMinor"
+        ],
+        "properties": {
+          "proposalId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "selections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Selection"
+            },
+            "minItems": 0,
+            "maxItems": 30
+          },
+          "revisedLineTotalMinor": {
+            "$ref": "#/components/schemas/AmountMinor"
+          }
+        }
+      },
+      "Order": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "sessionId",
+          "mode",
+          "status",
+          "acceptedAt",
+          "version",
+          "visitAllergy",
+          "lines",
+          "totals"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "sessionId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ServiceMode"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OrderStatus"
+          },
+          "acceptedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "visitAllergy": {
+            "$ref": "#/components/schemas/Declaration"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderLine"
+            },
+            "minItems": 1,
+            "maxItems": 100
+          },
+          "totals": {
+            "$ref": "#/components/schemas/Totals"
+          }
+        }
+      },
+      "OrderList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "orders",
+          "nextCursor"
+        ],
+        "properties": {
+          "orders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Order"
+            },
+            "minItems": 0,
+            "maxItems": 200
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "SessionBill": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sessionId",
+          "asOf",
+          "orders",
+          "totals"
+        ],
+        "properties": {
+          "sessionId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "asOf": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "orders": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "orderId",
+                "totals"
+              ],
+              "properties": {
+                "orderId": {
+                  "$ref": "#/components/schemas/Id"
+                },
+                "totals": {
+                  "$ref": "#/components/schemas/Totals"
+                }
+              }
+            },
+            "minItems": 0,
+            "maxItems": 200
+          },
+          "totals": {
+            "$ref": "#/components/schemas/Totals"
+          }
+        }
+      },
+      "KitchenTicket": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "order",
+          "serviceDestination",
+          "priority",
+          "delayed"
+        ],
+        "properties": {
+          "order": {
+            "$ref": "#/components/schemas/Order"
+          },
+          "serviceDestination": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "NORMAL",
+              "RUSH"
+            ]
+          },
+          "delayed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "KitchenPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "tickets",
+          "nextCursor"
+        ],
+        "properties": {
+          "tickets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KitchenTicket"
+            },
+            "minItems": 0,
+            "maxItems": 200
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "KitchenStatusChange": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "expectedVersion"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "PREPARING",
+              "READY",
+              "SERVED",
+              "COLLECTED"
+            ]
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "RushChange": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "priority",
+          "reason",
+          "expectedVersion"
+        ],
+        "properties": {
+          "priority": {
+            "type": "string",
+            "enum": [
+              "NORMAL",
+              "RUSH"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "StaffReview": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "decision",
+              "reason",
+              "expectedVersion"
+            ],
+            "properties": {
+              "decision": {
+                "type": "string",
+                "enum": [
+                  "APPROVE",
+                  "REQUEST_CLARIFICATION",
+                  "DEFER",
+                  "DECLINE"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240
+              },
+              "expectedVersion": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "decision",
+              "reason",
+              "expectedVersion",
+              "replacementSelections"
+            ],
+            "properties": {
+              "decision": {
+                "type": "string",
+                "const": "PROPOSE_SUBSTITUTION"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240
+              },
+              "expectedVersion": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "replacementSelections": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Selection"
+                },
+                "minItems": 0,
+                "maxItems": 30
+              }
+            }
+          }
+        ]
+      },
+      "CustomerReview": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "action",
+              "message",
+              "expectedVersion"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "CLARIFY"
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240
+              },
+              "expectedVersion": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "action",
+              "proposalId",
+              "expectedVersion"
+            ],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "ACCEPT_SUBSTITUTION",
+                  "REJECT_SUBSTITUTION"
+                ]
+              },
+              "proposalId": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "expectedVersion": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              }
+            }
+          }
+        ]
+      },
+      "WaitRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sessionId",
+          "lines"
+        ],
+        "properties": {
+          "sessionId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DraftLine"
+            },
+            "minItems": 1,
+            "maxItems": 100
+          }
+        }
+      },
+      "WaitEstimate": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "state",
+              "minimumMinutes",
+              "maximumMinutes",
+              "calculatedAt",
+              "validUntil"
+            ],
+            "properties": {
+              "state": {
+                "type": "string",
+                "const": "AVAILABLE"
+              },
+              "minimumMinutes": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1440
+              },
+              "maximumMinutes": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1440
+              },
+              "calculatedAt": {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              "validUntil": {
+                "$ref": "#/components/schemas/Timestamp"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "state",
+              "reason",
+              "calculatedAt"
+            ],
+            "properties": {
+              "state": {
+                "type": "string",
+                "const": "UNAVAILABLE"
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "NO_CAPACITY",
+                  "MISSING_PREP_PROFILE",
+                  "ALLERGY_REVIEW",
+                  "STALE_WORKLOAD"
+                ]
+              },
+              "calculatedAt": {
+                "$ref": "#/components/schemas/Timestamp"
+              }
+            }
+          }
+        ]
+      },
+      "Station": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "active",
+          "qualifiedAvailableChefs",
+          "parallelSlots",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "qualifiedAvailableChefs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000
+          },
+          "parallelSlots": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "StationCapacity": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "qualifiedAvailableChefs",
+          "parallelSlots",
+          "expectedVersion"
+        ],
+        "properties": {
+          "qualifiedAvailableChefs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000
+          },
+          "parallelSlots": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "PrepTime": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "menuItemId",
+          "stationId",
+          "durationSeconds",
+          "version"
+        ],
+        "properties": {
+          "menuItemId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "stationId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "durationSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 86400
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "PrepTimeUpdate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "stationId",
+          "durationSeconds",
+          "expectedVersion"
+        ],
+        "properties": {
+          "stationId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "durationSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 86400
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "Problem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code",
+          "traceId"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "status": {
+            "type": "integer",
+            "minimum": 400,
+            "maximum": 599
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "BAD_REQUEST",
+              "UNAUTHENTICATED",
+              "FORBIDDEN",
+              "NOT_FOUND",
+              "SESSION_CLOSED",
+              "SESSION_EXPIRED",
+              "SESSION_MODE_CONFLICT",
+              "DEVICE_UNASSIGNED",
+              "ITEM_UNAVAILABLE",
+              "INVALID_SELECTION",
+              "PRICE_CHANGED",
+              "QUOTE_EXPIRED",
+              "IDEMPOTENCY_CONFLICT",
+              "IDEMPOTENCY_IN_PROGRESS",
+              "VERSION_CONFLICT",
+              "REVIEW_REQUIRED",
+              "INVALID_TRANSITION",
+              "THROTTLED",
+              "SERVICE_UNAVAILABLE"
+            ]
+          },
+          "detail": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 800
+          },
+          "traceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "violations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "pointer",
+                "code",
+                "message"
+              ],
+              "properties": {
+                "pointer": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                "code": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                }
+              }
+            },
+            "minItems": 0,
+            "maxItems": 200
+          }
+        }
+      },
+      "OrderingEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "schemaVersion",
+              "eventId",
+              "occurredAt",
+              "type",
+              "orderId",
+              "sessionId",
+              "orderVersion"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "type": "number",
+                "const": 1
+              },
+              "eventId": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "occurredAt": {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "ORDER_CREATED",
+                  "ORDER_UPDATED"
+                ]
+              },
+              "orderId": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "sessionId": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "orderVersion": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "schemaVersion",
+              "eventId",
+              "occurredAt",
+              "type"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "type": "number",
+                "const": 1
+              },
+              "eventId": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "occurredAt": {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              "type": {
+                "type": "string",
+                "const": "WAIT_ESTIMATE_INVALIDATED"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "responses": {
+      "Problem400": {
+        "description": "Malformed request",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem401": {
+        "description": "Authentication required",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem403": {
+        "description": "Operation is forbidden",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem404": {
+        "description": "Resource not found or outside the caller's scope",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem409": {
+        "description": "State, version, review, quote or idempotency conflict",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            },
+            "example": {
+              "type": "about:blank",
+              "title": "Conflict",
+              "status": 409,
+              "code": "PRICE_CHANGED",
+              "detail": "Refresh the quote and review the new total.",
+              "traceId": "example-trace"
+            }
+          }
+        }
+      },
+      "Problem422": {
+        "description": "Request validation failed",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem429": {
+        "description": "Rate limit exceeded",
+        "headers": {
+          "Retry-After": {
+            "description": "Optional wait in seconds",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 86400
+            }
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem503": {
+        "description": "Service temporarily unavailable",
+        "headers": {
+          "Retry-After": {
+            "description": "Optional wait in seconds",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 86400
+            }
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "terminalBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Server-issued token for one provisioned terminal"
+      },
+      "staffBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Server-issued token with kitchen permission"
+      },
+      "adminBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Server-issued token with admin permission"
+      }
+    }
+  },
+  "x-websocket": {
+    "protocol": "STOMP 1.2 over WSS",
+    "path": "/ws/v1",
+    "eventSchema": {
+      "$ref": "#/components/schemas/OrderingEvent"
+    },
+    "examples": [
+      {
+        "schemaVersion": 1,
+        "eventId": "00000000-0000-4000-8000-000000000010",
+        "occurredAt": "2026-11-20T18:00:00Z",
+        "type": "ORDER_CREATED",
+        "orderId": "00000000-0000-4000-8000-000000000008",
+        "sessionId": "00000000-0000-4000-8000-000000000001",
+        "orderVersion": 1
+      },
+      {
+        "schemaVersion": 1,
+        "eventId": "00000000-0000-4000-8000-000000000011",
+        "occurredAt": "2026-11-20T18:00:00Z",
+        "type": "WAIT_ESTIMATE_INVALIDATED"
+      }
+    ],
+    "documentation": "ordering-integration-v1.md#websocket-delivery-and-recovery"
+  }
+}
