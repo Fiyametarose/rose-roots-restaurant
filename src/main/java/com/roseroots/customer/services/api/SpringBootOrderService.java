@@ -95,8 +95,8 @@ public final class SpringBootOrderService implements OrderService {
         return exchange(request(path).GET().build(), false, false, Function.identity());
     }
 
-    CompletionStage<JsonObject> submitAssistance(JsonObject payload, UUID key) {
-        return call("assistance", payload, key, Function.identity());
+    CompletionStage<JsonObject> postAssistance(JsonObject body, UUID key) {
+        return call("assistance", body, key, Function.identity());
     }
 
     CompletionStage<JsonObject> startSession(ServiceMode mode) {
@@ -175,7 +175,7 @@ public final class SpringBootOrderService implements OrderService {
                                 string(value, "code"), string(value, "message")));
                     }
                     if (violations.isEmpty() && problem.has("detail")
-                            && ("INVALID_SELECTION".equals(code) || "ITEM_UNAVAILABLE".equals(code))) {
+                            && ("INVALID_SELECTION".equals(code) || "ITEM_UNAVAILABLE".equals(code) || "ALLERGEN_CONFLICT".equals(code))) {
                         violations = List.of(new Violation("", code, string(problem, "detail")));
                     }
                 }

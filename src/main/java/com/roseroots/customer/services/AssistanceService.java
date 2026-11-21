@@ -42,7 +42,12 @@ public interface AssistanceService {
     }
 
     record Request(String id, Context context, Type type, String message, Instant submittedAt,
-                   Instant updatedAt, Status status) {
+                   Instant updatedAt, Status status, long version) {
+        public Request(String id, Context context, Type type, String message, Instant submittedAt,
+                       Instant updatedAt, Status status) {
+            this(id, context, type, message, submittedAt, updatedAt, status, 0);
+        }
+
         public Request {
             if (id == null || id.isBlank() || updatedAt.isBefore(submittedAt)) {
                 throw new IllegalArgumentException("Invalid acknowledged request");

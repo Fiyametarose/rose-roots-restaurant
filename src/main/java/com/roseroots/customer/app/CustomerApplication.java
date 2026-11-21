@@ -28,9 +28,6 @@ import com.roseroots.customer.services.api.SpringBootOrderService;
 import com.roseroots.customer.services.api.ConnectedTerminal;
 import com.roseroots.customer.services.api.ConnectedCatalog;
 import com.roseroots.customer.services.api.RestOrderTracking;
-import com.roseroots.customer.services.api.RestAssistanceClient;
-import com.roseroots.customer.services.api.SpringBootAssistanceService;
-import com.roseroots.customer.state.AssistanceState;
 import com.roseroots.customer.services.WaitEstimateService;
 import java.time.Clock;
 import com.roseroots.customer.utils.Messages;
@@ -64,6 +61,7 @@ public final class CustomerApplication extends Application {
     public void start(Stage stage) {
         Font.loadFont(Objects.requireNonNull(getClass().getResource(
                 "/fonts/NotoSansEthiopic-Regular.ttf")).toExternalForm(), 16);
+
         var settings = new LocalRestaurantSettings();
         var args = getParameters().getRaw();
         boolean demoTable = args.contains("--demo-table");
@@ -72,8 +70,9 @@ public final class CustomerApplication extends Application {
         boolean connected = !demoTakeaway && (args.contains("--connected") || (origin != null && !origin.isBlank()));
         var address = connected ? backendAddress(origin) : null;
         var backend = connected ? orderBackend(address) : null;
-        var state = backend == null ? new CustomerState() : new CustomerState(new AssistanceState(
-                new SpringBootAssistanceService(new RestAssistanceClient(backend, orderExecutor)),
+        var state = backend == null ? new CustomerState() : new CustomerState(new com.roseroots.customer.state.AssistanceState(
+                new com.roseroots.customer.services.api.SpringBootAssistanceService(
+                        new com.roseroots.customer.services.api.RestAssistanceClient(backend, orderExecutor)),
                 Clock.systemUTC(), Platform::runLater));
         var menuService = connected
                 ? (backend == null ? (com.roseroots.customer.services.MenuService) () -> disconnected() : new ConnectedCatalog(backend, address))

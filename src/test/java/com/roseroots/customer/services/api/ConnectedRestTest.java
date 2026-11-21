@@ -95,12 +95,43 @@ class ConnectedRestTest {
                 assertEquals(Ordering.Status.READY, ready.orders().getFirst().lines().getFirst().preparation());
                 assertEquals(314000, ready.totals().totalMinor());
             }
+            verifyAssistance(rest, fixture, session, polls);
             server.stop(0);
             assertProblem("CONNECTION_INTERRUPTED", () -> get(rest.order(draft.sessionId(), accepted.id())));
         } finally {
             server.stop(0);
             polls.shutdownNow();
             workers.shutdownNow();
+        }
+    }
+
+    private static void verifyAssistance(SpringBootOrderService rest, Fixture fixture, TerminalSession session,
+                                         ScheduledExecutorService polls) throws Exception {
+        var client = new RestAssistanceClient(rest, polls);
+        var scope = com.roseroots.customer.services.AssistanceService.Context.from(session);
+        var key = UUID.randomUUID();
+        var command = new com.roseroots.customer.services.AssistanceService.Command(scope, key,
+                com.roseroots.customer.services.AssistanceService.Type.OTHER, "A high chair", Instant.now());
+        var accepted = get(client.submit(command));
+        assertEquals("SUBMITTED", accepted.status().name());
+        assertEquals("A high chair", accepted.message());
+        assertEquals(accepted, get(client.submit(command)));
+        assertEquals(1, fixture.assistancePosts.size());
+        var updates = new LinkedBlockingQueue<com.roseroots.customer.services.AssistanceService.Update>();
+        try (var watch = client.subscribeAndReload(scope, updates::add)) {
+            for (var status : List.of("SUBMITTED", "ACKNOWLEDGED", "IN_PROGRESS", "COMPLETED")) {
+                fixture.assistanceStatus = status;
+                var update = updates.poll(7, TimeUnit.SECONDS);
+                assertNotNull(update);
+                assertEquals("LIVE", update.connection().name());
+                assertEquals(accepted.id(), update.requests().getFirst().id());
+                assertEquals(status, update.requests().getFirst().status().name());
+            }
+        }
+        try (var reopened = client.subscribeAndReload(scope, updates::add)) {
+            var update = updates.poll(7, TimeUnit.SECONDS);
+            assertNotNull(update);
+            assertEquals("COMPLETED", update.requests().getFirst().status().name());
         }
     }
 
@@ -148,6 +179,8 @@ class ConnectedRestTest {
         final Map<String, JsonObject> committed = new ConcurrentHashMap<>();
         final java.util.concurrent.atomic.AtomicInteger opens = new java.util.concurrent.atomic.AtomicInteger();
         volatile String stage = "RECEIVED";
+        volatile String assistanceStatus = "SUBMITTED";
+        final Map<String, JsonObject> assistancePosts = new ConcurrentHashMap<>();
 
         Fixture() throws IOException {
             paths = JsonParser.parseString(Files.readString(Path.of("docs/ordering-api-v1.openapi.json")))
@@ -195,6 +228,21 @@ class ConnectedRestTest {
                         send(http, opens.getAndIncrement() == 0 ? 201 : 200, sessionBody.toString(), "application/json");
                     }
                     case "menu" -> send(http, 200, catalog(), "application/json");
+                    case "assistance" -> {
+                        var payload = body(http);
+                        if (!session.equals(payload.get("sessionId").getAsString())
+                                || !"OTHER".equals(payload.get("type").getAsString())
+                                || payload.size() != 3 || !payload.has("note")) {
+                            problem(http, 422, "INVALID_SELECTION");
+                            return;
+                        }
+                        var previous = assistancePosts.putIfAbsent(http.getRequestHeaders().getFirst("Idempotency-Key"), payload);
+                        if (previous != null && !previous.equals(payload)) {
+                            problem(http, 409, "IDEMPOTENCY_CONFLICT");
+                            return;
+                        }
+                        send(http, previous == null ? 201 : 200, assistance("SUBMITTED").toString(), "application/json");
+                    }
                     case "order-quotes" -> {
                         var item = body(http).getAsJsonArray("lines").get(0).getAsJsonObject();
                         if (!dish.equals(item.get("menuItemId").getAsString())) {
@@ -217,7 +265,9 @@ class ConnectedRestTest {
                         }
                     }
                     default -> {
-                        if (path.equals("sessions/" + session + "/bill")) send(http, 200, bill.toString(), "application/json");
+                        if (path.equals("sessions/" + session + "/assistance")) {
+                            send(http, 200, "{\"requests\":[" + assistance(assistanceStatus) + "],\"nextCursor\":null}", "application/json");
+                        } else if (path.equals("sessions/" + session + "/bill")) send(http, 200, bill.toString(), "application/json");
                         else if (path.equals("sessions/" + session + "/orders")) {
                             send(http, 200, "{\"orders\":[" + current() + "],\"nextCursor\":null}", "application/json");
                         } else if (path.equals("orders/" + accepted.get("id").getAsString())) {
@@ -226,6 +276,23 @@ class ConnectedRestTest {
                     }
                 }
             }
+        }
+
+        private JsonObject assistance(String status) {
+            int version = com.roseroots.customer.services.AssistanceService.Status.valueOf(status).ordinal() + 1;
+            var data = new JsonObject();
+            data.addProperty("id", "00000000-0000-4000-8000-000000000101");
+            data.addProperty("sessionId", session);
+            data.addProperty("mode", "DINE_IN");
+            data.addProperty("serviceDestination", "Table 07");
+            data.addProperty("type", "OTHER");
+            data.addProperty("note", assistancePosts.values().iterator().next().get("note").getAsString());
+            data.addProperty("status", status);
+            var submitted = Instant.parse("2026-11-21T18:10:00Z");
+            data.addProperty("submittedAt", submitted.toString());
+            data.addProperty("updatedAt", submitted.plusSeconds(version - 1).toString());
+            data.addProperty("version", version);
+            return data;
         }
 
         private JsonObject current() {

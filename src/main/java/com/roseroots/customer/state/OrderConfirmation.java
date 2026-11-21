@@ -74,7 +74,20 @@ public final class OrderConfirmation {
         return session == null ? null : session.cartContextId();
     }
 
-    public boolean canQuote() { return active() && !busy() && !unresolved() && !conflicted() && !customer.cart().lines().isEmpty(); }
+    public boolean requiresAllergyAcknowledgement() {
+        return customer.sessionAllergy().disclosed()
+                || customer.cart().lines().stream().anyMatch(line -> line.dish().allergy().disclosed());
+    }
+
+    public boolean hasIngredientConflict() {
+        return customer.cart().lines().stream().anyMatch(line -> !com.roseroots.customer.models.AllergyReview
+                .forDish(line.dish(), customer.sessionAllergy()).ingredientConflicts().isEmpty());
+    }
+
+    public boolean canQuote() {
+        return active() && !busy() && !unresolved() && !conflicted()
+                && !customer.cart().lines().isEmpty() && !hasIngredientConflict();
+    }
 
     public void requestQuote(Runnable changed) {
         if (!canQuote()) return;
@@ -119,8 +132,7 @@ public final class OrderConfirmation {
             if (!retryPossible()) return;
             attempt = uncertain;
         } else {
-            if (!reviewed || quote() == null || (!customer.sessionAllergy().none()
-                    && !customer.sessionAllergy().disclosed())) return;
+            if (quote() == null || hasIngredientConflict() || (requiresAllergyAcknowledgement() && !reviewed)) return;
             attempt = new Attempt(quotedDraft, quote, UUID.randomUUID());
         }
         var context = context();
@@ -232,7 +244,13 @@ public final class OrderConfirmation {
                     line.dish().allergy(), line.dish().instructions());
         }).toList();
         return new Snapshot(new Ordering.Draft(canonicalId(session.sessionId()), session.mode(),
-                customer.sessionAllergy(), items), lines);
+                visitForWire(), items), lines);
+    }
+
+    private com.roseroots.customer.models.AllergyDeclaration visitForWire() {
+        var declaration = customer.sessionAllergy();
+        return declaration.disclosed() || declaration.none() ? declaration
+                : new com.roseroots.customer.models.AllergyDeclaration(true, java.util.Set.of(), "");
     }
 
     private boolean sameSession(UUID id, com.roseroots.customer.models.ServiceMode mode) {
@@ -243,7 +261,7 @@ public final class OrderConfirmation {
 
     private boolean matches(Snapshot snapshot) {
         if (snapshot == null || !sameSession(snapshot.draft().sessionId(), snapshot.draft().mode())
-                || !Objects.equals(snapshot.draft().visitAllergy(), customer.sessionAllergy())) return false;
+                || !Objects.equals(snapshot.draft().visitAllergy(), visitForWire())) return false;
         var current = customer.cart().lines();
         if (current.size() != snapshot.lines().size()) return false;
         for (int i = 0; i < current.size(); i++) {
