@@ -19,10 +19,12 @@ public interface KitchenSync {
 
     default void refresh() {}
 
+    default void stop() {}
+
     default boolean busy() { return false; }
 
     default String message() { return ""; }
 
-    // Future WebSocket invalidations: callback on the FX thread, re-read authoritative service snapshots.
+    // Notify subscribers on the FX thread after the service updates its authoritative view.
     Runnable onOrdersChanged(Runnable listener);
 }

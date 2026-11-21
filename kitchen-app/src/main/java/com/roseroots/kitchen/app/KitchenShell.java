@@ -142,23 +142,31 @@ final class KitchenShell extends BorderPane {
         });
         ToggleButton stationsButton = destination("Stations", group, () -> showStations(workspace));
         ToggleButton assistanceButton = destination("Assistance", group, () -> {
-            assistance.refresh();
-            show(workspace, assistance, "Assistance Requests");
+            if (local) {
+                assistance.refresh();
+                show(workspace, assistance, "Assistance Requests");
+            } else {
+                show(workspace, label("Customer assistance is unavailable from the connected server.", "empty"),
+                        "Assistance Requests");
+            }
         });
         ToggleButton handoffButton = destination("Handoff", group, () -> {
             handoff.refresh();
             show(workspace, handoff, "Service & Pickup Handoff");
         });
         ToggleButton reviewsButton = destination("Reviews", group, () -> {
-            reviews.refresh();
-            show(workspace, reviews, "Kitchen Feedback & Reviews");
+            if (local) {
+                reviews.refresh();
+                show(workspace, reviews, "Kitchen Feedback & Reviews");
+            } else {
+                show(workspace, label("Customer reviews are unavailable from the connected server.", "empty"),
+                        "Kitchen Feedback & Reviews");
+            }
         });
         ToggleButton historyButton = destination("History & Sync", group, () -> {
             history.refresh();
             show(workspace, history, "History & Sync");
         });
-        assistanceButton.setDisable(!local);
-        reviewsButton.setDisable(!local);
         Region spring = new Region();
         VBox.setVgrow(spring, Priority.ALWAYS);
         connection.setWrapText(true);
@@ -217,6 +225,7 @@ final class KitchenShell extends BorderPane {
 
     void stop() {
         unsubscribeSync.run();
+        sync.stop();
         live.stop();
         timer.stop();
     }

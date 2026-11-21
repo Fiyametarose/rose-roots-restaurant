@@ -2,6 +2,9 @@ package com.roseroots.server.ordering;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.roseroots.kitchen.model.Ticket;
+import com.roseroots.kitchen.service.KitchenSync;
+import com.roseroots.kitchen.service.http.LoopbackKitchenClient;
 import com.roseroots.server.ServerApplication;
 import java.net.CookieManager;
 import java.net.URI;
@@ -16,8 +19,11 @@ import java.sql.DriverManager;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -86,6 +92,56 @@ class OrderingPostgresTest {
              var statement = connection.createStatement()) {
             statement.execute("DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE");
         }
+    }
+
+    @Test
+    void runningKitchenAdapterDiscoversCommittedOrdersAndReconcilesExternalPreparationChanges() throws Exception {
+        String terminal = terminal(true);
+        String session = session(terminal, "DINE_IN", 201);
+        UUID dish = dish();
+        var kitchen = LoopbackKitchenClient.create(server.getWebServer().getPort(), STAFF_TOKEN);
+        try {
+            kitchen.startAutomaticRefresh();
+            awaitKitchen(() -> kitchen.status() == KitchenSync.Status.CONNECTED);
+
+            String orderId = submitNew(terminal, session, dish);
+            var id = UUID.fromString(orderId);
+            Supplier<Optional<Ticket>> matching = () ->
+                    kitchen.activeTickets().stream().filter(order -> order.server().id().equals(id)).findFirst();
+            awaitKitchen(() -> matching.get().isPresent());
+            Ticket ticket = matching.get().orElseThrow();
+            assertEquals(session, ticket.server().sessionId().toString());
+            String itemId = ticket.items().getFirst().server().id().toString();
+            assertEquals(Ticket.Status.RECEIVED, ticket.status());
+
+            patch(itemId, "PREPARING", 1, 200);
+            awaitKitchen(() -> matching.get().orElseThrow().status() == Ticket.Status.PREPARING);
+            Ticket preparing = matching.get().orElseThrow();
+            assertEquals("PREPARING", get(terminal, "/orders/" + orderId, 200).path("status").asText());
+            assertEquals(2, preparing.items().getFirst().server().version());
+
+            kitchen.advanceItem(preparing.id(), preparing.items().getFirst());
+            awaitKitchen(() -> matching.get().orElseThrow().status() == Ticket.Status.READY);
+            JsonNode customer = get(terminal, "/orders/" + orderId, 200);
+            Ticket ready = matching.get().orElseThrow();
+            assertEquals("READY", customer.path("status").asText());
+            assertEquals(ready.server().version(), customer.path("version").asLong());
+            assertEquals(itemId, customer.at("/lines/0/id").asText());
+            assertEquals(3, ready.items().getFirst().server().version());
+            assertEquals("READY", ticket(orderId).at("/order/status").asText());
+            assertEquals(1L, db.sql("SELECT count(*) FROM accepted_order_item WHERE id = CAST(:id AS uuid)")
+                    .param("id", itemId).query(Long.class).single());
+        } finally {
+            kitchen.stop();
+        }
+    }
+
+    private static void awaitKitchen(BooleanSupplier completed) throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(12).toNanos();
+        while (!completed.getAsBoolean() && System.nanoTime() < deadline) {
+            Thread.sleep(20);
+        }
+        assertTrue(completed.getAsBoolean(), "Kitchen did not observe the persisted change");
     }
 
     @Test

@@ -47,7 +47,7 @@ public final class KitchenApplication extends Application {
             board = new KitchenShell(remote, disconnectedAssistance(), List::of, remote,
                     List.of(), id -> {}, clock, () -> stage.setFullScreen(!stage.isFullScreen()),
                     () -> new AdminWorkspace(stage));
-            remote.refresh();
+            remote.startAutomaticRefresh();
         } else {
             openLocal(stage, clock);
         }

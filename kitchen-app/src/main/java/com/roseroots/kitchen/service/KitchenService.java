@@ -19,5 +19,9 @@ public interface KitchenService {
 
     void advanceItem(long ticketId, long itemId, Status expected);
 
+    default void advanceItem(long ticketId, Ticket.Item displayedItem) {
+        advanceItem(ticketId, displayedItem.id(), displayedItem.status());
+    }
+
     void changeRush(long ticketId, boolean enabled, String reason);
 }

@@ -21,6 +21,7 @@ dependencies {
     runtimeOnly 'org.postgresql:postgresql'
     testImplementation platform(org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES)
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation project(':kitchen-app')
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 def postgresIntegrationEnabled = providers.environmentVariable('ROSE_TEST_DB_URL').map { true }.orElse(false)

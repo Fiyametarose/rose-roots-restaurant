@@ -60,7 +60,8 @@ public final class HistoryView extends VBox {
         scroll.setFitToWidth(true);
         scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         VBox.setVgrow(scroll, Priority.ALWAYS);
-        VBox history = new VBox(heading("Order history", count), filters, scroll);
+        VBox history = service.local() ? new VBox(heading("Order history", count), filters, scroll)
+                : new VBox(heading("Order history", null), label("Terminal history is unavailable in connected mode.", "empty"));
         history.getStyleClass().add("lane");
         history.setMinWidth(0);
         history.setPrefWidth(680);
@@ -81,6 +82,9 @@ public final class HistoryView extends VBox {
 
     public void refresh() {
         refreshConnection();
+        if (!service.local()) {
+            return;
+        }
         int statusIndex = status.getSelectionModel().getSelectedIndex();
         int typeIndex = type.getSelectionModel().getSelectedIndex();
         var result = HistoryQuery.filter(service.historyTickets(), search.getText(),
@@ -102,7 +106,7 @@ public final class HistoryView extends VBox {
             case LOADING -> "Reading authoritative tickets from the shared server.";
             case FAILED -> sync.message();
             case OFFLINE -> "The shared server is unavailable. Order updates require a connection.";
-            case CONNECTED -> "Connected to the shared server. Terminal history is unavailable in this phase.";
+            case CONNECTED -> "Active tickets synchronize automatically. Refresh tickets is also available.";
         });
     }
 

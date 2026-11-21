@@ -86,7 +86,7 @@ public final class OrderDetails extends VBox {
         content.getChildren().add(heading);
         for (var item : ticket.items()) {
             var row = TicketCard.itemRow(item, service.writesAvailable() ? selected -> {
-                service.advanceItem(ticketId, selected.id(), selected.status());
+                service.advanceItem(ticketId, selected);
                 if (service.local()) {
                     render(ticketId);
                 }

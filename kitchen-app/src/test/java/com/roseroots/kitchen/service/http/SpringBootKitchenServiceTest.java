@@ -10,11 +10,103 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.Test;
 import static com.roseroots.kitchen.service.http.KitchenHttpFixture.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SpringBootKitchenServiceTest {
+    @Test
+    void automaticRefreshBacksOffRetainsCompleteDataAndRecoversWithoutRegressingVersions() throws Exception {
+        var request = new AtomicInteger();
+        var sentAt = new ConcurrentLinkedQueue<Long>();
+        try (var fixture = new KitchenHttpFixture(exchange -> {
+            sentAt.add(System.nanoTime());
+            assertEquals("Bearer fixture-token", exchange.getRequestHeaders().getFirst("Authorization"));
+            switch (request.incrementAndGet()) {
+                case 1 -> reply(exchange, 200, "{\"tickets\":[],\"nextCursor\":null}");
+                case 2 -> reply(exchange, 200, page(ticket("PREPARING", 2, false), null));
+                case 3 -> reply(exchange, 200, page(ticket("RECEIVED", 1, false), null));
+                case 4 -> reply(exchange, 503, "{}");
+                case 5 -> reply(exchange, 200, page(ticket("READY", 3, false), null));
+                default -> reply(exchange, 403, "{}");
+            }
+        })) {
+            var service = fixture.pollingService(Duration.ofMillis(180), Duration.ofMillis(720));
+            try {
+                service.startAutomaticRefresh();
+                await(() -> service.status() == KitchenSync.Status.FAILED && service.message().contains("older"));
+                assertEquals(Status.PREPARING, service.activeTickets().getFirst().status());
+                assertFalse(service.writesAvailable());
+                await(() -> !service.activeTickets().isEmpty() && service.activeTickets().getFirst().status() == Status.READY);
+                await(() -> service.status() == KitchenSync.Status.FAILED && service.message().contains("denied"));
+                assertTrue(service.activeTickets().isEmpty());
+            } finally {
+                service.stop();
+            }
+            var timings = java.util.List.copyOf(sentAt);
+            assertTrue(timings.size() >= 6);
+            assertTrue(TimeUnit.NANOSECONDS.toMillis(timings.get(3) - timings.get(2)) >= 330);
+            assertTrue(TimeUnit.NANOSECONDS.toMillis(timings.get(4) - timings.get(3)) >= 680);
+            assertTrue(TimeUnit.NANOSECONDS.toMillis(timings.get(5) - timings.get(4)) >= 150);
+            assertTrue(TimeUnit.NANOSECONDS.toMillis(timings.get(5) - timings.get(4)) < 680);
+            int stoppedAt = request.get();
+            Thread.sleep(800);
+            assertEquals(stoppedAt, request.get());
+        }
+    }
+
+    @Test
+    void queuesOneExplicitActionDuringPollAndRequiresTheDisplayedVersion() throws Exception {
+        var reads = new AtomicInteger();
+        var writes = new AtomicInteger();
+        var pollStarted = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        try (var fixture = new KitchenHttpFixture(exchange -> {
+            if (exchange.getRequestMethod().equals("PATCH")) {
+                writes.incrementAndGet();
+                reply(exchange, 200, ticket("PREPARING", 3, false).toString());
+            } else if (reads.incrementAndGet() == 1) {
+                reply(exchange, 200, page(ticket("RECEIVED", 1, false), null));
+            } else {
+                pollStarted.countDown();
+                try {
+                    release.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                reply(exchange, 200, page(ticket("RECEIVED", 2, false), null));
+            }
+        })) {
+            var service = fixture.pollingService(Duration.ofMillis(200), Duration.ofSeconds(2));
+            try {
+                service.startAutomaticRefresh();
+                assertTrue(pollStarted.await(5, TimeUnit.SECONDS));
+                var visible = service.activeTickets().getFirst();
+                service.advanceItem(visible.id(), visible.items().getFirst());
+                assertEquals(0, writes.get());
+                release.countDown();
+                await(() -> service.message().contains("changed during synchronization"));
+                service.advanceItem(visible.id(), visible.items().getFirst());
+                assertEquals(0, writes.get(), "An old rendering must not write using a newer version");
+                var current = service.activeTickets().getFirst();
+                service.advanceItem(current.id(), current.items().getFirst());
+                await(() -> writes.get() == 1 && service.activeTickets().getFirst().status() == Status.PREPARING);
+            } finally {
+                release.countDown();
+                service.stop();
+            }
+        }
+    }
+
+    private static void await(BooleanSupplier condition) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(8);
+        while (!condition.getAsBoolean() && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+        }
+        assertTrue(condition.getAsBoolean(), "Expected synchronization state was not observed");
+    }
+
     @Test
     void configurationUsesSharedOriginBeforeCustomerAliasAndRequiresVerifiedHttps() {
         assertEquals(KitchenBackendConfig.Mode.LOCAL, KitchenBackendConfig.read(Map.of()).mode());

@@ -32,6 +32,12 @@ public final class KitchenHttpFixture implements AutoCloseable {
                 () -> Optional.of("fixture-token"), HttpClient.newHttpClient(), timeout, dispatch);
     }
 
+    SpringBootKitchenService pollingService(Duration interval, Duration maxBackoff) {
+        return new SpringBootKitchenService(URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
+                () -> Optional.of("fixture-token"), HttpClient.newHttpClient(), Duration.ofSeconds(4), Runnable::run,
+                interval, maxBackoff);
+    }
+
     public static void reply(HttpExchange exchange, int status, String body) throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");

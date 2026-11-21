@@ -174,7 +174,7 @@ public final class LiveBoard extends VBox {
                     service.advance(entry.ticket().id(), entry.station(), expected);
                     redraw();
                 } : null, service.writesAvailable() ? item -> {
-                    service.advanceItem(entry.ticket().id(), item.id(), item.status());
+                    service.advanceItem(entry.ticket().id(), item);
                     if (service.local()) {
                         redraw();
                     }

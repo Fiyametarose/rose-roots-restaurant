@@ -30,7 +30,7 @@ The priority panel starts with a local Kitchen Staff profile. Select the local S
 
 See [Two-PC Windows deployment and demonstration](docs/two-pc-deployment.md) for the integration plan, Windows setup and physical acceptance tests.
 
-## Phase 4C.1 REST mode
+## Connected REST mode
 
 `ROSE_KITCHEN_MODE=local` selects the original in-memory provider and is the default. Set `ROSE_KITCHEN_MODE=connected` to require authenticated REST. Set `ROSE_BACKEND_URL` to the approved HTTPS origin (host and optional port, with no API path). `ROSE_ROOTS_BACKEND_URL`, used by Customer, is a compatibility fallback when the shared setting is blank or absent. Kitchen does not read the legacy Admin-only URL setting. Configure `ROSE_KITCHEN_STAFF_TOKEN` in the launch environment with an actual server-issued staff bearer credential. Keep it out of source, command transcripts and screenshots. The credential provider can later be wired to the shared authentication session. Connected mode has no local identity selector.
 
@@ -41,6 +41,12 @@ $env:ROSE_BACKEND_URL = 'https://staff-pc.example.test:8443'
 .\gradlew.bat :kitchen-app:run
 ```
 
-Use the real hostname on the server certificate and trust its issuing CA in the Java runtime. Connected mode retains normal certificate and hostname verification. Refresh tickets loads every cursor page before replacing the visible snapshot. After an error, the last snapshot can remain visible, with writes disabled if communication or authorization is unavailable. A conflicted or uncertain write triggers a fresh read. The client never retries a PATCH automatically.
+Use the real hostname on the server certificate and trust its issuing CA in the Java runtime. Connected mode fetches immediately, then reads every three seconds after the previous operation finishes. Repeated failures back off to 30 seconds. **Refresh tickets** can request an immediate read when no operation is running. The client applies a snapshot only after reading every page and rejects older versions. A network or response failure keeps the last complete snapshot and disables preparation writes. An authentication or authorization rejection clears cached tickets.
 
-The minimum API does not provide display order references, station assignments, terminal history, or endpoints for connected Assistance, Reviews, and Rush actions in this phase. The board displays the authoritative UUID as its reference and keeps Handoff eligibility separate from service confirmation. STOMP and automatic reconnection are deferred. Controlled HTTP tests use an ephemeral loopback fixture. The JavaFX responsiveness test requires a desktop-capable runtime.
+If a background read is in progress when a staff member clicks an item action, the client checks the displayed item version against the completed read before sending the PATCH. A changed or held item requires a new action. A conflicted or uncertain write triggers a fresh read. The client never retries a PATCH automatically and stops synchronization when Kitchen closes.
+
+The board displays the authoritative order UUID. READY stays eligible for Handoff. Station assignments, terminal history, connected Assistance and Reviews, Rush changes, and service confirmation remain unavailable through the current ordering API. The local demonstration providers remain available in local mode.
+
+The current Spring Boot transaction writes ordering outbox rows alongside committed order versions. The next STOMP slice needs agreement on credential scope, subscription readiness, reconnect behavior and cursor recovery. Delivery can use committed outbox rows to invalidate the active ticket view, which continues to reconcile through authoritative REST reads.
+
+Before connecting **Assistance**, agree on the shared request types, including `BILL` versus `BILL_HELP`, and the acknowledgment, progress, and resolution meanings. Both clients need the same request UUID and authorized readback, with versioned staff transitions and an idempotent submission rule. Before connecting **Reviews**, agree with Customer on review eligibility and submission, rating categories, duplicate rules, privacy and moderation, and the permitted Kitchen and Manager projections. See the [joint integration decisions](../docs/joint-integration-decision-summary.md).
