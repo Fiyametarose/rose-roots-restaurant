@@ -5,6 +5,7 @@ import com.roseroots.customer.navigation.Route;
 import com.roseroots.customer.screens.DishDetailsScreen;
 import com.roseroots.customer.screens.CartScreen;
 import com.roseroots.customer.screens.MenuScreen;
+import com.roseroots.customer.screens.OrdersScreen;
 import com.roseroots.customer.screens.WelcomeScreen;
 import com.roseroots.customer.services.LocalRestaurantSettings;
 import com.roseroots.customer.services.DiningSessionService;
@@ -20,6 +21,7 @@ import com.roseroots.customer.components.CustomerShell;
 import com.roseroots.customer.state.CustomerState;
 import com.roseroots.customer.state.OrderConfirmation;
 import com.roseroots.customer.services.OrderService;
+import com.roseroots.customer.services.OrderTrackingService;
 import com.roseroots.customer.services.api.BackendAddress;
 import com.roseroots.customer.services.api.CustomerBackend;
 import com.roseroots.customer.services.WaitEstimateService;
@@ -40,6 +42,16 @@ import javafx.stage.Stage;
 public final class CustomerApplication extends Application {
     private static final double DESIGN_WIDTH = 1280;
     private static final double DESIGN_HEIGHT = 800;
+    private final java.util.concurrent.ScheduledExecutorService orderExecutor =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(task -> {
+                var thread = new Thread(task, "customer-order-tracking");
+                thread.setDaemon(true);
+                return thread;
+            });
+
+    @Override public void stop() {
+        orderExecutor.shutdown();
+    }
 
     @Override
     public void start(Stage stage) {
@@ -80,19 +92,27 @@ public final class CustomerApplication extends Application {
             goMenu.run();
         };
         var estimates = WaitEstimateService.unavailable();
-        var confirmation = new OrderConfirmation(state, orderService(demoTakeaway), Clock.systemUTC(), Platform::runLater);
+        var backend = customerBackend(demoTakeaway);
+        var orders = backend == null ? OrderService.unavailable() : backend.orders();
+        var tracking = backend == null ? OrderTrackingService.unavailable() : backend.tracking(orderExecutor);
+        var confirmation = new OrderConfirmation(state, orders, Clock.systemUTC(), Platform::runLater);
+        Runnable goOrders = () -> navigator.show(Route.ORDERS);
+        navigator.register(Route.ORDERS, () -> new OrdersScreen(settings, state, tracking, locale -> {
+            state.setLocale(locale);
+            goOrders.run();
+        }, goHome, goMenu, goCart, chooseCategory, false));
         Runnable review = () -> navigator.show(Route.ORDER_CONFIRMATION);
         navigator.register(Route.ORDER_CONFIRMATION, () -> new CartScreen(settings, state, estimates, locale -> {
             state.setLocale(locale);
             review.run();
-        }, goHome, goMenu, null, chooseCategory, goCart, confirmation));
+        }, goHome, goMenu, null, chooseCategory, goCart, confirmation, goOrders));
         navigator.register(Route.CART, () -> new CartScreen(settings, state, estimates, locale -> {
             state.setLocale(locale);
             goCart.run();
         }, goHome, goMenu, id -> {
             editing.set(id);
             navigator.show(Route.DISH_DETAILS);
-        }, chooseCategory, review, null));
+        }, chooseCategory, review, null, goOrders));
         navigator.register(Route.MENU, () -> new MenuScreen(settings, state, menuService, locale -> {
             state.setLocale(locale);
             goMenu.run();
@@ -100,7 +120,7 @@ public final class CustomerApplication extends Application {
             editing.set(null);
             state.menu().selectItem(itemId);
             navigator.show(Route.DISH_DETAILS);
-        }, goCart));
+        }, goCart, goOrders));
         navigator.register(Route.DISH_DETAILS, () -> {
             var lineId = editing.get();
             var line = lineId == null ? null : state.cart().line(lineId);
@@ -127,17 +147,17 @@ public final class CustomerApplication extends Application {
         stage.centerOnScreen();
     }
 
-    private static OrderService orderService(boolean demo) {
-        if (demo) return OrderService.unavailable();
+    private static CustomerBackend customerBackend(boolean demo) {
+        if (demo) return null;
         try {
             return BackendAddress.configured(System.getenv(BackendAddress.ENVIRONMENT_VARIABLE))
                     // Authoritative credentials and compatibility are supplied by the shared bootstrap in a later integration.
-                    .<OrderService>map(address -> new CustomerBackend(address, () -> null, () -> false).orders())
-                    .orElseGet(OrderService::unavailable);
+                    .map(address -> new CustomerBackend(address, () -> null, () -> false))
+                    .orElse(null);
         } catch (IllegalArgumentException invalid) {
             System.getLogger(CustomerApplication.class.getName()).log(System.Logger.Level.WARNING,
                     "Invalid ROSE_ROOTS_BACKEND_URL. Ordering stays disconnected.");
-            return OrderService.unavailable();
+            return null;
         }
     }
 

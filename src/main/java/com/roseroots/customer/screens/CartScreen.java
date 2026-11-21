@@ -63,7 +63,7 @@ public final class CartScreen extends StackPane {
 
     public CartScreen(RestaurantSettings settings, CustomerState state, WaitEstimateService estimates,
                       Consumer<Locale> language, Runnable home, Runnable menu, Consumer<UUID> edit,
-                      Consumer<String> category, Runnable destination, OrderConfirmation confirmation) {
+                      Consumer<String> category, Runnable destination, OrderConfirmation confirmation, Runnable goOrders) {
         this.settings = settings;
         this.state = state;
         this.estimates = estimates;
@@ -74,6 +74,7 @@ public final class CartScreen extends StackPane {
         overlay.setVisible(false);
         overlay.getStyleClass().add("filter-overlay");
         shell = new CustomerShell(settings, state, messages, language, home, null);
+        shell.showOrdersAccess(goOrders, false);
         overlay.visibleProperty().addListener((property, before, visible) -> shell.setDisable(visible));
         shell.displayCategories(state.menu().catalog(), state.locale(), category);
 

@@ -36,6 +36,7 @@ import javafx.scene.shape.Path;
 public final class CustomerShell extends BorderPane {
     private static final PseudoClass COMPACT = PseudoClass.getPseudoClass("compact");
     private final VBox categories = new VBox();
+    private final Button ordersAccess = new Button();
     private final CustomerState state;
     private final CartSummaryBar cartSummary;
     private final Button cart;
@@ -58,7 +59,15 @@ public final class CustomerShell extends BorderPane {
         home.setGraphic(new InterfaceIcon(InterfaceIcon.Kind.HOME));
         home.setOnAction(event -> goHome.run());
         home.getStyleClass().add("catalog-home");
-        var railContents = new VBox(27, brand, categories);
+        ordersAccess.setId("my-orders");
+        ordersAccess.setText(messages.text("orders.title"));
+        ordersAccess.setGraphic(new InterfaceIcon(InterfaceIcon.Kind.ORDERS));
+        ordersAccess.setWrapText(true);
+        ordersAccess.setMaxWidth(Double.MAX_VALUE);
+        ordersAccess.getStyleClass().add("catalog-category");
+        ordersAccess.setVisible(false);
+        ordersAccess.managedProperty().bind(ordersAccess.visibleProperty());
+        var railContents = new VBox(27, brand, new VBox(8, categories, ordersAccess));
         railContents.setAlignment(Pos.TOP_CENTER);
         railContents.getStyleClass().add("catalog-rail-content");
         categories.getStyleClass().add("catalog-categories");
@@ -174,6 +183,10 @@ public final class CustomerShell extends BorderPane {
     private final Node top;
 
     public void showContent(Node content) {
+        showContent(content, true);
+    }
+
+    public void showContent(Node content, boolean showCartSummary) {
         var area = new BorderPane(content, top, null, null, null);
         var footer = new VBox(6);
         footer.getStyleClass().add("catalog-footer");
@@ -185,8 +198,8 @@ public final class CustomerShell extends BorderPane {
             notice.getStyleClass().add("session-notice");
             footer.getChildren().add(notice);
         }
-        footer.getChildren().add(cartSummary);
-        area.setBottom(footer);
+        if (showCartSummary) footer.getChildren().add(cartSummary);
+        if (!footer.getChildren().isEmpty()) area.setBottom(footer);
         setCenter(area);
     }
 
@@ -194,6 +207,15 @@ public final class CustomerShell extends BorderPane {
         cart.setText(messages.text("catalog.cart") + "  ·  " +
                 java.text.NumberFormat.getIntegerInstance(state.locale()).format(state.cart().count()));
         cartSummary.refresh();
+    }
+
+    public void showOrdersAccess(Runnable action, boolean selected) {
+        ordersAccess.setVisible(true);
+        ordersAccess.setOnAction(event -> action.run());
+        if (selected) {
+            ordersAccess.getStyleClass().add("category-active");
+            categories.getChildren().forEach(node -> node.getStyleClass().remove("category-active"));
+        }
     }
 
     public void displayCategories(MenuCatalog catalog, Locale locale, Consumer<String> onCategory) {

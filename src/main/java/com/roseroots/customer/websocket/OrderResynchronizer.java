@@ -23,7 +23,10 @@ public final class OrderResynchronizer<T> implements AutoCloseable {
     private final Updates updates;
     private final Function<UUID, CompletionStage<T>> read;
     private final Consumer<T> publish;
+    public enum State { CONNECTING, DISCONNECTED, ERROR }
+
     private final Consumer<Boolean> online;
+    private final Consumer<State> status;
     private Subscription connection;
     private java.util.concurrent.ScheduledFuture<?> reconnect;
     private java.util.concurrent.ScheduledFuture<?> probe;
@@ -36,25 +39,33 @@ public final class OrderResynchronizer<T> implements AutoCloseable {
 
     public OrderResynchronizer(ScheduledExecutorService executor, UUID sessionId, Updates updates,
                                Function<UUID, CompletionStage<T>> read, Consumer<T> publish, Consumer<Boolean> online) {
+        this(executor, sessionId, updates, read, publish, online, ignored -> {});
+    }
+
+    public OrderResynchronizer(ScheduledExecutorService executor, UUID sessionId, Updates updates,
+                               Function<UUID, CompletionStage<T>> read, Consumer<T> publish, Consumer<Boolean> online,
+                               Consumer<State> status) {
         this.executor = executor;
         this.sessionId = sessionId;
         this.updates = updates;
         this.read = read;
         this.publish = publish;
         this.online = online;
-        executor.execute(this::connect);
+        this.status = status;
+        dispatch(this::connect);
     }
 
     private void connect() {
         if (stopped || connection != null) return;
         int current = ++generation;
+        status.accept(State.CONNECTING);
         try {
-            connection = updates.open(() -> executor.execute(() -> invalidate(current)),
-                    () -> executor.execute(() -> lost(current)));
-            connection.ready().whenComplete((ignored, error) -> executor.execute(() -> {
+            connection = updates.open(() -> dispatch(() -> invalidate(current)),
+                    () -> dispatch(() -> lost(current, false)));
+            connection.ready().whenComplete((ignored, error) -> dispatch(() -> {
                 if (!current(current)) return;
                 if (error != null) {
-                    lost(current);
+                    lost(current, false);
                 } else {
                     ready = true;
                     invalidate(current);
@@ -62,7 +73,7 @@ public final class OrderResynchronizer<T> implements AutoCloseable {
                 }
             }));
         } catch (RuntimeException error) {
-            lost(current);
+            lost(current, false);
         }
     }
 
@@ -75,11 +86,11 @@ public final class OrderResynchronizer<T> implements AutoCloseable {
         fetching = true;
         dirty = false;
         try {
-            read.apply(sessionId).whenComplete((value, error) -> executor.execute(() -> {
+            read.apply(sessionId).whenComplete((value, error) -> dispatch(() -> {
                 if (!current(current)) return;
                 fetching = false;
                 if (error != null || value == null) {
-                    lost(current);
+                    lost(current, true);
                 } else if (dirty) {
                     invalidate(current);
                 } else {
@@ -89,14 +100,15 @@ public final class OrderResynchronizer<T> implements AutoCloseable {
                 }
             }));
         } catch (RuntimeException error) {
-            lost(current);
+            lost(current, true);
         }
     }
 
-    private void lost(int current) {
+    private void lost(int current, boolean readFailed) {
         if (!current(current)) return;
         disconnect();
         online.accept(false);
+        status.accept(readFailed ? State.ERROR : State.DISCONNECTED);
         reconnect = executor.schedule(this::connect, backoff, TimeUnit.SECONDS);
         backoff = Math.min(30, backoff * 2);
     }
@@ -113,8 +125,16 @@ public final class OrderResynchronizer<T> implements AutoCloseable {
         }
     }
 
+    private void dispatch(Runnable action) {
+        try {
+            executor.execute(action);
+        } catch (java.util.concurrent.RejectedExecutionException stoppedExecutor) {
+            if (!executor.isShutdown()) throw stoppedExecutor;
+        }
+    }
+
     @Override public void close() {
-        executor.execute(() -> {
+        dispatch(() -> {
             stopped = true;
             if (reconnect != null) reconnect.cancel(false);
             disconnect();

@@ -139,6 +139,28 @@ class OrderConfirmationTest {
         assertEquals(0, customer.cart().count());
     }
 
+    @Test void orderMoreCreatesASecondOrderRoundWithTheSameSessionAndANewKey() {
+        var dish = customer.cart().lines().getFirst().dish();
+        flow.requestQuote(changed);
+        flow.submit(true, changed);
+        var firstOrder = accepted(sessionId, false);
+        orders.response.complete(firstOrder);
+        assertEquals(0, customer.cart().count());
+        assertEquals(firstOrder.id(), flow.accepted().id());
+
+        assertTrue(customer.saveDish(null, dish));
+        orders.response = new CompletableFuture<>();
+        flow.requestQuote(changed);
+        flow.submit(true, changed);
+        var secondOrder = accepted(sessionId, false);
+        orders.response.complete(secondOrder);
+        assertEquals(2, orders.calls.size());
+        assertEquals(orders.calls.getFirst().draft().sessionId(), orders.calls.getLast().draft().sessionId());
+        assertNotEquals(orders.calls.getFirst().key(), orders.calls.getLast().key());
+        assertNotEquals(firstOrder.id(), flow.accepted().id());
+        assertEquals(0, customer.cart().count());
+    }
+
     private TerminalSession session(UUID id, boolean demo) {
         return new TerminalSession(id.toString(), new TerminalDevice("terminal", null, demo), ServiceMode.TAKEAWAY,
                 TerminalSession.Status.OPEN, "R07", List.of());

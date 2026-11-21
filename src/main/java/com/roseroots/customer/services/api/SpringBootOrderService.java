@@ -8,6 +8,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.roseroots.customer.models.AllergyDeclaration;
 import com.roseroots.customer.models.Ordering;
+import com.roseroots.customer.models.OrderHistory;
 import com.roseroots.customer.models.ServiceMode;
 import com.roseroots.customer.services.OrderService;
 import java.net.URI;
@@ -45,17 +46,24 @@ public final class SpringBootOrderService implements OrderService {
     }
 
     /** Rebuild the current session view after subscribing or reconnecting. */
-    public CompletionStage<SessionSnapshot> snapshot(UUID session) {
+    public CompletionStage<OrderHistory> snapshot(UUID session) {
         String prefix = "sessions/" + session;
         return history(session, prefix + "/orders", null, new java.util.HashSet<>(), new java.util.ArrayList<>())
                 .thenCombine(get(prefix + "/bill"), (orders, bill) -> {
-                    if (!session.equals(id(bill, "sessionId"))) throw new Problem("INVALID_RESPONSE", false);
-                    return new SessionSnapshot(session, orders, totals(bill.getAsJsonObject("totals")));
+                    return readHistory(session, orders, bill);
                 });
     }
 
-    public record SessionSnapshot(UUID sessionId, List<Ordering.Accepted> orders, Ordering.Totals totals) {
-        public SessionSnapshot { orders = List.copyOf(orders); }
+    static OrderHistory readHistory(UUID session, List<Ordering.Accepted> orders, JsonObject bill) {
+        if (!session.equals(id(bill, "sessionId"))) throw new Problem("INVALID_RESPONSE", false);
+        var orderTotals = new java.util.HashMap<UUID, Ordering.Totals>();
+        for (var entry : bill.getAsJsonArray("orders")) {
+            var row = entry.getAsJsonObject();
+            if (orderTotals.putIfAbsent(id(row, "orderId"), totals(row.getAsJsonObject("totals"))) != null) {
+                throw new Problem("INVALID_RESPONSE", false);
+            }
+        }
+        return new OrderHistory(session, orders, orderTotals, totals(bill.getAsJsonObject("totals")), java.util.Map.of());
     }
 
     private CompletionStage<List<Ordering.Accepted>> history(UUID session, String path, String cursor,

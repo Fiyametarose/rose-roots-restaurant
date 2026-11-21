@@ -789,3 +789,65 @@
     -fx-border-width: 0 0 2 0;
     -fx-padding: 0 8 5 0;
 }
+
+.orders-filter {
+    -fx-background-color: #fff9ed;
+    -fx-background-radius: 22;
+    -fx-border-color: #d9c8a5;
+    -fx-border-radius: 22;
+    -fx-text-fill: -rr-forest-green;
+    -fx-padding: 8 15;
+    -fx-min-height: 40;
+    -fx-cursor: hand;
+}
+.orders-filter:selected, .orders-stage-done {
+    -fx-background-color: -rr-forest-green;
+    -fx-text-fill: white;
+}
+.orders-filter:focused { -fx-border-color: -rr-gold; -fx-border-width: 2; }
+.orders-notice { -fx-text-fill: #66542f; -fx-font-size: 13px; }
+.orders-section, .orders-card-heading, .orders-bill-heading {
+    -fx-font-family: "Georgia";
+    -fx-font-weight: bold;
+    -fx-text-fill: -rr-forest-green;
+}
+.orders-section { -fx-font-size: 22px; -fx-padding: 4 0 2; }
+.orders-card-heading { -fx-font-size: 20px; }
+.orders-card {
+    -fx-background-color: #fff9ef;
+    -fx-border-color: #e6d8bc;
+    -fx-padding: 12 14;
+}
+.orders-stage {
+    -fx-background-radius: 15;
+    -fx-padding: 5 11;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+.orders-stage-active { -fx-background-color: #f6dfaa; -fx-text-fill: #402d12; }
+.orders-stage-next { -fx-background-color: #f1eadc; -fx-text-fill: #5d5240; }
+.orders-item { -fx-border-color: #e9dec7 transparent transparent; -fx-padding: 6 0 1; }
+.orders-review, .orders-review-approved, .orders-estimate {
+    -fx-padding: 4 8;
+    -fx-background-radius: 7;
+    -fx-font-size: 12px;
+}
+.orders-review, .orders-estimate { -fx-background-color: #faebcd; -fx-text-fill: #67420d; }
+.orders-review-approved { -fx-background-color: #e3eddb; -fx-text-fill: -rr-forest-green; }
+.orders-bill-panel { -fx-padding: 9 10 12; }
+.orders-bill-header {
+    -fx-background-color: linear-gradient(to right, #0d3221, #1f5037);
+    -fx-background-radius: 12;
+    -fx-padding: 13;
+}
+.orders-bill-heading { -fx-font-size: 24px; -fx-text-fill: #fff6df; }
+.orders-bill-heading .interface-icon { -fx-stroke: #f2d98f; }
+.orders-bill-context { -fx-text-fill: #f5e7ca; -fx-font-size: 13px; }
+
+.orders-review-declined {
+    -fx-background-color: #f6e1d7;
+    -fx-background-radius: 7;
+    -fx-padding: 4 8;
+    -fx-text-fill: #782c23;
+    -fx-font-size: 12px;
+}

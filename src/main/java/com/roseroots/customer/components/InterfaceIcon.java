@@ -8,7 +8,7 @@ import javafx.scene.shape.StrokeLineCap;
 import javafx.scene.shape.StrokeLineJoin;
 
 public final class InterfaceIcon extends Path {
-    public enum Kind { STARTER, MAIN, DESSERT, DRINK, SEARCH, LEAF, GLOBE, CART, BACK, HOME }
+    public enum Kind { STARTER, MAIN, DESSERT, DRINK, SEARCH, LEAF, GLOBE, CART, BACK, HOME, ORDERS }
 
     public InterfaceIcon(Kind kind) {
         getStyleClass().addAll("interface-icon", "icon-" + kind.name().toLowerCase(java.util.Locale.ROOT));
@@ -58,6 +58,12 @@ public final class InterfaceIcon extends Path {
                 line(7, 7, 22, 7, 19, 13, 8, 13);
                 line(10, 20, 11, 20);
                 line(17, 20, 18, 20);
+            }
+            case ORDERS -> {
+                line(5, 3, 19, 3, 19, 21, 15, 19, 12, 21, 9, 19, 5, 21, 5, 3);
+                line(8, 7, 16, 7);
+                line(8, 11, 16, 11);
+                line(8, 15, 13, 15);
             }
             case BACK -> {
                 line(13, 4, 5, 12, 13, 20);
