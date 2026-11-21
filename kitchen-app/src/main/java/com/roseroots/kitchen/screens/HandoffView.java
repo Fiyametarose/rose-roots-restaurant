@@ -3,6 +3,7 @@ package com.roseroots.kitchen.screens;
 import com.roseroots.kitchen.model.KitchenBoard;
 import com.roseroots.kitchen.model.Ticket;
 import com.roseroots.kitchen.model.Ticket.Type;
+import com.roseroots.kitchen.model.Ticket.Status;
 import com.roseroots.kitchen.service.KitchenService;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -67,14 +68,15 @@ public final class HandoffView extends VBox {
             return;
         }
         for (Ticket ticket : tickets) {
-            String summary = ticket.items().stream().map(item -> item.quantity() + " × " + item.name())
+            var readyItems = ticket.items().stream().filter(item -> item.status() == Status.READY).toList();
+            String summary = readyItems.stream().map(item -> item.quantity() + " × " + item.name())
                     .collect(Collectors.joining("  ·  "));
             String instruction = ticket.type() == Type.DINE_IN
                     ? "Ready for table service" : "Ready for collection · Verify pickup reference and packing";
             VBox card = new VBox(5, label(ticket.destination() + "  ·  " + ticket.reference(), "destination"),
                     label(summary, "item-name"), label(instruction, "ready-note"));
             card.getStyleClass().add("ticket");
-            for (Ticket.Item item : ticket.items()) {
+            for (Ticket.Item item : readyItems) {
                 if (!item.allergens().isBlank()) {
                     card.getChildren().add(label(item.name() + " · Allergen: " + item.allergens(), "allergen"));
                 }

@@ -99,8 +99,10 @@ public final class HistoryView extends VBox {
         connection.setText(current.label);
         connectionDetails.setText(switch (current) {
             case LOCAL -> "Orders and changes are held in memory for this session. The shared backend is unavailable and server synchronization is inactive.";
+            case LOADING -> "Reading authoritative tickets from the shared server.";
+            case FAILED -> sync.message();
             case OFFLINE -> "The shared server is unavailable. Order updates require a connection.";
-            case CONNECTED -> "Connected to the shared server.";
+            case CONNECTED -> "Connected to the shared server. Terminal history is unavailable in this phase.";
         });
     }
 

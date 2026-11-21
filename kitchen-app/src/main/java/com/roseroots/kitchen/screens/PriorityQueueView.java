@@ -185,6 +185,11 @@ public final class PriorityQueueView extends ScrollPane {
     }
 
     private VBox approval(List<StaffMember> staffMembers, Consumer<String> selectProfile) {
+        if (staffMembers.isEmpty()) {
+            VBox unavailable = new VBox(label("Rush changes are unavailable in connected mode for this phase.", "item-note"));
+            unavailable.getStyleClass().add("ticket-list");
+            return section("Rush authorization", "Server authorization required", unavailable);
+        }
         staff.getItems().setAll(staffMembers);
         staff.setConverter(new StringConverter<>() {
             @Override

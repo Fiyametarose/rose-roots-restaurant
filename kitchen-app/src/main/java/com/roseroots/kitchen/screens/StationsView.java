@@ -31,6 +31,7 @@ public final class StationsView extends VBox {
     private final Map<Station, Map<Status, Label>> counters = new EnumMap<>(Station.class);
     private final Map<Ticket, List<Label>> elapsedLabels = new LinkedHashMap<>();
     private List<Ticket> snapshot;
+    private boolean lastWritesAvailable;
     private List<Long> delayedIds;
 
     public StationsView(KitchenService service, Clock clock, LongConsumer openDetails) {
@@ -38,7 +39,8 @@ public final class StationsView extends VBox {
         this.clock = clock;
         this.openDetails = openDetails;
         setSpacing(10);
-        Label heading = label("Preparation stations", "handoff-banner-text");
+        Label heading = label(service.local() ? "Preparation stations" : "Station assignments unavailable from this API",
+                "handoff-banner-text");
         heading.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(heading, Priority.ALWAYS);
         HBox banner = new HBox(10, heading, total);
@@ -60,8 +62,9 @@ public final class StationsView extends VBox {
         OffsetDateTime now = OffsetDateTime.now(clock);
         List<Ticket> tickets = service.activeTickets();
         List<Long> overdue = tickets.stream().filter(ticket -> ticket.delayedAt(now)).map(Ticket::id).toList();
-        if (!tickets.equals(snapshot) || !overdue.equals(delayedIds)) {
+        if (!tickets.equals(snapshot) || !overdue.equals(delayedIds) || lastWritesAvailable != service.writesAvailable()) {
             snapshot = tickets;
+            lastWritesAvailable = service.writesAvailable();
             delayedIds = overdue;
             render(tickets, now);
         }
@@ -73,7 +76,7 @@ public final class StationsView extends VBox {
         FlowPane counts = new FlowPane(6, 4);
         Map<Status, Label> stationCounts = new EnumMap<>(Status.class);
         counters.put(station, stationCounts);
-        for (Status status : Status.values()) {
+        for (Status status : Status.LANES) {
             Label metric = label("", "station-count");
             stationCounts.put(status, metric);
             counts.getChildren().add(metric);
@@ -102,7 +105,7 @@ public final class StationsView extends VBox {
             var queue = KitchenBoard.stationQueue(tickets, station, now);
             var list = lists.get(station);
             list.getChildren().clear();
-            for (Status status : Status.values()) {
+            for (Status status : Status.LANES) {
                 long count = queue.counts().get(status);
                 String name = status == Status.RECEIVED ? "Pending" : status.label;
                 counters.get(station).get(status).setText(name + " " + count);
@@ -133,10 +136,10 @@ public final class StationsView extends VBox {
         VBox card = new VBox(5, heading, badges);
         card.getStyleClass().addAll("ticket", "station-card");
         for (var item : entry.items()) {
-            card.getChildren().add(TicketCard.itemRow(item, selected -> {
+            card.getChildren().add(TicketCard.itemRow(item, service.writesAvailable() ? selected -> {
                 service.advanceItem(ticket.id(), selected.id(), selected.status());
                 refresh();
-            }));
+            } : null));
         }
         return card;
     }

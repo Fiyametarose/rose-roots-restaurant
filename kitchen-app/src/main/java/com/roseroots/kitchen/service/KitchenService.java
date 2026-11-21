@@ -6,6 +6,10 @@ import com.roseroots.kitchen.model.Ticket.Status;
 import java.util.List;
 
 public interface KitchenService {
+    default boolean local() { return true; }
+
+    default boolean writesAvailable() { return true; }
+
     List<Ticket> activeTickets();
 
     List<Ticket> historyTickets();

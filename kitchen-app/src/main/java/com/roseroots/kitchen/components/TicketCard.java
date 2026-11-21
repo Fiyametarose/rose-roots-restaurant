@@ -32,6 +32,9 @@ public final class TicketCard extends VBox {
         setSpacing(6);
         getStyleClass().add("ticket");
         Label id = label(ticket.reference(), "ticket-id");
+        if (ticket.server() != null) {
+            id.setMaxWidth(190);
+        }
         FlowPane heading = new FlowPane(6, 3, id, label(ticket.destination(), "destination"));
         Button details = new Button("Details");
         details.getStyleClass().addAll("item-action", "view-details");
@@ -44,13 +47,13 @@ public final class TicketCard extends VBox {
         getChildren().addAll(heading, badges,
                 label(type + "  ·  Ordered " + ORDERED.format(ticket.orderedAt()), "metadata"));
         for (Item item : entry.items()) {
-            getChildren().add(itemRow(item, ticket.items().size() > 1 ? advanceItem : null));
+            getChildren().add(itemRow(item, advance == null || ticket.items().size() > 1 ? advanceItem : null));
         }
         if (entry.items().stream().allMatch(item -> item.status() == Status.READY)) {
             String ready = ticket.status() != Status.READY ? "Station work ready"
                     : ticket.type() == Type.DINE_IN ? "Ready for table service" : "Ready for collection";
             getChildren().add(label(ready, "ready-note"));
-        } else {
+        } else if (advance != null) {
             FlowPane actions = new FlowPane(6, 4);
             for (Status expected : new Status[]{Status.RECEIVED, Status.PREPARING}) {
                 if (entry.items().stream().anyMatch(item -> item.status() == expected)) {
@@ -92,7 +95,7 @@ public final class TicketCard extends VBox {
         HBox.setHgrow(name, Priority.ALWAYS);
         HBox row = new HBox(5, name);
         row.setAlignment(Pos.CENTER_LEFT);
-        VBox details = new VBox(2, row, label(item.station().label + "  ·  " + item.status().label, "metadata"));
+        VBox details = new VBox(2, row, label((item.station() == null ? "Station unavailable" : item.station().label) + "  ·  " + item.status().label, "metadata"));
         if (!item.options().isBlank()) {
             details.getChildren().add(label("Options: " + item.options(), "item-note"));
         }
@@ -105,13 +108,17 @@ public final class TicketCard extends VBox {
         if (!item.crossContact().isBlank()) {
             details.getChildren().add(label("Cross-contact: " + item.crossContact(), "allergen"));
         }
-        if (item.status() != Status.READY && advance != null) {
+        if (item.actionable() && advance != null) {
             String action = item.status() == Status.RECEIVED ? "Start item" : "Mark item ready";
             Button button = new Button(action);
             button.setAccessibleText(action + ": " + item.name());
             button.getStyleClass().addAll("item-action", item.status() == Status.RECEIVED ? "item-start" : "item-ready");
             button.setOnAction(event -> advance.accept(item));
             row.getChildren().add(button);
+        }
+        if (item.server() != null && !item.server().cleared()) {
+            details.getChildren().add(label("Allergy review: " + item.server().allergyReviewStatus()
+                    + (item.server().unresolvedRisk() ? " · Unresolved risk" : ""), "allergen"));
         }
         details.getStyleClass().add("item-row");
         return details;

@@ -73,15 +73,38 @@ final class KitchenShell extends BorderPane {
         HBox header = new HBox(12, title, spacer(), wallClock);
         header.setAlignment(Pos.CENTER_LEFT);
         header.getStyleClass().add("header");
-        workspace.getChildren().addAll(header, live);
+        Label requestStatus = label("", "customer-note");
+        requestStatus.setWrapText(true);
+        requestStatus.managedProperty().bind(requestStatus.textProperty().isNotEmpty());
+        requestStatus.visibleProperty().bind(requestStatus.managedProperty());
+        VBox heading = new VBox(5, header, requestStatus);
+        Button refresh = new Button("Refresh tickets");
+        if (!service.local()) {
+            refresh.getStyleClass().add("filter");
+            refresh.setOnAction(event -> sync.refresh());
+            header.getChildren().add(refresh);
+        }
+        workspace.getChildren().addAll(heading, live);
         VBox.setVgrow(live, Priority.ALWAYS);
         setCenter(workspace);
-        setLeft(navigation(workspace, toggleFullScreen));
+        setLeft(navigation(workspace, toggleFullScreen, service.local()));
         connection.setText(sync.status().label);
         unsubscribeSync = sync.onOrdersChanged(() -> {
+            connection.setText(sync.status().label);
+            requestStatus.setText(sync.message());
+            refresh.setDisable(sync.busy());
             live.redraw();
-            if (workspace.getChildren().get(1) == history) {
+            Node visible = workspace.getChildren().get(1);
+            if (visible == history) {
                 history.refresh();
+            } else if (visible == details) {
+                details.refresh();
+            } else if (visible == handoff) {
+                handoff.refresh();
+            } else if (visible == stations) {
+                stations.refresh();
+            } else if (visible == priority) {
+                priority.tick();
             }
         });
         wallClock.setText(CLOCK.format(LocalDateTime.now(clock)));
@@ -105,7 +128,7 @@ final class KitchenShell extends BorderPane {
         timer.play();
     }
 
-    private VBox navigation(VBox workspace, Runnable toggleFullScreen) {
+    private VBox navigation(VBox workspace, Runnable toggleFullScreen, boolean local) {
         VBox brand = new VBox(0, label("❦", "botanical"), label("Rose & Roots", "brand-name"),
                 label("R E S T A U R A N T", "brand-caption"));
         brand.getStyleClass().add("brand");
@@ -134,6 +157,8 @@ final class KitchenShell extends BorderPane {
             history.refresh();
             show(workspace, history, "History & Sync");
         });
+        assistanceButton.setDisable(!local);
+        reviewsButton.setDisable(!local);
         Region spring = new Region();
         VBox.setVgrow(spring, Priority.ALWAYS);
         connection.setWrapText(true);
