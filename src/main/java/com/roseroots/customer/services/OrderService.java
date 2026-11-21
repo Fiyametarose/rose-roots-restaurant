@@ -12,6 +12,10 @@ public interface OrderService {
 
     CompletionStage<Ordering.Accepted> submit(Ordering.Draft draft, UUID quoteId, UUID idempotencyKey);
 
+    default CompletionStage<Ordering.Accepted> order(UUID session, UUID orderId) {
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
+    }
+
     static OrderService unavailable() {
         return new OrderService() {
             @Override public boolean available() { return false; }

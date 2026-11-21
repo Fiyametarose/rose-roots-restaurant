@@ -26,16 +26,26 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public final class SpringBootOrderService implements OrderService {
-    private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+    private final HttpClient client;
     private final URI api;
     private final Supplier<String> credential;
     private final BooleanSupplier compatible;
 
     public SpringBootOrderService(URI api, Supplier<String> credential, BooleanSupplier compatible) {
+        this(api, credential, compatible, HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build(),
+                Duration.ofSeconds(12));
+    }
+
+    private final Duration requestTimeout;
+
+    SpringBootOrderService(URI api, Supplier<String> credential, BooleanSupplier compatible,
+                           HttpClient client, Duration requestTimeout) {
         if (!"https".equalsIgnoreCase(api.getScheme()) || api.getHost() == null || api.getUserInfo() != null
                 || api.getQuery() != null || api.getFragment() != null || !api.getPath().endsWith("/api/v1/")) {
             throw new IllegalArgumentException("Expected a trusted HTTPS /api/v1/ base URI");
         }
+        this.client = client;
+        this.requestTimeout = requestTimeout;
         this.api = api;
         this.credential = credential;
         this.compatible = compatible;
@@ -81,8 +91,26 @@ public final class SpringBootOrderService implements OrderService {
         });
     }
 
-    private CompletionStage<JsonObject> get(String path) {
-        return exchange(request(path).GET().build(), false, Function.identity());
+    CompletionStage<JsonObject> get(String path) {
+        return exchange(request(path).GET().build(), false, false, Function.identity());
+    }
+
+    CompletionStage<JsonObject> startSession(ServiceMode mode) {
+        var body = new JsonObject();
+        body.addProperty("mode", mode.name());
+        var request = request("sessions").header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body.toString())).build();
+        return exchange(request, true, false, Function.identity());
+    }
+
+    public CompletionStage<Ordering.Accepted> order(UUID session, UUID orderId) {
+        return get("orders/" + orderId).thenApply(body -> {
+            var order = readAccepted(body);
+            if (!orderId.equals(order.id()) || !session.equals(order.sessionId())) {
+                throw new Problem("INVALID_RESPONSE", false);
+            }
+            return order;
+        });
     }
 
     @Override public boolean available() { return compatible.getAsBoolean(); }
@@ -102,24 +130,24 @@ public final class SpringBootOrderService implements OrderService {
         var request = request(path).header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString()));
         if (key != null) request.header("Idempotency-Key", key.toString());
-        return exchange(request.build(), key != null, read);
+        return exchange(request.build(), key != null, key != null, read);
     }
 
     private HttpRequest.Builder request(String path) {
         if (!available()) throw new Problem("SERVICE_UNAVAILABLE", true);
         var token = credential.get();
         if (token == null || !token.matches("[A-Za-z0-9._~+/-]+=*")) throw new Problem("UNAUTHENTICATED", true);
-        return HttpRequest.newBuilder(api.resolve(path)).timeout(Duration.ofSeconds(12))
+        return HttpRequest.newBuilder(api.resolve(path)).timeout(requestTimeout)
                 .header("Authorization", "Bearer " + token)
                 .header("Accept", "application/json, application/problem+json");
     }
 
-    private <T> CompletionStage<T> exchange(HttpRequest request, boolean submitting, Function<JsonObject, T> read) {
+    private <T> CompletionStage<T> exchange(HttpRequest request, boolean created, boolean submitting, Function<JsonObject, T> read) {
         return client.sendAsync(request, HttpResponse.BodyHandlers.ofString()).handle((reply, failure) -> {
             if (failure != null) throw new Problem("CONNECTION_INTERRUPTED", submitting);
             int status = reply.statusCode();
             var media = reply.headers().firstValue("Content-Type").orElse("").split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
-            if ((status == 200 || (submitting && status == 201)) && media.equals("application/json")) {
+            if ((status == 200 || (created && status == 201)) && media.equals("application/json")) {
                 try {
                     return read.apply(JsonParser.parseString(reply.body()).getAsJsonObject());
                 } catch (RuntimeException error) {

@@ -23,7 +23,10 @@ import com.roseroots.customer.state.OrderConfirmation;
 import com.roseroots.customer.services.OrderService;
 import com.roseroots.customer.services.OrderTrackingService;
 import com.roseroots.customer.services.api.BackendAddress;
-import com.roseroots.customer.services.api.CustomerBackend;
+import com.roseroots.customer.services.api.SpringBootOrderService;
+import com.roseroots.customer.services.api.ConnectedTerminal;
+import com.roseroots.customer.services.api.ConnectedCatalog;
+import com.roseroots.customer.services.api.RestOrderTracking;
 import com.roseroots.customer.services.WaitEstimateService;
 import java.time.Clock;
 import com.roseroots.customer.utils.Messages;
@@ -62,12 +65,20 @@ public final class CustomerApplication extends Application {
         var args = getParameters().getRaw();
         boolean demoTable = args.contains("--demo-table");
         boolean demoTakeaway = demoTable || args.contains("--demo-takeaway");
-        var menuService = new MockMenuService(demoTakeaway);
-        var drafts = new LocalDraftSessionService(demoTable
+        String origin = System.getenv(BackendAddress.ENVIRONMENT_VARIABLE);
+        boolean connected = !demoTakeaway && (args.contains("--connected") || (origin != null && !origin.isBlank()));
+        var address = connected ? backendAddress(origin) : null;
+        var backend = connected ? orderBackend(address) : null;
+        var menuService = connected
+                ? (backend == null ? (com.roseroots.customer.services.MenuService) () -> disconnected() : new ConnectedCatalog(backend, address))
+                : new MockMenuService(demoTakeaway);
+        var drafts = connected ? null : new LocalDraftSessionService(demoTable
                 ? new TerminalDevice("demo-only", null, false) : loadInstallation());
-        DiningSessionService sessions = demoTable ? new LocalDiningSessionService(true) : drafts;
+        DiningSessionService sessions = connected
+                ? (backend == null ? mode -> disconnected() : new ConnectedTerminal(backend, Clock.systemUTC()))
+                : demoTable ? new LocalDiningSessionService(true) : drafts;
         TakeawaySessionService takeaway = demoTakeaway ? new LocalTakeawaySessionService("demo-takeaway-terminal")
-                : () -> drafts.openOrResume(ServiceMode.TAKEAWAY);
+                : () -> sessions.openOrResume(ServiceMode.TAKEAWAY);
         state.setLocale(settings.languages().getFirst());
         var content = new StackPane();
         var navigator = new Navigator(content);
@@ -92,9 +103,8 @@ public final class CustomerApplication extends Application {
             goMenu.run();
         };
         var estimates = WaitEstimateService.unavailable();
-        var backend = customerBackend(demoTakeaway);
-        var orders = backend == null ? OrderService.unavailable() : backend.orders();
-        var tracking = backend == null ? OrderTrackingService.unavailable() : backend.tracking(orderExecutor);
+        var orders = backend == null ? OrderService.unavailable() : backend;
+        var tracking = backend == null ? OrderTrackingService.unavailable() : new RestOrderTracking(backend, orderExecutor);
         var confirmation = new OrderConfirmation(state, orders, Clock.systemUTC(), Platform::runLater);
         Runnable goOrders = () -> navigator.show(Route.ORDERS);
         navigator.register(Route.ORDERS, () -> new OrdersScreen(settings, state, tracking, locale -> {
@@ -147,18 +157,31 @@ public final class CustomerApplication extends Application {
         stage.centerOnScreen();
     }
 
-    private static CustomerBackend customerBackend(boolean demo) {
-        if (demo) return null;
+    private static BackendAddress backendAddress(String origin) {
         try {
-            return BackendAddress.configured(System.getenv(BackendAddress.ENVIRONMENT_VARIABLE))
-                    // Authoritative credentials and compatibility are supplied by the shared bootstrap in a later integration.
-                    .map(address -> new CustomerBackend(address, () -> null, () -> false))
-                    .orElse(null);
+            return BackendAddress.configured(origin).orElse(null);
         } catch (IllegalArgumentException invalid) {
-            System.getLogger(CustomerApplication.class.getName()).log(System.Logger.Level.WARNING,
-                    "Invalid ROSE_ROOTS_BACKEND_URL. Ordering stays disconnected.");
             return null;
         }
+    }
+
+    private static SpringBootOrderService orderBackend(BackendAddress address) {
+        try {
+            String file = System.getenv("ROSE_ROOTS_TERMINAL_TOKEN_FILE");
+            if (address != null && file != null && !file.isBlank()) {
+                var token = java.nio.file.Files.readString(java.nio.file.Path.of(file)).strip();
+                if (token.matches("[A-Za-z0-9._~+/-]+=*")) return new SpringBootOrderService(address, () -> token, () -> true);
+            }
+        } catch (java.io.IOException | IllegalArgumentException ignored) {
+            // Configuration errors are reported without credentials or paths.
+        }
+        System.getLogger(CustomerApplication.class.getName()).log(System.Logger.Level.WARNING,
+                "Connected mode requires a valid HTTPS origin and a provisioned terminal token file.");
+        return null;
+    }
+
+    private static <T> java.util.concurrent.CompletableFuture<T> disconnected() {
+        return java.util.concurrent.CompletableFuture.failedFuture(new OrderService.Problem("SERVICE_UNAVAILABLE", false));
     }
 
     private static TerminalDevice loadInstallation() {
@@ -180,7 +203,8 @@ public final class CustomerApplication extends Application {
                                     boolean discardConfirmed) {
         var messages = new Messages(state.locale());
         content.setDisable(true);
-        var request = mode == ServiceMode.TAKEAWAY ? takeaway.openOrResume() : dining.openOrResume(mode);
+        var request = java.util.concurrent.CompletableFuture.completedFuture(mode)
+                .thenCompose(selected -> selected == ServiceMode.TAKEAWAY ? takeaway.openOrResume() : dining.openOrResume(selected));
         request.whenComplete((session, error) -> Platform.runLater(() -> {
             content.setDisable(false);
             if (error != null || session == null || (state.wouldDiscardCart(session) && !session.allowsCart())) {
