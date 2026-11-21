@@ -88,6 +88,18 @@ class OrderingController {
                 integer(body, "expectedVersion", 1, MAX_SAFE)));
     }
 
+    @PostMapping(path = "/kitchen/items/{id}/allergy-review", consumes = JSON_MEDIA)
+    ResponseEntity<String> review(@AuthenticationPrincipal Actor actor, @PathVariable("id") String item,
+                                  HttpServletRequest request) {
+        var body = fields(body(request), "decision", "reason", "expectedVersion");
+        String reason = text(body, "reason", 240).strip();
+        if (reason.isBlank()) {
+            throw OrderingProblem.bad("A review reason is required.");
+        }
+        return response(200, ordering.review(actor, id(item), choice(body, "decision", "APPROVE", "DECLINE"),
+                reason, integer(body, "expectedVersion", 1, MAX_SAFE)));
+    }
+
     @ExceptionHandler(OrderingProblem.class)
     ResponseEntity<String> problem(OrderingProblem error) {
         return ResponseEntity.status(error.status).contentType(MediaType.APPLICATION_PROBLEM_JSON)
@@ -99,7 +111,7 @@ class OrderingController {
         return problem(new OrderingProblem(503, "SERVICE_UNAVAILABLE", "Ordering storage is unavailable."));
     }
 
-    private static int limit(String value) {
+    static int limit(String value) {
         if (value == null) {
             return 50;
         }
@@ -112,7 +124,7 @@ class OrderingController {
         throw OrderingProblem.bad("Limit must be between 1 and 200.");
     }
 
-    private static JsonNode body(HttpServletRequest request) {
+    static JsonNode body(HttpServletRequest request) {
         try {
             byte[] bytes = request.getInputStream().readNBytes(MAX_REQUEST_BYTES + 1);
             if (bytes.length <= MAX_REQUEST_BYTES) {
@@ -124,11 +136,11 @@ class OrderingController {
         throw OrderingProblem.bad("Invalid ordering request body.");
     }
 
-    private static ResponseEntity<String> response(OrderingService.Result result) {
+    static ResponseEntity<String> response(OrderingService.Result result) {
         return response(result.status(), result.body());
     }
 
-    private static ResponseEntity<String> response(int status, JsonNode node) {
+    static ResponseEntity<String> response(int status, JsonNode node) {
         return ResponseEntity.status(status).contentType(MediaType.APPLICATION_JSON)
                 .cacheControl(CacheControl.noStore()).body(node.toString());
     }

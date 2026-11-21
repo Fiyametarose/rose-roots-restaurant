@@ -49,14 +49,14 @@ final class CustomizationEditor extends VBox {
             selection.setValue(original == null ? "Extra" : words(text(original, "selection")));
             choices.setPrefRowCount(3);
             choices.setText(String.join("\n", rows(original, "choices").stream()
-                    .map(choice -> text(choice, "name") + " | " + text(choice, "priceAdjustment")).toList()));
+                    .map(Group::choiceText).toList()));
             choices.setPromptText("Extra injera | 40.00");
             setText(original == null ? "New option group" : text(original, "name"));
             name.textProperty().addListener((obs, before, after) -> setText(after.isBlank() ? "Option group" : after));
             setExpanded(original == null);
             setContent(content(field("Group name", name), field("Type", selection),
                     field("Minimum selections", minimum), field("Maximum selections", maximum),
-                    field("Choices (one per line, name | price adjustment)", choices),
+                    field("Choices (name | price adjustment | optional allergen codes)", choices),
                     button("Remove Group", () -> groups.getChildren().remove(this))));
         }
 
@@ -71,8 +71,8 @@ final class CustomizationEditor extends VBox {
             var existingNames = new java.util.HashSet<String>();
             for (String line : choices.getText().lines().filter(value -> !value.isBlank()).toList()) {
                 String[] parts = line.split("\\|", -1);
-                if (parts.length != 2 || !parts[1].strip().matches("-?[0-9]{1,10}(\\.[0-9]{1,2})?")) {
-                    throw new IllegalArgumentException("Use one choice per line in the format Name | 0.00.");
+                if (parts.length < 2 || parts.length > 3 || !parts[1].strip().matches("-?[0-9]{1,10}(\\.[0-9]{1,2})?")) {
+                    throw new IllegalArgumentException("Use Name | 0.00 and optionally add | MILK, EGGS.");
                 }
                 String name = required(parts[0], "Name every choice.");
                 if (!existingNames.add(name)) {
@@ -84,6 +84,17 @@ final class CustomizationEditor extends VBox {
                         .orElseGet(() -> UUID.randomUUID().toString()));
                 choice.addProperty("name", name);
                 choice.addProperty("priceAdjustment", new BigDecimal(parts[1].strip()));
+                var allergens = new JsonArray();
+                if (parts.length == 3 && !parts[2].isBlank()) {
+                    for (String raw : parts[2].split(",", -1)) {
+                        String code = raw.strip().toUpperCase(java.util.Locale.ROOT);
+                        if (!java.util.Set.of("NUTS", "MILK", "EGGS", "WHEAT", "SOY", "FISH", "SHELLFISH").contains(code)) {
+                            throw new IllegalArgumentException("Use known catalog allergen codes for " + name + ".");
+                        }
+                        allergens.add(code);
+                    }
+                }
+                choice.add("allergens", allergens);
                 options.add(choice);
             }
             if (min > max || max > options.size()) {
@@ -93,6 +104,13 @@ final class CustomizationEditor extends VBox {
             group.addProperty("maximum", max);
             group.add("choices", options);
             return group;
+        }
+
+        private static String choiceText(JsonObject choice) {
+            JsonArray allergens = choice.getAsJsonArray("allergens");
+            String base = text(choice, "name") + " | " + text(choice, "priceAdjustment");
+            return allergens == null || allergens.isEmpty() ? base : base + " | " + allergens.asList().stream()
+                    .map(com.google.gson.JsonElement::getAsString).collect(java.util.stream.Collectors.joining(", "));
         }
     }
 }

@@ -59,7 +59,7 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
     private int readFailures;
     private volatile PendingAdvance pendingAdvance;
 
-    private record PendingAdvance(long ticketId, Item item) {}
+    private record PendingAdvance(long ticketId, Item item, Boolean approval, String reason) {}
 
     public SpringBootKitchenService(KitchenBackendConfig config, StaffCredentialProvider credentials,
                                     Consumer<Runnable> dispatcher) {
@@ -169,8 +169,13 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
         if (background && queued != null) {
             Item current = findItem(queued.ticketId(), queued.item().id());
             if (current != null && current.server().version() == queued.item().server().version()
-                    && current.status() == queued.item().status() && current.actionable()) {
-                save(queued.ticketId(), current);
+                    && current.status() == queued.item().status()
+                    && (queued.approval() == null ? current.actionable() : held(current))) {
+                if (queued.approval() == null) {
+                    save(queued.ticketId(), current);
+                } else {
+                    saveReview(queued.ticketId(), current, queued.approval(), queued.reason());
+                }
             } else {
                 finish(Status.CONNECTED, "The item changed during synchronization. Review the current ticket.");
             }
@@ -204,12 +209,92 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
             return;
         }
         if (quietRead) {
-            pendingAdvance = new PendingAdvance(ticketId, item);
+            pendingAdvance = new PendingAdvance(ticketId, item, null, "");
             message = "Checking the latest item version before saving…";
             notifyListeners();
             return;
         }
         save(ticketId, item);
+    }
+
+    @Override
+    public synchronized void reviewAllergy(long ticketId, Item displayed, boolean approve, String reason) {
+        if (!writesAvailable()) {
+            return;
+        }
+        Item item = findItem(ticketId, displayed.id());
+        if (item == null || !held(item) || item.server().version() != displayed.server().version()) {
+            message = "The held item changed. Review its current state.";
+            notifyListeners();
+            return;
+        }
+        if (quietRead) {
+            pendingAdvance = new PendingAdvance(ticketId, item, approve, reason);
+            message = "Checking the latest item version before recording the review…";
+            notifyListeners();
+            return;
+        }
+        saveReview(ticketId, item, approve, reason);
+    }
+
+    private static boolean held(Item item) {
+        return item.status() == Ticket.Status.RECEIVED
+                && item.server().allergyReviewStatus().equals("PENDING_ALLERGY_REVIEW");
+    }
+
+    private void saveReview(long ticketId, Item item, boolean approve, String reason) {
+        String decision = approve ? "APPROVE" : "DECLINE";
+        String review = approve ? "APPROVED_FOR_PREPARATION" : "DECLINED";
+        Ticket.Status statusAfter = approve ? Ticket.Status.RECEIVED : Ticket.Status.CANCELLED;
+        JsonObject body = new JsonObject();
+        body.addProperty("decision", decision);
+        body.addProperty("reason", reason);
+        body.addProperty("expectedVersion", item.server().version());
+        cancelPoll();
+        Ticket ticket = tickets.stream().filter(order -> order.id() == ticketId).findFirst().orElseThrow();
+        begin(Status.CONNECTED, "Recording allergy review…");
+        send("/api/v1/kitchen/items/" + item.server().id() + "/allergy-review", body, "POST")
+                .thenApply(raw -> {
+                    Ticket updated = parse(() -> json.ticket(KitchenTicketJson.object(raw)));
+                    if (!updated.server().id().equals(ticket.server().id())
+                            || updated.server().version() <= ticket.server().version()
+                            || !updated.items().stream().anyMatch(line -> line.server().id().equals(item.server().id())
+                                    && line.server().version() > item.server().version()
+                                    && line.status() == statusAfter && line.server().allergyReviewStatus().equals(review))) {
+                        throw unreadable();
+                    }
+                    return rejectOlderVersions(List.of(ticket), List.of(updated)).getFirst();
+                }).whenComplete((updated, error) -> completeReview(ticketId, updated, error));
+    }
+
+    private synchronized void completeReview(long ticketId, Ticket updated, Throwable error) {
+        if (stopped) return;
+        if (error == null) {
+            tickets = tickets.stream().map(entry -> entry.id() == ticketId ? updated : entry)
+                    .filter(entry -> Ticket.Status.LANES.contains(entry.status())).toList();
+            finish(Status.CONNECTED, "Allergy review recorded.");
+            return;
+        }
+        Failure failure = failure(error);
+        if (failure.httpStatus == 401 || failure.httpStatus == 429) {
+            readFailed(failure, "");
+            return;
+        }
+        if (failure.httpStatus != 409 && !failure.uncertain()) {
+            finish(Status.CONNECTED, failure.httpStatus == 403 ? "An authorized Chef credential is required." : failure.getMessage());
+            return;
+        }
+        fetchSnapshot().whenComplete((snapshot, reloadError) -> {
+            synchronized (this) {
+                if (stopped) return;
+                if (reloadError == null) {
+                    tickets = snapshot;
+                    finish(Status.CONNECTED, failure.getMessage() + " Current tickets reloaded.");
+                } else {
+                    readFailed(failure(reloadError), "Review outcome could not be confirmed. ");
+                }
+            }
+        });
     }
 
     private Item findItem(long ticketId, long itemId) {
@@ -355,6 +440,10 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
     }
 
     private CompletableFuture<String> send(String path, JsonObject body) {
+        return send(path, body, "PATCH");
+    }
+
+    private CompletableFuture<String> send(String path, JsonObject body, String method) {
         if (stopped) {
             return CompletableFuture.failedFuture(new Failure(0, ""));
         }
@@ -368,7 +457,7 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
                     .header("Accept", "application/json, application/problem+json");
             if (body != null) {
                 builder.header("Content-Type", "application/json")
-                        .method("PATCH", HttpRequest.BodyPublishers.ofString(body.toString()));
+                        .method(method, HttpRequest.BodyPublishers.ofString(body.toString()));
             }
             return client.sendAsync(builder.build(), HttpResponse.BodyHandlers.ofString())
                     .handle((response, error) -> {

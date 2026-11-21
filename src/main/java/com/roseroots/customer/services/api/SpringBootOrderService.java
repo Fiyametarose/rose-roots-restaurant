@@ -182,7 +182,7 @@ public final class SpringBootOrderService implements OrderService {
         boolean definite = switch (status) {
             case 409 -> List.of("PRICE_CHANGED", "QUOTE_EXPIRED", "ITEM_UNAVAILABLE",
                     "SESSION_CLOSED", "SESSION_EXPIRED", "INVALID_SELECTION", "IDEMPOTENCY_CONFLICT").contains(code);
-            case 422 -> List.of("ITEM_UNAVAILABLE", "INVALID_SELECTION", "REVIEW_REQUIRED").contains(code);
+            case 422 -> List.of("ITEM_UNAVAILABLE", "INVALID_SELECTION", "REVIEW_REQUIRED", "ALLERGEN_CONFLICT").contains(code);
             default -> false;
         };
         return new Problem(code, submitting && !definite, violations);

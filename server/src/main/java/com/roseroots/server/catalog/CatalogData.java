@@ -24,7 +24,16 @@ public final class CatalogData {
                            CategoryStatus status, long itemCount) {}
 
     public record Choice(@NotBlank @Size(max = 64) String id, @NotBlank @Size(max = 100) String name,
-                         @NotNull @Digits(integer = 10, fraction = 2) BigDecimal priceAdjustment) {}
+                         @NotNull @Digits(integer = 10, fraction = 2) BigDecimal priceAdjustment,
+                         @Size(max = 20) List<@NotNull Allergen> allergens) {
+        public Choice {
+            allergens = allergens == null ? List.of() : List.copyOf(allergens);
+        }
+
+        public Choice(String id, String name, BigDecimal priceAdjustment) {
+            this(id, name, priceAdjustment, List.of());
+        }
+    }
 
     public record Customization(@NotBlank @Size(max = 64) String id, @NotBlank @Size(max = 100) String name,
                                 @NotNull Selection selection, @NotNull @PositiveOrZero Integer minimum,

@@ -23,5 +23,9 @@ public interface KitchenService {
         advanceItem(ticketId, displayedItem.id(), displayedItem.status());
     }
 
+    default void reviewAllergy(long ticketId, Ticket.Item item, boolean approve, String reason) {
+        throw new UnsupportedOperationException();
+    }
+
     void changeRush(long ticketId, boolean enabled, String reason);
 }

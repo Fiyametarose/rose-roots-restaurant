@@ -71,6 +71,7 @@ class OrderingPricing {
         var seen = new HashSet<UUID>();
         var dishes = new HashMap<UUID, Dish>();
         var lines = new ArrayList<Line>();
+        ArrayNode violations = array();
         long subtotal = 0;
         for (JsonNode line : draft.get("lines")) {
             fields(line, "clientLineId", "menuItemId", "quantity", "selections", "allergy", "preparationInstructions");
@@ -95,7 +96,18 @@ class OrderingPricing {
                     .put("name", dish.name()).put("quantity", quantity).put("baseUnitMinor", baseUnit)
                     .put("extendedMinor", extended);
             pricing.set("options", options);
-            lines.add(new Line(itemId, pricing, allergy, instructions, risk(dish, visit, allergy), dish.prepMinutes()));
+            ObjectNode risk = risk(dish, visit, allergy, options);
+            if (!risk.path("ingredientMatches").isEmpty()) {
+                var names = new ArrayList<String>();
+                risk.path("ingredientMatches").forEach(tag -> names.add(tag.asText()));
+                violations.add(object().put("pointer", "/lines/" + lines.size()).put("code", "ALLERGEN_CONFLICT")
+                        .put("message", "Declared allergens in this configuration: " + String.join(", ", names) + "."));
+            }
+            lines.add(new Line(itemId, pricing, allergy, instructions, risk, dish.prepMinutes()));
+        }
+        if (!violations.isEmpty()) {
+            throw new OrderingProblem(422, "ALLERGEN_CONFLICT",
+                    "The selected configuration conflicts with a declared allergy.", violations);
         }
         return new Price(List.copyOf(lines), subtotal);
     }
@@ -174,12 +186,27 @@ class OrderingPricing {
         return node;
     }
 
-    private static ObjectNode risk(Dish dish, JsonNode visit, JsonNode line) {
+    private static ObjectNode risk(Dish dish, JsonNode visit, JsonNode line, ArrayNode selectedOptions) {
         var disclosed = new LinkedHashSet<String>();
         visit.get("allergens").forEach(tag -> disclosed.add(tag.asText()));
         line.get("allergens").forEach(tag -> disclosed.add(tag.asText()));
         ObjectNode risk = object();
-        risk.set("ingredientMatches", matches(disclosed, dish.allergens()));
+        var known = new ArrayList<>(dish.allergens());
+        var selected = new HashSet<String>();
+        selectedOptions.forEach(option -> selected.add(option.path("groupId").asText() + "/" + option.path("optionId").asText()));
+        var reported = dish.sourceDetails() == null || dish.sourceDetails().reportedChoiceAllergens() == null
+                ? java.util.Map.<String, List<Allergen>>of() : dish.sourceDetails().reportedChoiceAllergens();
+        for (var group : dish.customizationGroups()) {
+            UUID groupId = catalogId(group.id(), dish.id() + "/group/");
+            for (var choice : group.choices()) {
+                UUID optionId = catalogId(choice.id(), groupId + "/option/");
+                if (selected.contains(groupId + "/" + optionId)) {
+                    known.addAll(choice.allergens());
+                    known.addAll(reported.getOrDefault(choice.id(), List.of()));
+                }
+            }
+        }
+        risk.set("ingredientMatches", matches(disclosed, known));
         risk.set("crossContactMatches", matches(disclosed,
                 dish.sourceDetails() == null ? List.of() : dish.sourceDetails().reportedCrossContact()));
         // The current catalog does not verify cross-contact and choice safety for every dish.

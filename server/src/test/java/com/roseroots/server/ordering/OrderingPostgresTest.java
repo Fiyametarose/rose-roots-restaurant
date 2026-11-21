@@ -48,6 +48,7 @@ class OrderingPostgresTest {
     private static final UUID TABLE = UUID.randomUUID();
     private static final String MANAGER_PASSWORD = token();
     private static final String STAFF_TOKEN = token();
+    private static final String CHEF_TOKEN = token();
     private static ServletWebServerApplicationContext server;
     private static JdbcClient db;
     private static HttpClient client;
@@ -77,6 +78,9 @@ class OrderingPostgresTest {
         db.sql("INSERT INTO ordering_table (id, restaurant_id, display_number) VALUES (:id, :restaurant, '07')")
                 .param("id", TABLE).param("restaurant", RESTAURANT).update();
         credential(STAFF_TOKEN, null, "KITCHEN");
+        credential(CHEF_TOKEN, null, "KITCHEN");
+        db.sql("UPDATE ordering_credential SET allergy_reviewer = true WHERE token_sha256 = :hash")
+                .param("hash", digest(CHEF_TOKEN)).update();
         client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     }
 
@@ -241,7 +245,7 @@ class OrderingPostgresTest {
         String session = session(terminal, "DINE_IN", 201);
         UUID dish = dish();
         ObjectNode draft = draft(session, dish);
-        draft.withObject("/visitAllergy").put("kind", "DISCLOSED").putArray("allergens").add("MILK");
+        draft.withObject("/visitAllergy").put("kind", "DISCLOSED").putArray("allergens").add("SOY");
         var quote = json(send(terminal, "POST", "/order-quotes", draft, null), 200);
         db.sql("UPDATE catalog_item SET price = 211.25 WHERE id = :id").param("id", dish).update();
         problem(send(terminal, "POST", "/orders", submitBody(draft, quote), UUID.randomUUID()), 409, "PRICE_CHANGED");
@@ -249,13 +253,76 @@ class OrderingPostgresTest {
         var accepted = json(send(terminal, "POST", "/orders", submitBody(draft, quote), UUID.randomUUID()), 201);
         String item = accepted.at("/lines/0/id").asText();
         assertEquals("PENDING_ALLERGY_REVIEW", accepted.at("/lines/0/allergyReviewStatus").asText());
-        assertEquals("MILK", accepted.at("/lines/0/allergyRisk/ingredientMatches/0").asText());
+        assertTrue(accepted.at("/lines/0/allergyRisk/ingredientMatches").isEmpty());
         assertTrue(accepted.at("/lines/0/allergyRisk/unresolved").asBoolean());
         assertEquals("RECEIVED", ticket(accepted.path("id").asText()).at("/order/status").asText());
         problem(send(STAFF_TOKEN, "PATCH", itemPath(item), transition("PREPARING", 1), null), 409, "REVIEW_REQUIRED");
         problem(send(STAFF_TOKEN, "PATCH", itemPath(item), transition("READY", 1), null), 409, "REVIEW_REQUIRED");
         assertEquals("RECEIVED", get(terminal, "/orders/" + accepted.path("id").asText(), 200)
                 .at("/lines/0/preparationStatus").asText());
+    }
+
+    @Test
+    void rejectsIngredientAndSelectedOptionAllergensOnQuoteAndRevalidatesAtSubmission() throws Exception {
+        String terminal = terminal(true);
+        String session = session(terminal, "DINE_IN", 201);
+        UUID dish = dish();
+        ObjectNode draft = draft(session, dish);
+        draft.withObject("/visitAllergy").put("kind", "DISCLOSED").putArray("allergens").add("MILK");
+        var conflict = send(terminal, "POST", "/order-quotes", draft, null);
+        problem(conflict, 422, "ALLERGEN_CONFLICT");
+        assertEquals("/lines/0", parse(conflict.body()).at("/violations/0/pointer").asText());
+        draft.withObject("/visitAllergy").putArray("allergens").add("EGGS");
+        String group = legacyId(dish + "/group/", "sweetener");
+        ((ObjectNode) draft.withArray("lines").get(0)).withArray("selections").addObject()
+                .put("groupId", group).putArray("optionIds").add(legacyId(group + "/option/", "honey"));
+        JsonNode quote = json(send(terminal, "POST", "/order-quotes", draft, null), 200);
+        db.sql("""
+                UPDATE catalog_item SET customization_groups =
+                    jsonb_set(customization_groups, '{0,choices,0,allergens}', '["EGGS"]') WHERE id = :id
+                """).param("id", dish).update();
+        problem(send(terminal, "POST", "/order-quotes", draft, null), 422, "ALLERGEN_CONFLICT");
+        problem(send(terminal, "POST", "/orders", submitBody(draft, quote), UUID.randomUUID()), 422, "ALLERGEN_CONFLICT");
+    }
+
+    @Test
+    void chefApprovalAndDeclinePreserveSnapshotsAndAllowOtherItemsToFinish() throws Exception {
+        String terminal = terminal(true);
+        String session = session(terminal, "DINE_IN", 201);
+        UUID dish = dish();
+        ObjectNode draft = draft(session, dish);
+        draft.withObject("/visitAllergy").put("kind", "DISCLOSED").putArray("allergens").add("SOY");
+        draft.withArray("lines").add(draft(session, dish).at("/lines/0"));
+        JsonNode quote = json(send(terminal, "POST", "/order-quotes", draft, null), 200);
+        JsonNode accepted = json(send(terminal, "POST", "/orders", submitBody(draft, quote), UUID.randomUUID()), 201);
+        String first = accepted.at("/lines/0/id").asText();
+        String second = accepted.at("/lines/1/id").asText();
+        String order = accepted.path("id").asText();
+        problem(review(STAFF_TOKEN, first, "APPROVE", 1), 403, "FORBIDDEN");
+        problem(send(STAFF_TOKEN, "PATCH", itemPath(first), transition("PREPARING", 1), null), 409, "REVIEW_REQUIRED");
+        var approved = json(review(CHEF_TOKEN, first, "APPROVE", 1), 200);
+        assertEquals("APPROVED_FOR_PREPARATION", approved.at("/order/lines/0/allergyReviewStatus").asText());
+        assertFalse(approved.at("/order/lines/0/allergyRisk/unresolved").asBoolean());
+        problem(review(CHEF_TOKEN, first, "APPROVE", 1), 409, "VERSION_CONFLICT");
+        patch(first, "PREPARING", 2, 200);
+        patch(first, "READY", 3, 200);
+        var declined = json(review(CHEF_TOKEN, second, "DECLINE", 1), 200);
+        assertEquals("READY", declined.at("/order/status").asText());
+        assertFalse(declined.at("/order/lines/1/billable").asBoolean());
+        assertEquals("CANCELLED", declined.at("/order/lines/1/preparationStatus").asText());
+        assertEquals(21025, declined.at("/order/lines/1/pricing/extendedMinor").asLong());
+        assertEquals(21025, get(terminal, "/sessions/" + session + "/bill", 200).at("/totals/totalMinor").asLong());
+        assertEquals("DECLINED", get(terminal, "/orders/" + order, 200).at("/lines/1/allergyReviewStatus").asText());
+        assertFalse(declined.toString().contains("Private fixture reason"));
+        assertEquals(2L, db.sql("""
+                SELECT count(*) FROM order_item_allergy_review r JOIN ordering_credential c ON c.id = r.reviewer_id
+                WHERE c.token_sha256 = :hash AND r.reason = 'Private fixture reason'
+                """).param("hash", digest(CHEF_TOKEN)).query(Long.class).single());
+    }
+
+    private static HttpResponse<String> review(String token, String item, String decision, int version) throws Exception {
+        return send(token, "POST", "/kitchen/items/" + item + "/allergy-review",
+                object().put("decision", decision).put("reason", "Private fixture reason").put("expectedVersion", version), null);
     }
 
     @Test

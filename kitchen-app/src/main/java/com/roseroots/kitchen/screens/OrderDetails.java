@@ -13,6 +13,7 @@ import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.TextInputDialog;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -78,7 +79,8 @@ public final class OrderDetails extends VBox {
         tick();
 
         long ready = ticket.items().stream().filter(item -> item.status() == Status.READY).count();
-        Label heading = label("Order items  ·  " + ready + " of " + ticket.items().size() + " ready", "detail-section");
+        long active = ticket.items().stream().filter(item -> item.status() != Status.CANCELLED).count();
+        Label heading = label("Order items  ·  " + ready + " of " + active + " ready", "detail-section");
         content.getChildren().add(overview);
         if (ticket.server() != null && !ticket.server().visitAllergy().isBlank()) {
             content.getChildren().add(label("Visit allergy: " + ticket.server().visitAllergy(), "allergen"));
@@ -91,9 +93,33 @@ public final class OrderDetails extends VBox {
                     render(ticketId);
                 }
             } : null);
+            if (item.server() != null && item.status() == Status.RECEIVED
+                    && item.server().allergyReviewStatus().equals("PENDING_ALLERGY_REVIEW")) {
+                Button approve = new Button("Approve preparation");
+                Button decline = new Button("Decline item");
+                approve.setDisable(!service.writesAvailable());
+                decline.setDisable(!service.writesAvailable());
+                approve.setOnAction(event -> promptReview(ticketId, item, true));
+                decline.setOnAction(event -> promptReview(ticketId, item, false));
+                row.getChildren().add(new HBox(8, approve, decline));
+            }
             row.getStyleClass().add("detail-item");
             content.getChildren().add(row);
         }
+    }
+
+    private void promptReview(long ticketId, Ticket.Item item, boolean approve) {
+        var dialog = new TextInputDialog();
+        dialog.initOwner(getScene().getWindow());
+        dialog.setTitle("Chef allergy review");
+        dialog.setHeaderText(approve ? "Record the verified preparation controls" : "Record why this item cannot be prepared");
+        dialog.setContentText("Private reason");
+        var submit = dialog.getDialogPane().lookupButton(javafx.scene.control.ButtonType.OK);
+        submit.disableProperty().bind(javafx.beans.binding.Bindings.createBooleanBinding(() -> {
+            String reason = dialog.getEditor().getText().strip();
+            return reason.isBlank() || reason.length() > 240;
+        }, dialog.getEditor().textProperty()));
+        dialog.showAndWait().ifPresent(reason -> service.reviewAllergy(ticketId, item, approve, reason.strip()));
     }
 
     public void refresh() {

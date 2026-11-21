@@ -349,6 +349,7 @@ public final class CartScreen extends StackPane {
             String message = confirmation.unresolved() ? "confirm.uncertain" : switch (confirmation.problem()) {
                 case "QUOTE_EXPIRED", "PRICE_CHANGED" -> "confirm.requote";
                 case "INVALID_SELECTION", "ITEM_UNAVAILABLE" -> "confirm.invalid";
+                case "ALLERGEN_CONFLICT" -> "confirm.allergenConflict";
                 case "IDEMPOTENCY_CONFLICT" -> "confirm.conflict";
                 case "SESSION_CLOSED", "SESSION_EXPIRED", "UNAUTHENTICATED" -> "confirm.session";
                 case "REVIEW_REQUIRED" -> "confirm.reviewRequired";

@@ -29,14 +29,16 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Profile("catalog")
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 class OrderingSecurity {
-    record Actor(UUID credentialId, UUID restaurantId, UUID terminalId, String scope) {}
+    record Actor(UUID credentialId, UUID restaurantId, UUID terminalId, String scope, boolean allergyReviewer) {}
 
     @Bean
     @Order(20)
     SecurityFilterChain orderingEndpoints(HttpSecurity http, JdbcClient jdbc) throws Exception {
         return http.securityMatcher("/api/v1/device", "/api/v1/sessions", "/api/v1/sessions/**",
-                        "/api/v1/order-quotes", "/api/v1/orders", "/api/v1/orders/**", "/api/v1/kitchen/**")
-                .authorizeHttpRequests(rules -> rules.requestMatchers("/api/v1/kitchen/**").hasAuthority("KITCHEN")
+                        "/api/v1/order-quotes", "/api/v1/orders", "/api/v1/orders/**", "/api/v1/assistance", "/api/v1/kitchen/**")
+                .authorizeHttpRequests(rules -> rules
+                        .requestMatchers("/api/v1/kitchen/items/{id}/allergy-review").hasAuthority("ALLERGY_REVIEW")
+                        .requestMatchers("/api/v1/kitchen/**").hasAuthority("KITCHEN")
                         .anyRequest().hasAuthority("TERMINAL"))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .csrf(csrf -> csrf.disable())
@@ -77,16 +79,20 @@ class OrderingSecurity {
                 if (token.matches("[A-Za-z0-9_-]{43,128}")) {
                     try {
                         jdbc.sql("""
-                                SELECT id, restaurant_id, terminal_id, scope FROM ordering_credential
+                                SELECT id, restaurant_id, terminal_id, scope, allergy_reviewer FROM ordering_credential
                                 WHERE token_sha256 = :hash AND revoked_at IS NULL AND expires_at > now()
                                 """).param("hash", OrderingJson.digest(token))
                                 .query((row, index) -> new Actor(row.getObject("id", UUID.class),
                                         row.getObject("restaurant_id", UUID.class),
-                                        row.getObject("terminal_id", UUID.class), row.getString("scope")))
+                                        row.getObject("terminal_id", UUID.class), row.getString("scope"),
+                                        row.getBoolean("allergy_reviewer")))
                                 .optional().ifPresent(actor -> {
                                     var context = SecurityContextHolder.createEmptyContext();
+                                    var scope = new SimpleGrantedAuthority(actor.scope());
                                     context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
-                                            actor, null, List.of(new SimpleGrantedAuthority(actor.scope()))));
+                                            actor, null, actor.allergyReviewer()
+                                                    ? List.of(scope, new SimpleGrantedAuthority("ALLERGY_REVIEW"))
+                                                    : List.of(scope)));
                                     SecurityContextHolder.setContext(context);
                                 });
                     } catch (DataAccessException e) {

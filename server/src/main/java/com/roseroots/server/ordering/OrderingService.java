@@ -190,8 +190,8 @@ class OrderingService {
         int prepMinutes = current.lines().stream().mapToInt(OrderingPricing.Line::prepMinutes).max().orElseThrow();
         jdbc.sql("""
                 INSERT INTO accepted_order
-                    (id, session_id, quote_id, accepted_at, status, visit_allergy, subtotal_minor, delay_at)
-                VALUES (:id, :session, :quote, :accepted, 'RECEIVED', CAST(:allergy AS jsonb), :subtotal, :delay)
+                    (id, session_id, quote_id, accepted_at, status, visit_allergy, subtotal_minor, payable_minor, delay_at)
+                VALUES (:id, :session, :quote, :accepted, 'RECEIVED', CAST(:allergy AS jsonb), :subtotal, :subtotal, :delay)
                 """).param("id", orderId).param("session", sessionId).param("quote", quoteId)
                 .param("accepted", utc(acceptedAt)).param("allergy", draft.get("visitAllergy").toString())
                 .param("subtotal", current.subtotal()).param("delay", utc(acceptedAt.plus(prepMinutes, ChronoUnit.MINUTES)))
@@ -239,9 +239,9 @@ class OrderingService {
     public ObjectNode bill(Actor actor, UUID sessionId) {
         ownedSession(actor, sessionId, false);
         var orders = jdbc.sql("""
-                SELECT id, subtotal_minor FROM accepted_order WHERE session_id = :id ORDER BY sequence
+                SELECT id, payable_minor FROM accepted_order WHERE session_id = :id ORDER BY sequence
                 """).param("id", sessionId).<ObjectNode>query((row, index) -> object().put("orderId", row.getString("id"))
-                        .set("totals", OrderingPricing.totals(row.getLong("subtotal_minor")))).list();
+                        .set("totals", OrderingPricing.totals(row.getLong("payable_minor")))).list();
         long subtotal = 0;
         ArrayNode list = array();
         for (JsonNode order : orders) {
@@ -256,18 +256,8 @@ class OrderingService {
 
     @Transactional
     public ObjectNode transition(Actor actor, UUID itemId, String next, long expectedVersion) {
-        UUID orderId = jdbc.sql("""
-                SELECT o.id FROM accepted_order_item i JOIN accepted_order o ON o.id = i.order_id
-                JOIN dining_session s ON s.id = o.session_id
-                WHERE i.id = :item AND s.restaurant_id = :restaurant FOR UPDATE OF o
-                """).param("item", itemId).param("restaurant", actor.restaurantId())
-                .query(UUID.class).optional().orElseThrow(OrderingProblem::missing);
-        var item = jdbc.sql("SELECT preparation_status, allergy_review_status, version FROM accepted_order_item WHERE id = :id")
-                .param("id", itemId).query((row, index) -> new ItemState(row.getString(1), row.getString(2), row.getLong(3)))
-                .single();
-        if (item.version() != expectedVersion) {
-            throw conflict("VERSION_CONFLICT", "The item version changed. Reload the ticket.");
-        }
+        UUID orderId = lockItemOrder(actor, itemId);
+        var item = itemAtVersion(itemId, expectedVersion);
         if (!item.review().equals("NOT_REQUIRED") && !item.review().equals("APPROVED_FOR_PREPARATION")) {
             throw conflict("REVIEW_REQUIRED", "The item is held for allergy review.");
         }
@@ -279,18 +269,86 @@ class OrderingService {
                 UPDATE accepted_order_item SET preparation_status = :next, version = version + 1, updated_by = :actor
                 WHERE id = :id
                 """).param("next", next).param("actor", actor.credentialId()).param("id", itemId).update();
-        long version = jdbc.sql("""
-                UPDATE accepted_order SET version = version + 1,
-                    status = CASE WHEN NOT EXISTS (SELECT 1 FROM accepted_order_item
-                        WHERE order_id = :id AND preparation_status <> 'READY') THEN 'READY' ELSE 'PREPARING' END
-                WHERE id = :id RETURNING version
-                """).param("id", orderId).query(Long.class).single();
         Instant now = now();
-        outbox(orderId, version, "ORDER_UPDATED", now);
+        updateOrder(orderId, now);
         return readOrders("WHERE o.id = :id", Map.of("id", orderId)).getFirst().ticket(now);
     }
 
-    private record ItemState(String preparation, String review, long version) {}
+    @Transactional
+    public ObjectNode review(Actor actor, UUID itemId, String decision, String reason, long expectedVersion) {
+        if (!actor.allergyReviewer()) {
+            throw new OrderingProblem(403, "FORBIDDEN", "An authorized Chef credential is required.");
+        }
+        UUID orderId = lockItemOrder(actor, itemId);
+        var item = itemAtVersion(itemId, expectedVersion);
+        if (!item.preparation().equals("RECEIVED") || !item.review().equals("PENDING_ALLERGY_REVIEW")) {
+            throw conflict("INVALID_TRANSITION", "Only held, unstarted items can be reviewed.");
+        }
+        boolean approve = decision.equals("APPROVE");
+        if (approve && item.knownIngredientConflict()) {
+            throw conflict("REVIEW_REQUIRED", "An item with a known ingredient conflict must be declined.");
+        }
+        Instant now = now();
+        jdbc.sql("""
+                UPDATE accepted_order_item SET preparation_status = :prep, allergy_review_status = :review,
+                    version = version + 1, updated_by = :actor WHERE id = :id
+                """).param("prep", approve ? "RECEIVED" : "CANCELLED")
+                .param("review", approve ? "APPROVED_FOR_PREPARATION" : "DECLINED")
+                .param("actor", actor.credentialId()).param("id", itemId).update();
+        long orderVersion = updateOrder(orderId, now);
+        jdbc.sql("""
+                INSERT INTO order_item_allergy_review (item_id, previous_version, resulting_version,
+                    order_version, reviewer_id, decision, reason, reviewed_at)
+                VALUES (:item, :previous, :result, :orderVersion, :actor, :decision, :reason, :time)
+                """).param("item", itemId).param("previous", item.version()).param("result", item.version() + 1)
+                .param("orderVersion", orderVersion).param("actor", actor.credentialId())
+                .param("decision", decision).param("reason", reason).param("time", utc(now)).update();
+        return readOrders("WHERE o.id = :id", Map.of("id", orderId)).getFirst().ticket(now);
+    }
+
+    private UUID lockItemOrder(Actor actor, UUID itemId) {
+        return jdbc.sql("""
+                SELECT o.id FROM accepted_order_item i JOIN accepted_order o ON o.id = i.order_id
+                JOIN dining_session s ON s.id = o.session_id
+                WHERE i.id = :item AND s.restaurant_id = :restaurant FOR UPDATE OF o
+                """).param("item", itemId).param("restaurant", actor.restaurantId())
+                .query(UUID.class).optional().orElseThrow(OrderingProblem::missing);
+    }
+
+    private ItemState itemAtVersion(UUID itemId, long expectedVersion) {
+        var item = jdbc.sql("""
+                SELECT preparation_status, allergy_review_status, version,
+                    jsonb_array_length(allergy_risk->'ingredientMatches') > 0
+                FROM accepted_order_item WHERE id = :id
+                """).param("id", itemId)
+                .query((row, index) -> new ItemState(row.getString(1), row.getString(2), row.getLong(3), row.getBoolean(4)))
+                .single();
+        if (item.version() != expectedVersion) {
+            throw conflict("VERSION_CONFLICT", "The item version changed. Reload the ticket.");
+        }
+        return item;
+    }
+
+    private long updateOrder(UUID orderId, Instant now) {
+        long version = jdbc.sql("""
+                WITH remaining AS (
+                    SELECT count(*) AS total, count(*) FILTER (WHERE preparation_status = 'READY') AS ready,
+                        count(*) FILTER (WHERE preparation_status = 'RECEIVED') AS received,
+                        COALESCE(sum((pricing->>'extendedMinor')::bigint), 0) AS payable
+                    FROM accepted_order_item WHERE order_id = :id AND preparation_status <> 'CANCELLED'
+                )
+                UPDATE accepted_order SET version = version + 1, payable_minor = remaining.payable,
+                    status = CASE WHEN remaining.total = 0 THEN 'CANCELLED'
+                                  WHEN remaining.ready = remaining.total THEN 'READY'
+                                  WHEN remaining.received = remaining.total THEN 'RECEIVED'
+                                  ELSE 'PREPARING' END
+                FROM remaining WHERE id = :id RETURNING version
+                """).param("id", orderId).query(Long.class).single();
+        outbox(orderId, version, "ORDER_UPDATED", now);
+        return version;
+    }
+
+    private record ItemState(String preparation, String review, long version, boolean knownIngredientConflict) {}
 
     private record OrderView(ObjectNode order, String destination, Instant delayAt, long sequence) {
         ObjectNode ticket(Instant now) {
@@ -357,12 +415,18 @@ class OrderingService {
     private List<OrderView> readOrders(String clause, Map<String, ?> parameters) {
         return jdbc.sql("""
                 SELECT o.id, o.session_id, o.accepted_at, o.status, o.version, o.visit_allergy,
-                    o.subtotal_minor, o.delay_at, o.sequence, s.mode, s.table_number, s.pickup_reference,
+                    o.payable_minor, o.delay_at, o.sequence, s.mode, s.table_number, s.pickup_reference,
                     (SELECT jsonb_agg(jsonb_build_object(
                         'id', i.id, 'pricing', i.pricing, 'allergy', i.allergy,
                         'preparationInstructions', i.instructions, 'preparationStatus', i.preparation_status,
-                        'allergyReviewStatus', i.allergy_review_status, 'allergyRisk', i.allergy_risk,
-                        'version', i.version, 'billable', true, 'activeSubstitution', NULL
+                        'allergyReviewStatus', i.allergy_review_status, 'allergyRisk', CASE
+                            WHEN i.allergy_review_status = 'APPROVED_FOR_PREPARATION'
+                            THEN jsonb_set(i.allergy_risk, '{unresolved}', 'false') ELSE i.allergy_risk END,
+                        'version', i.version, 'billable', i.preparation_status <> 'CANCELLED',
+                        'reviewMessage', CASE i.allergy_review_status
+                            WHEN 'APPROVED_FOR_PREPARATION' THEN 'The chef cleared this item for preparation.'
+                            WHEN 'DECLINED' THEN 'The kitchen cannot safely prepare this item.' END,
+                        'activeSubstitution', NULL
                     ) ORDER BY i.position) FROM accepted_order_item i WHERE i.order_id = o.id) AS lines
                 FROM accepted_order o JOIN dining_session s ON s.id = o.session_id
                 """ + clause).params(parameters).query((row, index) -> {
@@ -371,7 +435,7 @@ class OrderingService {
                     .put("acceptedAt", instant(row, "accepted_at").toString()).put("version", row.getLong("version"));
             order.set("visitAllergy", parse(row.getString("visit_allergy")));
             order.set("lines", parse(row.getString("lines")));
-            order.set("totals", OrderingPricing.totals(row.getLong("subtotal_minor")));
+            order.set("totals", OrderingPricing.totals(row.getLong("payable_minor")));
             String destination = row.getString("mode").equals("DINE_IN")
                     ? "Table " + row.getString("table_number") : row.getString("pickup_reference");
             return new OrderView(order, destination, instant(row, "delay_at"), row.getLong("sequence"));
