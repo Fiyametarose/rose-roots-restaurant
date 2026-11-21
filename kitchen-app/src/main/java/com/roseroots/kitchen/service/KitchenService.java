@@ -27,5 +27,9 @@ public interface KitchenService {
         throw new UnsupportedOperationException();
     }
 
+    default void handoff(Ticket displayed) {
+        throw new UnsupportedOperationException();
+    }
+
     void changeRush(long ticketId, boolean enabled, String reason);
 }

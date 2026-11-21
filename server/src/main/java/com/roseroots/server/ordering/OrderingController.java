@@ -92,6 +92,14 @@ class OrderingController {
                 integer(body, "expectedVersion", 1, MAX_SAFE)));
     }
 
+    @PostMapping(path = "/kitchen/orders/{id}/handoff", consumes = JSON_MEDIA)
+    ResponseEntity<String> handoff(@AuthenticationPrincipal Actor actor, @PathVariable("id") String order,
+                                   HttpServletRequest request) {
+        var input = fields(body(request), "status", "expectedVersion");
+        return response(200, ordering.handoff(actor, id(order), choice(input, "status", "SERVED", "COLLECTED"),
+                integer(input, "expectedVersion", 1, MAX_SAFE)));
+    }
+
     @PostMapping(path = "/kitchen/items/{id}/allergy-review", consumes = JSON_MEDIA)
     ResponseEntity<String> review(@AuthenticationPrincipal Actor actor, @PathVariable("id") String item,
                                   HttpServletRequest request) {

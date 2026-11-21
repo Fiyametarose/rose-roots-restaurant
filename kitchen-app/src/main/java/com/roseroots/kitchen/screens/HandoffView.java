@@ -8,6 +8,9 @@ import com.roseroots.kitchen.service.KitchenService;
 import java.util.List;
 import java.util.stream.Collectors;
 import javafx.geometry.Pos;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.HBox;
@@ -61,7 +64,7 @@ public final class HandoffView extends VBox {
         return section;
     }
 
-    private static void populate(VBox list, List<Ticket> tickets, String empty) {
+    private void populate(VBox list, List<Ticket> tickets, String empty) {
         list.getChildren().clear();
         if (tickets.isEmpty()) {
             list.getChildren().add(label(empty, "empty"));
@@ -80,6 +83,18 @@ public final class HandoffView extends VBox {
                 if (!item.allergens().isBlank()) {
                     card.getChildren().add(label(item.name() + " · Allergen: " + item.allergens(), "allergen"));
                 }
+            }
+            if (!service.local() && ticket.server() != null) {
+                String action = ticket.type() == Type.DINE_IN ? "Confirm served" : "Confirm collected";
+                var confirm = new Button(action);
+                confirm.setDisable(!service.writesAvailable());
+                confirm.setOnAction(event -> {
+                    var dialog = new Alert(Alert.AlertType.CONFIRMATION, action + " for " + ticket.destination() + "?",
+                            ButtonType.OK, ButtonType.CANCEL);
+                    dialog.initOwner(getScene().getWindow());
+                    dialog.showAndWait().filter(ButtonType.OK::equals).ifPresent(accepted -> service.handoff(ticket));
+                });
+                card.getChildren().add(confirm);
             }
             list.getChildren().add(card);
         }

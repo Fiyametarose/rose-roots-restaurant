@@ -264,24 +264,57 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
                         throw unreadable();
                     }
                     return rejectOlderVersions(List.of(ticket), List.of(updated)).getFirst();
-                }).whenComplete((updated, error) -> completeReview(ticketId, updated, error));
+                }).whenComplete((updated, error) -> completeAction(ticketId, updated, error, true));
     }
 
-    private synchronized void completeReview(long ticketId, Ticket updated, Throwable error) {
+    @Override
+    public synchronized void handoff(Ticket displayed) {
+        if (stopped || status != Status.CONNECTED) return;
+        if (busy) {
+            message = "Wait for the current synchronization before confirming handoff.";
+            notifyListeners();
+            return;
+        }
+        var current = tickets.stream().filter(ticket -> ticket.id() == displayed.id()).findFirst();
+        if (current.isEmpty() || current.get().server().version() != displayed.server().version()
+                || current.get().status() != Ticket.Status.READY) {
+            message = "The order changed. Review the current ticket before confirming handoff.";
+            notifyListeners();
+            return;
+        }
+        var target = displayed.type() == Ticket.Type.DINE_IN ? Ticket.Status.SERVED : Ticket.Status.COLLECTED;
+        var body = new JsonObject();
+        body.addProperty("status", target.name());
+        body.addProperty("expectedVersion", displayed.server().version());
+        cancelPoll();
+        begin(Status.CONNECTED, "Confirming handoff…");
+        send("/api/v1/kitchen/orders/" + displayed.server().id() + "/handoff", body, "POST")
+                .thenApply(raw -> {
+                    var result = parse(() -> json.ticket(KitchenTicketJson.object(raw)));
+                    if (!result.server().id().equals(displayed.server().id())
+                            || result.server().version() <= displayed.server().version() || result.status() != target) {
+                        throw unreadable();
+                    }
+                    return rejectOlderVersions(List.of(displayed), List.of(result)).getFirst();
+                }).whenComplete((result, error) -> completeAction(displayed.id(), result, error, false));
+    }
+
+    private synchronized void completeAction(long ticketId, Ticket updated, Throwable error, boolean review) {
         if (stopped) return;
         if (error == null) {
             tickets = tickets.stream().map(entry -> entry.id() == ticketId ? updated : entry)
                     .filter(entry -> Ticket.Status.LANES.contains(entry.status())).toList();
-            finish(Status.CONNECTED, "Allergy review recorded.");
+            finish(Status.CONNECTED, review ? "Allergy review recorded." : "Handoff recorded.");
             return;
         }
         Failure failure = failure(error);
-        if (failure.httpStatus == 401 || failure.httpStatus == 429) {
+        if (failure.httpStatus == 401 || failure.httpStatus == 429 || failure.httpStatus == 403 && !review) {
             readFailed(failure, "");
             return;
         }
         if (failure.httpStatus != 409 && !failure.uncertain()) {
-            finish(Status.CONNECTED, failure.httpStatus == 403 ? "An authorized Chef credential is required." : failure.getMessage());
+            finish(Status.CONNECTED, review && failure.httpStatus == 403
+                    ? "An authorized Chef credential is required." : failure.getMessage());
             return;
         }
         fetchSnapshot().whenComplete((snapshot, reloadError) -> {
@@ -291,7 +324,7 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
                     tickets = snapshot;
                     finish(Status.CONNECTED, failure.getMessage() + " Current tickets reloaded.");
                 } else {
-                    readFailed(failure(reloadError), "Review outcome could not be confirmed. ");
+                    readFailed(failure(reloadError), "The action outcome could not be confirmed. ");
                 }
             }
         });

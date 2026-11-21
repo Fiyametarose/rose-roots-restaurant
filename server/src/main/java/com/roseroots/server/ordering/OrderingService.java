@@ -329,6 +329,47 @@ class OrderingService {
         return item;
     }
 
+    @Transactional
+    public ObjectNode handoff(Actor actor, UUID orderId, String target, long expectedVersion) {
+        var current = jdbc.sql("""
+                SELECT o.status, o.version, s.mode FROM accepted_order o JOIN dining_session s ON s.id = o.session_id
+                WHERE o.id = :id AND s.restaurant_id = :restaurant FOR UPDATE OF o
+                """).param("id", orderId).param("restaurant", actor.restaurantId())
+                .query((row, index) -> new HandoffState(row.getString(1), row.getLong(2), row.getString(3)))
+                .optional().orElseThrow(OrderingProblem::missing);
+        if (current.version() != expectedVersion) {
+            throw conflict("VERSION_CONFLICT", "The order version changed. Reload the ticket.");
+        }
+        if (!current.status().equals("READY") || !target.equals(current.mode().equals("DINE_IN") ? "SERVED" : "COLLECTED")) {
+            throw conflict("INVALID_TRANSITION", "Handoff requires a ready order and the correct service mode.");
+        }
+        var remaining = jdbc.sql("""
+                SELECT count(*) AS total, count(*) FILTER (WHERE preparation_status = 'READY'
+                    AND allergy_review_status IN ('NOT_REQUIRED','APPROVED_FOR_PREPARATION')) AS eligible
+                FROM accepted_order_item WHERE order_id = :id AND preparation_status <> 'CANCELLED'
+                """).param("id", orderId)
+                .query((row, index) -> new long[]{row.getLong("total"), row.getLong("eligible")}).single();
+        if (remaining[0] == 0 || remaining[0] != remaining[1]) {
+            throw conflict("REVIEW_REQUIRED", "Every remaining item must be ready and cleared before handoff.");
+        }
+        Instant now = now();
+        jdbc.sql("""
+                UPDATE accepted_order_item SET preparation_status = :status, version = version + 1, updated_by = :actor
+                WHERE order_id = :id AND preparation_status = 'READY'
+                """).param("id", orderId).param("status", target).param("actor", actor.credentialId()).update();
+        jdbc.sql("UPDATE accepted_order SET status = :status, version = version + 1 WHERE id = :id")
+                .param("id", orderId).param("status", target).update();
+        jdbc.sql("""
+                INSERT INTO order_handoff (order_id, staff_credential_id, status, previous_version, version, completed_at)
+                VALUES (:id, :actor, :status, :previous, :version, :now)
+                """).param("id", orderId).param("actor", actor.credentialId()).param("status", target)
+                .param("previous", current.version()).param("version", current.version() + 1).param("now", utc(now)).update();
+        outbox(orderId, current.version() + 1, "ORDER_UPDATED", now);
+        return readOrders("WHERE o.id = :id", Map.of("id", orderId)).getFirst().ticket(now);
+    }
+
+    private record HandoffState(String status, long version, String mode) {}
+
     private long updateOrder(UUID orderId, Instant now) {
         long version = jdbc.sql("""
                 WITH remaining AS (

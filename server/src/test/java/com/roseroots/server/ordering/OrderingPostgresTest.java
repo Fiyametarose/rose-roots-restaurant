@@ -70,12 +70,13 @@ class OrderingPostgresTest {
     private static JdbcClient db;
     private static HttpClient client;
     private static boolean fxStarted;
+    private static OrderingTls tls;
 
     @TempDir
     static Path media;
 
     @BeforeAll
-    static void start() {
+    static void start() throws Exception {
         String url = DATABASE + (DATABASE.contains("?") ? "&" : "?") + "currentSchema=" + SCHEMA;
         Flyway.configure().dataSource(url, USER, PASSWORD).schemas(SCHEMA).target("5").load().migrate();
         try (var connection = DriverManager.getConnection(url, USER, PASSWORD);
@@ -84,8 +85,10 @@ class OrderingPostgresTest {
         } catch (java.sql.SQLException e) {
             throw new IllegalStateException(e);
         }
+        tls = OrderingTls.create(media);
         server = (ServletWebServerApplicationContext) new SpringApplicationBuilder(ServerApplication.class).run(
-                "--spring.profiles.active=catalog", "--server.address=127.0.0.1", "--server.port=0",
+                "--spring.profiles.active=catalog,lan", "--server.address=127.0.0.1", "--server.port=0",
+                "--ROSE_SERVER_KEY_STORE=" + tls.store().toUri(), "--ROSE_SERVER_KEY_STORE_PASSWORD=" + tls.password(),
                 "--ROSE_DB_URL=" + url, "--ROSE_DB_USERNAME=" + USER, "--ROSE_DB_PASSWORD=" + PASSWORD,
                 "--spring.flyway.schemas=" + SCHEMA, "--rose.catalog.currency=KES",
                 "--rose.catalog.image-directory=" + media,
@@ -99,7 +102,7 @@ class OrderingPostgresTest {
         credential(CHEF_TOKEN, null, "KITCHEN");
         db.sql("UPDATE ordering_credential SET allergy_reviewer = true WHERE token_sha256 = :hash")
                 .param("hash", digest(CHEF_TOKEN)).update();
-        client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+        client = HttpClient.newBuilder().sslContext(tls.trust()).connectTimeout(Duration.ofSeconds(5)).build();
     }
 
     @AfterAll
@@ -115,6 +118,38 @@ class OrderingPostgresTest {
              var statement = connection.createStatement()) {
             statement.execute("DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE");
         }
+    }
+
+    @Test
+    void explicitHandoffEnforcesScopeServiceModeReadinessAndOrderVersion() throws Exception {
+        String terminal = terminal(true);
+        String session = session(terminal, "DINE_IN", 201);
+        String order = submitNew(terminal, session, dish());
+        String path = "/kitchen/orders/" + order + "/handoff";
+        problem(send(terminal, "POST", path, transition("SERVED", 1), null), 403, "FORBIDDEN");
+        problem(send(STAFF_TOKEN, "POST", path, transition("SERVED", 1), null), 409, "INVALID_TRANSITION");
+        String item = get(terminal, "/orders/" + order, 200).at("/lines/0/id").asText();
+        patch(item, "PREPARING", 1, 200);
+        patch(item, "READY", 2, 200);
+        problem(send(STAFF_TOKEN, "POST", path, transition("COLLECTED", 3), null), 409, "INVALID_TRANSITION");
+        problem(send(STAFF_TOKEN, "POST", path, transition("SERVED", 2), null), 409, "VERSION_CONFLICT");
+        JsonNode response = json(send(STAFF_TOKEN, "POST", path, transition("SERVED", 3), null), 200);
+        assertEquals("SERVED", response.at("/order/lines/0/preparationStatus").asText());
+        assertEquals("SERVED", get(terminal, "/orders/" + order, 200).path("status").asText());
+        assertEquals(21025L, get(terminal, "/sessions/" + session + "/bill", 200).at("/totals/totalMinor").asLong());
+        assertFalse(get(STAFF_TOKEN, "/kitchen/orders", 200).toString().contains(order));
+        problem(send(STAFF_TOKEN, "POST", path, transition("SERVED", 3), null), 409, "VERSION_CONFLICT");
+        assertEquals(1L, db.sql("SELECT count(*) FROM order_handoff WHERE order_id = CAST(:id AS uuid)")
+                .param("id", order).query(Long.class).single());
+
+        String pickupTerminal = terminal(false);
+        String pickupSession = session(pickupTerminal, "TAKEAWAY", 201);
+        String pickup = submitNew(pickupTerminal, pickupSession, dish());
+        String pickupItem = get(pickupTerminal, "/orders/" + pickup, 200).at("/lines/0/id").asText();
+        patch(pickupItem, "PREPARING", 1, 200);
+        patch(pickupItem, "READY", 2, 200);
+        assertEquals("COLLECTED", json(send(STAFF_TOKEN, "POST", "/kitchen/orders/" + pickup + "/handoff",
+                transition("COLLECTED", 3), null), 200).at("/order/status").asText());
     }
 
     @Test
@@ -166,7 +201,7 @@ class OrderingPostgresTest {
         startFx();
         String terminal = terminal(true);
         String session = session(terminal, "DINE_IN", 201);
-        var kitchen = LoopbackKitchenClient.create(server.getWebServer().getPort(), STAFF_TOKEN);
+        var kitchen = LoopbackKitchenClient.create(server.getWebServer().getPort(), STAFF_TOKEN, tls.trust());
         var stage = fx(() -> {
             var window = new Stage();
             window.setScene(new Scene(new ConnectedAssistanceView(kitchen, count -> {}), 800, 560));
@@ -210,7 +245,7 @@ class OrderingPostgresTest {
         var quote = json(send(terminal, "POST", "/order-quotes", draft, null), 200);
         var persisted = json(send(terminal, "POST", "/orders", submitBody(draft, quote), UUID.randomUUID()), 201);
         String order = persisted.path("id").asText();
-        var chef = LoopbackKitchenClient.create(server.getWebServer().getPort(), CHEF_TOKEN);
+        var chef = LoopbackKitchenClient.create(server.getWebServer().getPort(), CHEF_TOKEN, tls.trust());
         chef.startAutomaticRefresh();
         Stage stage = null;
         Runnable remove = () -> {};
@@ -326,7 +361,7 @@ class OrderingPostgresTest {
         String terminal = terminal(true);
         String session = session(terminal, "DINE_IN", 201);
         UUID dish = dish();
-        var kitchen = LoopbackKitchenClient.create(server.getWebServer().getPort(), STAFF_TOKEN);
+        var kitchen = LoopbackKitchenClient.create(server.getWebServer().getPort(), STAFF_TOKEN, tls.trust());
         try {
             kitchen.startAutomaticRefresh();
             awaitKitchen(() -> kitchen.status() == KitchenSync.Status.CONNECTED);
@@ -445,7 +480,7 @@ class OrderingPostgresTest {
         problem(send(null, "GET", "/device", null, null), 401, "UNAUTHENTICATED");
         problem(send(token(), "GET", "/device", null, null), 401, "UNAUTHENTICATED");
         assertEquals(401, send(STAFF_TOKEN, "GET", "/admin/dashboard", null, null).statusCode());
-        try (var manager = HttpClient.newBuilder().cookieHandler(new CookieManager()).build()) {
+        try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
             var csrf = manager.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString());
             String form = "username=ordering-manager-test&password="
                     + URLEncoder.encode(MANAGER_PASSWORD, StandardCharsets.UTF_8);
@@ -698,7 +733,7 @@ class OrderingPostgresTest {
     }
 
     private static HttpRequest.Builder request(String path, String token) {
-        var builder = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + server.getWebServer().getPort()
+        var builder = HttpRequest.newBuilder(URI.create("https://127.0.0.1:" + server.getWebServer().getPort()
                 + "/api/v1" + path)).timeout(Duration.ofSeconds(15));
         return token == null ? builder : builder.header("Authorization", "Bearer " + token);
     }
