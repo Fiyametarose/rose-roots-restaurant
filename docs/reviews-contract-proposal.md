@@ -2,6 +2,8 @@
 
 One optional visit review is available after food from that session has been explicitly served or collected. [OpenAPI draft 3](ordering-api-v1.openapi.json) contains the wire shapes for Customer, Kitchen, and Managers.
 
+Flyway V9 adds the explicit Handoff audit. V10 adds visit reviews and Manager follow-up audit. Apply both in the existing ordering database. READY orders already in the database still require an explicit handoff.
+
 ## Eligibility and submission
 
 An authenticated Kitchen staff bearer records actual handoff via `POST /api/v1/kitchen/orders/{id}/handoff`. Send the order's current `expectedVersion` with `SERVED` for Dine-In or `COLLECTED` for Takeaway. The server checks that the order is READY in the staff member's restaurant and that each non-cancelled line is ready and cleared. It records the actor and time along with the order, item, and outbox versions. READY alone has no review eligibility.

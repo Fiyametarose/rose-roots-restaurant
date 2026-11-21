@@ -39,8 +39,12 @@ class ReviewsController {
             return problem(HttpStatus.SERVICE_UNAVAILABLE, "REVIEW_SOURCE_UNAVAILABLE",
                     "The shared customer review service is not connected.");
         }
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(
-                provider.reviews(new Query(search.strip(), from, to, rating, topic, followUp, cursor, limit)));
+        try {
+            return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(
+                    provider.reviews(new Query(search.strip(), from, to, rating, topic, followUp, cursor, limit)));
+        } catch (IllegalArgumentException e) {
+            return problem(HttpStatus.BAD_REQUEST, "INVALID_REVIEW_FILTER", "Check the review filters or reload from the first page.");
+        }
     }
 
     private static ResponseEntity<ProblemDetail> problem(HttpStatus status, String code, String message) {

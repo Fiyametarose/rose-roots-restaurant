@@ -27,6 +27,10 @@ final class AdminApi {
     }
 
     AdminApi(String address) {
+        this(address, null);
+    }
+
+    AdminApi(String address, javax.net.ssl.SSLContext tls) {
         base = URI.create(address);
         String host = base.getHost();
         boolean loopback = "localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host)
@@ -37,8 +41,9 @@ final class AdminApi {
                 || !(secure || loopback && "http".equalsIgnoreCase(base.getScheme()))) {
             throw new IllegalArgumentException("Configure an HTTPS Admin server URL.");
         }
-        http = HttpClient.newBuilder().cookieHandler(cookies)
-                .connectTimeout(Duration.ofSeconds(4)).build();
+        var client = HttpClient.newBuilder().cookieHandler(cookies).connectTimeout(Duration.ofSeconds(4));
+        if (tls != null) client.sslContext(tls);
+        http = client.build();
     }
 
     void login(String username, String password) throws IOException, InterruptedException {
@@ -83,6 +88,13 @@ final class AdminApi {
 
     JsonObject reviews(String query) throws IOException, InterruptedException {
         return JsonParser.parseString(send(endpoint("reviews?" + query).GET(), 200)).getAsJsonObject();
+    }
+
+    JsonObject reviewFollowUp(java.util.UUID id, JsonObject payload) throws IOException, InterruptedException {
+        var request = endpoint("reviews/" + id + "/follow-up").header("X-CSRF-TOKEN", csrf())
+                .header("Content-Type", "application/json")
+                .method("PATCH", HttpRequest.BodyPublishers.ofString(payload.toString()));
+        return JsonParser.parseString(send(request, 200)).getAsJsonObject();
     }
 
     JsonObject orders(OperationsPresentation.Filters filters, String cursor) throws IOException, InterruptedException {

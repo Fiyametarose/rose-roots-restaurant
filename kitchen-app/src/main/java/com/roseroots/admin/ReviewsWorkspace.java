@@ -16,6 +16,7 @@ import javafx.scene.control.ProgressBar;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TextArea;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -232,6 +233,7 @@ final class ReviewsWorkspace extends VBox {
         }
         var back = button("Back to reviews", () -> {
             view.getChildren().setAll(list);
+            apply();
             top.run();
         });
         view.getChildren().setAll(back, panel("Review Details", content(
@@ -242,11 +244,57 @@ final class ReviewsWorkspace extends VBox {
                 fact("Table / pickup", value(row, "serviceReference")),
                 fact("Dining session", value(row, "sessionId")),
                 fact("Customer comment", text(row, "comment").isBlank() ? "No comment supplied." : text(row, "comment")))),
-                panel("Management Follow-up", content(fact("Status", state(text(row, "followUp"))),
-                        fact("Internal response", text(row, "internalResponse").isBlank()
-                                ? "No response supplied." : text(row, "internalResponse")),
-                        label("Follow-up changes are unavailable until the review owner supplies an authorized contract.", "muted"))));
+                panel("Management Follow-up", followUpEditor(row)));
         top.run();
+    }
+
+    private VBox followUpEditor(JsonObject row) {
+        long version = row.has("version") && !row.get("version").isJsonNull() ? row.get("version").getAsLong() : 0;
+        if (version <= 0) {
+            return content(fact("Status", state(text(row, "followUp"))),
+                    fact("Internal response", text(row, "internalResponse")),
+                    label("Follow-up editing is unavailable for this review source.", "muted"));
+        }
+        var states = new ComboBox<Choice>();
+        for (String code : List.of("NEEDS_ATTENTION", "FOLLOWED_UP", "RESOLVED")) {
+            var state = new Choice(OperationsPresentation.state(code), code);
+            states.getItems().add(state);
+            if (code.equals(text(row, "followUp"))) states.setValue(state);
+        }
+        var note = new TextArea(text(row, "internalResponse"));
+        note.setPromptText("Manager-only note");
+        note.setWrapText(true);
+        note.setPrefRowCount(3);
+        var error = label("", "muted");
+        var form = content(field("Status", states), field("Internal response", note), error);
+        var save = button("Save follow-up", () -> {
+            var payload = new JsonObject();
+            payload.addProperty("followUp", states.getValue().code());
+            payload.addProperty("internalResponse", note.getText().strip());
+            payload.addProperty("expectedVersion", version);
+            form.setDisable(true);
+            AdminWorkspace.background(() -> api.reviewFollowUp(java.util.UUID.fromString(text(row, "id")), payload),
+                    (updated, failure) -> {
+                        if (form.getScene() == null) return;
+                        form.setDisable(false);
+                        if (failure == null) {
+                            row.add("followUp", updated.get("followUp"));
+                            row.add("internalResponse", updated.get("internalResponse"));
+                            row.add("version", updated.get("version"));
+                            detail(row);
+                        } else if (failure instanceof AdminApi.Rejected rejected && rejected.status == 409) {
+                            form.setDisable(true);
+                            error.setText("This follow-up changed. Go back to reload the latest review.");
+                        } else {
+                            error.setText(failureMessage(failure));
+                        }
+                    });
+        });
+        save.disableProperty().bind(javafx.beans.binding.Bindings.createBooleanBinding(() ->
+                states.getValue() == null || note.getText().codePointCount(0, note.getText().length()) > 500,
+                states.valueProperty(), note.textProperty()));
+        form.getChildren().add(save);
+        return form;
     }
 
     static String query(String search, LocalDate from, LocalDate to, String rating, String topic, String followUp) {

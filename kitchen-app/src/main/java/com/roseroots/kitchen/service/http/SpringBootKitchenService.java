@@ -13,6 +13,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
+import com.roseroots.kitchen.model.CustomerReview.Topic;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -435,6 +437,37 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
 
     public CompletableFuture<List<ConnectedAssistanceRequest>> assistanceRequests() {
         return assistancePage(null, new ArrayList<>(), new HashSet<>(), new HashSet<>());
+    }
+
+    public record ConnectedReview(UUID id, Instant submittedAt, Integer rating, List<Topic> topics, String comment) {}
+
+    public CompletableFuture<List<ConnectedReview>> reviews() {
+        return reviewPage(null, new ArrayList<>(), new HashSet<>(), new HashSet<>());
+    }
+
+    private CompletableFuture<List<ConnectedReview>> reviewPage(String cursor, List<ConnectedReview> rows,
+            HashSet<String> cursors, HashSet<UUID> ids) {
+        String suffix = cursor == null ? "" : "&cursor=" + URLEncoder.encode(cursor, StandardCharsets.UTF_8);
+        return send("/api/v1/kitchen/reviews?limit=50" + suffix, null).thenCompose(raw -> {
+            var page = parse(() -> KitchenTicketJson.object(raw));
+            for (var element : page.getAsJsonArray("reviews")) {
+                var row = element.getAsJsonObject();
+                String id = row.get("id").getAsString();
+                UUID uuid = UUID.fromString(id);
+                Integer rating = row.get("rating").isJsonNull() ? null
+                        : row.get("rating").getAsBigDecimal().intValueExact();
+                var topics = row.getAsJsonArray("topics").asList().stream()
+                        .map(value -> Topic.valueOf(value.getAsString())).toList();
+                if (!uuid.toString().equals(id) || !ids.add(uuid) || rating != null && (rating < 1 || rating > 5)
+                        || topics.isEmpty() || topics.stream().anyMatch(topic -> !topic.kitchenRelevant)) throw unreadable();
+                rows.add(new ConnectedReview(uuid, Instant.parse(row.get("submittedAt").getAsString()), rating, topics,
+                        row.get("comment").getAsString()));
+            }
+            if (page.get("nextCursor").isJsonNull()) return CompletableFuture.completedFuture(List.copyOf(rows));
+            String next = page.get("nextCursor").getAsString();
+            if (next.isBlank() || next.length() > 500 || !cursors.add(next) || cursors.size() > 2000) throw unreadable();
+            return reviewPage(next, rows, cursors, ids);
+        });
     }
 
     public CompletableFuture<ConnectedAssistanceRequest> advanceAssistance(ConnectedAssistanceRequest displayed) {

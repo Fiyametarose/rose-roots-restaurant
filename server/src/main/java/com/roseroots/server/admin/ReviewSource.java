@@ -16,7 +16,13 @@ public interface ReviewSource {
     record Query(String search, LocalDate from, LocalDate to, Integer rating, Topic topic,
                  FollowUp followUp, String cursor, int limit) {}
     record Review(UUID id, UUID sessionId, String serviceReference, Instant submittedAt,
-                  Integer rating, List<Topic> topics, String comment, FollowUp followUp, String internalResponse) {}
+                  Integer rating, List<Topic> topics, String comment, FollowUp followUp, String internalResponse,
+                  long version) {
+        public Review(UUID id, UUID sessionId, String serviceReference, Instant submittedAt, Integer rating,
+                      List<Topic> topics, String comment, FollowUp followUp, String internalResponse) {
+            this(id, sessionId, serviceReference, submittedAt, rating, topics, comment, followUp, internalResponse, 0);
+        }
+    }
     record Rating(int stars, long count) {}
     record Category(Topic topic, long count, long ratedCount, java.math.BigDecimal average) {}
     record Trend(LocalDate date, long count, long ratedCount, java.math.BigDecimal average) {}

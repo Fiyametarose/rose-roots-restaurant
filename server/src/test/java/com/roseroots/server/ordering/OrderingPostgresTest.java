@@ -6,8 +6,10 @@ import com.roseroots.kitchen.model.Ticket;
 import com.roseroots.kitchen.service.KitchenSync;
 import com.roseroots.kitchen.service.http.LoopbackKitchenClient;
 import com.roseroots.kitchen.screens.ConnectedAssistanceView;
+import com.roseroots.kitchen.screens.ConnectedReviewsView;
 import com.roseroots.kitchen.screens.OrderDetails;
 import com.roseroots.server.ServerApplication;
+import com.roseroots.admin.ManagerReviewsFixture;
 import java.net.CookieManager;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -49,6 +51,9 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.DialogPane;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TextArea;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.TableView;
 import javafx.stage.Stage;
 import javafx.stage.Window;
 
@@ -118,6 +123,233 @@ class OrderingPostgresTest {
              var statement = connection.createStatement()) {
             statement.execute("DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE");
         }
+    }
+
+    @Test
+    void ordinaryItemsInAMixedOrderAdvanceWhileAnotherItemIsHeld() throws Exception {
+        String terminal = terminal(true);
+        String session = session(terminal, "DINE_IN", 201);
+        var mixed = draft(session, dish());
+        ((ObjectNode) mixed.withArray("lines").get(0)).withObject("/allergy")
+                .put("kind", "DISCLOSED").putArray("allergens").add("SOY");
+        mixed.withArray("lines").add(draft(session, dish()).at("/lines/0"));
+        var quote = json(send(terminal, "POST", "/order-quotes", mixed, null), 200);
+        var accepted = json(send(terminal, "POST", "/orders", submitBody(mixed, quote), UUID.randomUUID()), 201);
+        String held = accepted.at("/lines/0/id").asText();
+        String ordinary = accepted.at("/lines/1/id").asText();
+        assertEquals("PENDING_ALLERGY_REVIEW", accepted.at("/lines/0/allergyReviewStatus").asText());
+        assertEquals("NOT_REQUIRED", accepted.at("/lines/1/allergyReviewStatus").asText());
+        patch(ordinary, "PREPARING", 1, 200);
+        assertEquals("PREPARING", patch(ordinary, "READY", 2, 200).at("/order/status").asText());
+        problem(send(STAFF_TOKEN, "PATCH", itemPath(held), transition("PREPARING", 1), null), 409, "REVIEW_REQUIRED");
+        assertEquals("READY", json(review(CHEF_TOKEN, held, "DECLINE", 1), 200).at("/order/status").asText());
+    }
+
+    @Test
+    void migrationFromV8RetainsPreviouslyPersistedOrdersAndAssistance() throws Exception {
+        String schema = "rr_v8_" + UUID.randomUUID().toString().replace("-", "");
+        String url = DATABASE + (DATABASE.contains("?") ? "&" : "?") + "currentSchema=" + schema;
+        try {
+            Flyway.configure().dataSource(url, USER, PASSWORD).schemas(schema).target("8").load().migrate();
+            try (var connection = DriverManager.getConnection(url, USER, PASSWORD);
+                 var statement = connection.createStatement()) {
+                statement.execute("""
+                        INSERT INTO ordering_restaurant(id) VALUES ('10000000-0000-0000-0000-000000000001');
+                        INSERT INTO ordering_terminal(id,restaurant_id)
+                        VALUES ('10000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000001');
+                        INSERT INTO dining_session(id,restaurant_id,terminal_id,mode,pickup_reference,created_at,expires_at,status)
+                        VALUES ('10000000-0000-0000-0000-000000000003','10000000-0000-0000-0000-000000000001',
+                            '10000000-0000-0000-0000-000000000002','TAKEAWAY','V8 pickup',now(),now()+interval '1 hour','OPEN');
+                        INSERT INTO ordering_quote(id,session_id,expires_at,draft,pricing)
+                        VALUES ('10000000-0000-0000-0000-000000000004','10000000-0000-0000-0000-000000000003',
+                            now()+interval '1 minute','{}','{}');
+                        INSERT INTO accepted_order(id,session_id,quote_id,accepted_at,status,visit_allergy,subtotal_minor,payable_minor,delay_at)
+                        VALUES ('10000000-0000-0000-0000-000000000005','10000000-0000-0000-0000-000000000003',
+                            '10000000-0000-0000-0000-000000000004',now(),'READY','{}',300,100,now());
+                        INSERT INTO assistance_request(id,session_id,submission_key,input_sha256,type,note,status,version,submitted_at,updated_at)
+                        VALUES ('10000000-0000-0000-0000-000000000006','10000000-0000-0000-0000-000000000003',
+                            '10000000-0000-0000-0000-000000000007',decode(repeat('ab',32),'hex'),'OTHER','V8 request',
+                            'ACKNOWLEDGED',2,now(),now());
+                        """);
+            }
+            Flyway.configure().dataSource(url, USER, PASSWORD).schemas(schema).load().migrate();
+            try (var connection = DriverManager.getConnection(url, USER, PASSWORD);
+                 var statement = connection.createStatement();
+                 var result = statement.executeQuery("""
+                         SELECT o.status, o.subtotal_minor, o.payable_minor, a.note, a.status, a.version,
+                                (SELECT count(*) FROM visit_review)
+                         FROM accepted_order o JOIN assistance_request a ON a.session_id = o.session_id
+                         """)) {
+                assertTrue(result.next());
+                assertEquals("READY", result.getString(1));
+                assertEquals(300, result.getLong(2));
+                assertEquals(100, result.getLong(3));
+                assertEquals("V8 request", result.getString(4));
+                assertEquals("ACKNOWLEDGED", result.getString(5));
+                assertEquals(2, result.getLong(6));
+                assertEquals(0, result.getLong(7));
+                assertFalse(result.next());
+            }
+        } finally {
+            try (var connection = DriverManager.getConnection(DATABASE, USER, PASSWORD);
+                 var statement = connection.createStatement()) {
+                statement.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+            }
+        }
+    }
+
+    @Test
+    void reviewsRequireRealHandoffAndEnforceScopeReplayAndPrivateManagerAudit() throws Exception {
+        String terminal = terminal(true);
+        String session = session(terminal, "DINE_IN", 201);
+        String path = "/sessions/" + session;
+        assertFalse(get(terminal, path + "/review", 200).path("eligible").asBoolean());
+        String order = submitNew(terminal, session, dish());
+        String item = get(terminal, "/orders/" + order, 200).at("/lines/0/id").asText();
+        patch(item, "PREPARING", 1, 200);
+        patch(item, "READY", 2, 200);
+        var input = object().put("rating", 1).put("comment", "The tea arrived cold.");
+        input.putArray("topics").add("TEMPERATURE").add("AMBIENCE");
+        UUID key = UUID.randomUUID();
+        problem(send(terminal, "POST", path + "/reviews", input, key), 422, "REVIEW_NOT_ELIGIBLE");
+        json(send(STAFF_TOKEN, "POST", "/kitchen/orders/" + order + "/handoff", transition("SERVED", 3), null), 200);
+        var eligible = get(terminal, path + "/review", 200);
+        assertTrue(eligible.path("eligible").asBoolean());
+        assertTrue(eligible.path("review").isNull(), "Skipping must not create a review or rating");
+        problem(send(terminal(true), "GET", path + "/review", null, null), 404, "NOT_FOUND");
+        problem(send(STAFF_TOKEN, "POST", path + "/reviews", input, key), 403, "FORBIDDEN");
+        problem(send(terminal, "POST", path + "/reviews", object(), key), 422, "INVALID_SELECTION");
+        var created = json(send(terminal, "POST", path + "/reviews", input, key), 201);
+        String id = created.path("id").asText();
+        assertEquals(created, json(send(terminal, "POST", path + "/reviews", input, key), 200));
+        problem(send(terminal, "POST", path + "/reviews", input.deepCopy().put("rating", 2), key), 409, "IDEMPOTENCY_CONFLICT");
+        problem(send(terminal, "POST", path + "/reviews", input, UUID.randomUUID()), 409, "REVIEW_ALREADY_EXISTS");
+        assertEquals(created, get(terminal, path + "/review", 200).get("review"));
+        var queue = get(STAFF_TOKEN, "/kitchen/reviews", 200).path("reviews");
+        var row = java.util.stream.StreamSupport.stream(queue.spliterator(), false)
+                .filter(entry -> entry.path("id").asText().equals(id)).findFirst().orElseThrow();
+        assertEquals(1, row.path("rating").asInt());
+        assertEquals(1, row.path("topics").size());
+        assertFalse(row.has("sessionId"));
+        assertFalse(row.has("internalResponse"));
+        String route = "/admin/reviews/" + id + "/follow-up";
+        var follow = object().put("followUp", "FOLLOWED_UP").put("internalResponse", "Private Manager note").put("expectedVersion", 1);
+        assertEquals(403, send(STAFF_TOKEN, "PATCH", route, follow, null).statusCode());
+        try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
+            managerLogin(manager);
+            var headers = request(route, null).header("Content-Type", "application/json")
+                    .method("PATCH", HttpRequest.BodyPublishers.ofString(follow.toString()));
+            assertEquals(403, manager.send(headers.build(), HttpResponse.BodyHandlers.ofString()).statusCode());
+            var csrf = manager.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
+            var update = request(route, null).header("Content-Type", "application/json").header("X-CSRF-TOKEN", csrf)
+                    .method("PATCH", HttpRequest.BodyPublishers.ofString(follow.toString())).build();
+            assertEquals(2, json(manager.send(update, HttpResponse.BodyHandlers.ofString()), 200).path("version").asLong());
+            problem(manager.send(update, HttpResponse.BodyHandlers.ofString()), 409, "VERSION_CONFLICT");
+            var page = json(manager.send(request("/admin/reviews?q=" + id, null).GET().build(),
+                    HttpResponse.BodyHandlers.ofString()), 200);
+            assertEquals(1, page.at("/insights/negative").asLong());
+            assertEquals("Private Manager note", page.at("/items/0/internalResponse").asText());
+        }
+        assertEquals(1L, db.sql("SELECT count(*) FROM review_follow_up_audit WHERE review_id = CAST(:id AS uuid)")
+                .param("id", id).query(Long.class).single());
+        assertFalse(get(STAFF_TOKEN, "/kitchen/reviews", 200).toString().contains("Private Manager note"));
+    }
+
+    @Test
+    void javaFxKitchenShowsUnratedAndNegativeFeedbackFromRealHttps() throws Exception {
+        startFx();
+        for (int index = 0; index < 2; index++) {
+            String terminal = terminal(true);
+            String session = session(terminal, "DINE_IN", 201);
+            String order = submitNew(terminal, session, dish());
+            String item = get(terminal, "/orders/" + order, 200).at("/lines/0/id").asText();
+            patch(item, "PREPARING", 1, 200);
+            patch(item, "READY", 2, 200);
+            json(send(STAFF_TOKEN, "POST", "/kitchen/orders/" + order + "/handoff", transition("SERVED", 3), null), 200);
+            var draft = object().put("comment", index == 0 ? "Food was cold in the JavaFX test." : "Please review the preparation time.");
+            draft.putArray("topics").add("PREPARATION_SPEED");
+            if (index == 0) draft.put("rating", 1);
+            json(send(terminal, "POST", "/sessions/" + session + "/reviews", draft, UUID.randomUUID()), 201);
+        }
+        var kitchen = LoopbackKitchenClient.create(server.getWebServer().getPort(), STAFF_TOKEN, tls.trust());
+        var stage = fx(() -> {
+            var root = new ConnectedReviewsView(kitchen);
+            var window = new Stage();
+            window.setScene(new Scene(root, 800, 550));
+            window.show();
+            root.refresh();
+            return window;
+        });
+        try {
+            var root = stage.getScene().getRoot();
+            awaitKitchen(() -> uiText(root, "Food was cold in the JavaFX test.") && uiText(root, "Unrated"));
+            assertTrue(uiText(root, "Average 1.0 / 5"));
+        } finally {
+            fx(() -> {
+                ((ConnectedReviewsView) stage.getScene().getRoot()).stop();
+                stage.close();
+                return null;
+            });
+            kitchen.stop();
+        }
+    }
+
+    @Test
+    void javaFxManagerSavesFollowUpThroughTheProtectedHttpsRoute() throws Exception {
+        startFx();
+        String terminal = terminal(false);
+        String session = session(terminal, "TAKEAWAY", 201);
+        String order = submitNew(terminal, session, dish());
+        String item = get(terminal, "/orders/" + order, 200).at("/lines/0/id").asText();
+        patch(item, "PREPARING", 1, 200);
+        patch(item, "READY", 2, 200);
+        json(send(STAFF_TOKEN, "POST", "/kitchen/orders/" + order + "/handoff", transition("COLLECTED", 3), null), 200);
+        var input = object().put("rating", 2).put("comment", "Follow-up fixture feedback");
+        String id = json(send(terminal, "POST", "/sessions/" + session + "/reviews", input, UUID.randomUUID()), 201)
+                .path("id").asText();
+        var manager = new ManagerReviewsFixture("https://127.0.0.1:" + server.getWebServer().getPort(), tls.trust(),
+                "ordering-manager-test", MANAGER_PASSWORD);
+        var window = fx(() -> {
+            var stage = new Stage();
+            stage.setScene(new Scene(manager.view(), 900, 720));
+            stage.show();
+            return stage;
+        });
+        try {
+            var root = window.getScene().getRoot();
+            awaitKitchen(() -> uiText(root, "Connected to shared reviews."));
+            fx(() -> {
+                var table = (TableView<?>) root.lookup(".table-view");
+                int index = -1;
+                for (int i = 0; i < table.getItems().size(); i++) {
+                    if (table.getItems().get(i).toString().contains(id)) index = i;
+                }
+                assertTrue(index >= 0);
+                table.getSelectionModel().select(index);
+                button(root, "View review").fire();
+                ((ComboBox<?>) root.lookup(".combo-box")).getSelectionModel().select(1);
+                ((TextArea) root.lookup(".text-area")).setText("Confirmed the preparation issue with the shift.");
+                button(root, "Save follow-up").fire();
+                return null;
+            });
+            awaitKitchen(() -> db.sql("""
+                    SELECT count(*) FROM review_follow_up_audit
+                    WHERE review_id = CAST(:id AS uuid) AND to_state = 'FOLLOWED_UP'
+                    """).param("id", id).query(Long.class).single() == 1);
+            assertTrue(uiText(root, "Management Follow-up"));
+        } finally {
+            fx(() -> { window.close(); return null; });
+        }
+    }
+
+    private static void managerLogin(HttpClient manager) throws Exception {
+        var csrf = manager.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString());
+        String form = "username=ordering-manager-test&password="
+                + URLEncoder.encode(MANAGER_PASSWORD, StandardCharsets.UTF_8);
+        var login = request("/admin/login", null).header("X-CSRF-TOKEN", csrf.body())
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(form)).build();
+        assertEquals(204, manager.send(login, HttpResponse.BodyHandlers.ofString()).statusCode());
     }
 
     @Test

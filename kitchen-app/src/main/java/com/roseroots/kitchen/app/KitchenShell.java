@@ -3,6 +3,7 @@ package com.roseroots.kitchen.app;
 import com.roseroots.kitchen.model.StaffMember;
 import com.roseroots.kitchen.screens.AssistanceView;
 import com.roseroots.kitchen.screens.ConnectedAssistanceView;
+import com.roseroots.kitchen.screens.ConnectedReviewsView;
 import com.roseroots.kitchen.service.http.SpringBootKitchenService;
 import com.roseroots.kitchen.screens.HandoffView;
 import com.roseroots.kitchen.screens.LiveBoard;
@@ -46,6 +47,7 @@ final class KitchenShell extends BorderPane {
     private final StationsView stations;
     private final AssistanceView assistance;
     private ConnectedAssistanceView connectedAssistance;
+    private ConnectedReviewsView connectedReviews;
     private ToggleButton assistanceButton;
     private final ReviewsView reviews;
     private final HistoryView history;
@@ -164,6 +166,9 @@ final class KitchenShell extends BorderPane {
             if (local) {
                 reviews.refresh();
                 show(workspace, reviews, "Kitchen Feedback & Reviews");
+            } else if (connectedReviews != null) {
+                connectedReviews.refresh();
+                show(workspace, connectedReviews, "Kitchen Feedback & Reviews");
             } else {
                 show(workspace, label("Customer reviews are unavailable from the connected server.", "empty"),
                         "Kitchen Feedback & Reviews");
@@ -232,14 +237,16 @@ final class KitchenShell extends BorderPane {
     void stop() {
         unsubscribeSync.run();
         if (connectedAssistance != null) connectedAssistance.stop();
+        if (connectedReviews != null) connectedReviews.stop();
         sync.stop();
         live.stop();
         timer.stop();
     }
 
-    void startConnectedAssistance(SpringBootKitchenService service) {
+    void connectStaffWorkspaces(SpringBootKitchenService service) {
         connectedAssistance = new ConnectedAssistanceView(service,
                 count -> assistanceButton.setText(count == 0 ? "Assistance" : "Assistance (" + count + ")"));
+        connectedReviews = new ConnectedReviewsView(service);
     }
 
     private static Region spacer() {

@@ -1,6 +1,11 @@
 package com.roseroots.server.ordering;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.roseroots.server.admin.ReviewSource.FollowUp;
+import com.roseroots.server.admin.ReviewSource.Topic;
+import java.security.Principal;
+import java.util.EnumSet;
+import java.util.Set;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -24,10 +29,12 @@ class OrderingController {
     private static final int MAX_REQUEST_BYTES = 2 * 1024 * 1024;
     private final OrderingService ordering;
     private final AssistanceRequests assistance;
+    private final VisitReviews reviews;
 
-    OrderingController(OrderingService ordering, AssistanceRequests assistance) {
+    OrderingController(OrderingService ordering, AssistanceRequests assistance, VisitReviews reviews) {
         this.ordering = ordering;
         this.assistance = assistance;
+        this.reviews = reviews;
     }
 
     @GetMapping("/device")
@@ -141,6 +148,55 @@ class OrderingController {
             @RequestParam(name = "cursor", required = false) String cursor,
             @RequestParam(name = "limit", required = false) String limit) {
         return response(200, assistance.page(actor, null, cursor, limit(limit)));
+    }
+
+    @GetMapping("/sessions/{id}/review")
+    ResponseEntity<String> reviewEligibility(@AuthenticationPrincipal Actor actor, @PathVariable("id") String session) {
+        return response(200, reviews.eligibility(actor, id(session)));
+    }
+
+    @PostMapping(path = "/sessions/{id}/reviews", consumes = JSON_MEDIA)
+    ResponseEntity<String> submitReview(@AuthenticationPrincipal Actor actor, @PathVariable("id") String session,
+            @RequestHeader(name = "Idempotency-Key", required = false) String key, HttpServletRequest request) {
+        JsonNode input = body(request);
+        Set<String> allowed = Set.of("rating", "topics", "comment");
+        if (input == null || !input.isObject()) throw OrderingProblem.bad("Use a review object.");
+        input.fieldNames().forEachRemaining(field -> {
+            if (!allowed.contains(field)) throw OrderingProblem.bad("Unexpected review field.");
+        });
+        Integer rating = input.hasNonNull("rating") ? (int) integer(input, "rating", 1, 5) : null;
+        var topics = EnumSet.noneOf(Topic.class);
+        if (input.has("topics")) {
+            for (JsonNode value : list(input, "topics", 0, 8)) {
+                try {
+                    if (!value.isTextual() || !topics.add(Topic.valueOf(value.textValue()))) {
+                        throw new IllegalArgumentException();
+                    }
+                } catch (IllegalArgumentException e) {
+                    throw OrderingProblem.bad("Use distinct review topics from the contract.");
+                }
+            }
+        }
+        String comment = input.has("comment") ? VisitReviews.plain(text(input, "comment", 500)) : "";
+        if (rating == null && topics.isEmpty() && comment.isEmpty()) {
+            throw new OrderingProblem(422, "INVALID_SELECTION", "Provide a rating, topic, or comment.");
+        }
+        return response(reviews.submit(actor, id(session), id(key), new VisitReviews.Submission(rating, topics, comment)));
+    }
+
+    @GetMapping("/kitchen/reviews")
+    ResponseEntity<String> kitchenReviews(@AuthenticationPrincipal Actor actor,
+            @RequestParam(name = "cursor", required = false) String cursor,
+            @RequestParam(name = "limit", required = false) String limit) {
+        return response(200, reviews.kitchen(actor, cursor, limit(limit)));
+    }
+
+    @PatchMapping(path = "/admin/reviews/{id}/follow-up", consumes = JSON_MEDIA)
+    ResponseEntity<String> followUp(Principal manager, @PathVariable("id") String review, HttpServletRequest request) {
+        JsonNode input = fields(body(request), "followUp", "internalResponse", "expectedVersion");
+        var next = FollowUp.valueOf(choice(input, "followUp", "NEEDS_ATTENTION", "FOLLOWED_UP", "RESOLVED"));
+        return response(200, reviews.followUp(id(review), manager.getName(), next,
+                VisitReviews.plain(text(input, "internalResponse", 500)), integer(input, "expectedVersion", 1, MAX_SAFE)));
     }
 
     @PatchMapping(path = "/kitchen/assistance/{id}", consumes = JSON_MEDIA)
