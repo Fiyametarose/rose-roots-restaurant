@@ -139,7 +139,8 @@ public final class AssistanceState {
 
         private void merge(Request request) {
             requests.merge(request.id(), request, (previous, next) ->
-                    !next.updatedAt().isBefore(previous.updatedAt()) && next.status().ordinal() >= previous.status().ordinal()
+                    !next.updatedAt().isBefore(previous.updatedAt()) && next.version() >= previous.version()
+                            && next.status().ordinal() >= previous.status().ordinal()
                             ? next : previous);
         }
     }

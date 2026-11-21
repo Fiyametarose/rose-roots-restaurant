@@ -29,7 +29,11 @@ public final class AssistanceDialog extends Dialog<Void> {
     private final AssistanceState.Visit visit;
     private final TextArea message = new TextArea();
     private final VBox requestList = new VBox(8);
-    private final VBox form = new VBox(12);
+    private final VBox form = new VBox(10);
+    private final VBox body;
+    private final ScrollPane scroll;
+    private final double maxViewport;
+    private boolean showExisting;
     private final VBox statusPane;
     private final javafx.scene.control.Button viewStatus;
     private final Label connection;
@@ -107,19 +111,21 @@ public final class AssistanceDialog extends Dialog<Void> {
         var actions = new FlowPane(8, 6, send, retry, viewStatus);
         actions.setAlignment(Pos.CENTER);
         form.getChildren().addAll(grid, message, actions);
-        var body = new VBox(12, title, context, connection, result, form, statusPane);
+        body = new VBox(9, title, context, connection, result, form, statusPane);
         body.getStyleClass().add("assistance-body");
         body.setAlignment(Pos.TOP_CENTER);
         if (fixture) body.getChildren().addFirst(FoodCard.label(messages.text("assistance.fixture"), "customization-warning"));
-        var scroll = new ScrollPane(body);
+        scroll = new ScrollPane(body);
         scroll.setFitToWidth(true);
         scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        scroll.setPrefViewportHeight(Math.min(550, Math.max(230, owner.getHeight() - 120)));
+        maxViewport = Math.min(525, Math.max(230, owner.getHeight() - 120));
+        scroll.setPrefViewportHeight(Math.min(maxViewport, 415));
         scroll.getStyleClass().add("catalog-scroll");
         pane.setContent(scroll);
         types.selectedToggleProperty().addListener((property, old, value) -> render());
         message.textProperty().addListener((property, old, value) -> render());
         setOnShown(event -> {
+            showExisting = true;
             observation = visit.observe(this::render);
             grid.getChildren().getFirst().requestFocus();
         });
@@ -137,6 +143,7 @@ public final class AssistanceDialog extends Dialog<Void> {
         visible(form, !show);
         visible(viewStatus, !show);
         visible(statusPane, show);
+        fitPanel();
     }
 
     private void render() {
@@ -147,6 +154,10 @@ public final class AssistanceDialog extends Dialog<Void> {
         visible(retry, outcome == AssistanceState.Outcome.UNCERTAIN);
         retry.setDisable(!visit.canRetry());
         connection.setText(messages.text(key("connection", visit.connection())));
+        if (showExisting && visit.connection() == com.roseroots.customer.services.AssistanceService.Connection.LIVE) {
+            showExisting = false;
+            if (!visit.requests().isEmpty()) viewStatus(true);
+        }
         String feedback = type == Type.OTHER && message.getText().strip().length() > 240 ? "assistance.tooLong"
                 : outcome != AssistanceState.Outcome.IDLE ? key("outcome", outcome)
                 : type != null && visit.duplicate(type) ? "assistance.duplicate" : "";
@@ -164,6 +175,26 @@ public final class AssistanceDialog extends Dialog<Void> {
         if (requestList.getChildren().isEmpty()) {
             requestList.getChildren().add(FoodCard.label(messages.text("assistance.empty"), "catalog-muted"));
         }
+        fitPanel();
+    }
+
+    private boolean sizing;
+
+    private void fitPanel() {
+        if (!isShowing() || sizing) return;
+        sizing = true;
+        javafx.application.Platform.runLater(() -> {
+            sizing = false;
+            if (!isShowing()) return;
+            double width = scroll.getViewportBounds().getWidth();
+            if (width > 0) {
+                double height = Math.min(maxViewport, Math.ceil(body.prefHeight(width)));
+                if (Math.abs(height - scroll.getPrefViewportHeight()) > 2) {
+                    scroll.setPrefViewportHeight(height);
+                    getDialogPane().getScene().getWindow().sizeToScene();
+                }
+            }
+        });
     }
 
     private Type selected() {

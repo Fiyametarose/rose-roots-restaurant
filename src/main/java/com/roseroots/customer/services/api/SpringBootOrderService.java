@@ -95,6 +95,10 @@ public final class SpringBootOrderService implements OrderService {
         return exchange(request(path).GET().build(), false, false, Function.identity());
     }
 
+    CompletionStage<JsonObject> postAssistance(JsonObject body, UUID key) {
+        return call("assistance", body, key, Function.identity());
+    }
+
     CompletionStage<JsonObject> startSession(ServiceMode mode) {
         var body = new JsonObject();
         body.addProperty("mode", mode.name());
