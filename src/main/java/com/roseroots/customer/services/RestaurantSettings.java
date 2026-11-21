@@ -13,4 +13,6 @@ public interface RestaurantSettings {
     List<Locale> languages();
 
     Currency currency();
+
+    default List<com.roseroots.customer.models.CartPricing.Rule> cartCharges() { return List.of(); }
 }

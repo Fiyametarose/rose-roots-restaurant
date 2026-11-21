@@ -3,21 +3,32 @@ package com.roseroots.customer.app;
 import com.roseroots.customer.navigation.Navigator;
 import com.roseroots.customer.navigation.Route;
 import com.roseroots.customer.screens.DishDetailsScreen;
+import com.roseroots.customer.screens.CartScreen;
 import com.roseroots.customer.screens.MenuScreen;
+import com.roseroots.customer.screens.OrdersScreen;
 import com.roseroots.customer.screens.WelcomeScreen;
 import com.roseroots.customer.services.LocalRestaurantSettings;
 import com.roseroots.customer.services.DiningSessionService;
 import com.roseroots.customer.services.mock.MockMenuService;
 import com.roseroots.customer.services.mock.LocalDiningSessionService;
 import com.roseroots.customer.services.mock.LocalTakeawaySessionService;
-import com.roseroots.customer.services.api.SpringBootTakeawaySessionService;
+import com.roseroots.customer.services.LocalDeviceConfiguration;
+import com.roseroots.customer.services.LocalDraftSessionService;
+import com.roseroots.customer.models.TerminalDevice;
 import com.roseroots.customer.services.TakeawaySessionService;
 import com.roseroots.customer.models.ServiceMode;
 import com.roseroots.customer.components.CustomerShell;
 import com.roseroots.customer.state.CustomerState;
+import com.roseroots.customer.state.OrderConfirmation;
+import com.roseroots.customer.services.OrderService;
+import com.roseroots.customer.services.OrderTrackingService;
+import com.roseroots.customer.services.api.BackendAddress;
+import com.roseroots.customer.services.api.CustomerBackend;
+import com.roseroots.customer.services.WaitEstimateService;
+import java.time.Clock;
 import com.roseroots.customer.utils.Messages;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
+
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
@@ -31,6 +42,16 @@ import javafx.stage.Stage;
 public final class CustomerApplication extends Application {
     private static final double DESIGN_WIDTH = 1280;
     private static final double DESIGN_HEIGHT = 800;
+    private final java.util.concurrent.ScheduledExecutorService orderExecutor =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(task -> {
+                var thread = new Thread(task, "customer-order-tracking");
+                thread.setDaemon(true);
+                return thread;
+            });
+
+    @Override public void stop() {
+        orderExecutor.shutdown();
+    }
 
     @Override
     public void start(Stage stage) {
@@ -42,10 +63,11 @@ public final class CustomerApplication extends Application {
         boolean demoTable = args.contains("--demo-table");
         boolean demoTakeaway = demoTable || args.contains("--demo-takeaway");
         var menuService = new MockMenuService(demoTakeaway);
-        DiningSessionService sessions = new LocalDiningSessionService(demoTable);
+        var drafts = new LocalDraftSessionService(demoTable
+                ? new TerminalDevice("demo-only", null, false) : loadInstallation());
+        DiningSessionService sessions = demoTable ? new LocalDiningSessionService(true) : drafts;
         TakeawaySessionService takeaway = demoTakeaway ? new LocalTakeawaySessionService("demo-takeaway-terminal")
-                : new SpringBootTakeawaySessionService(mode -> CompletableFuture.failedFuture(
-                        new IllegalStateException("Terminal transport is not configured")));
+                : () -> drafts.openOrResume(ServiceMode.TAKEAWAY);
         state.setLocale(settings.languages().getFirst());
         var content = new StackPane();
         var navigator = new Navigator(content);
@@ -62,22 +84,52 @@ public final class CustomerApplication extends Application {
         });
         Runnable goHome = () -> navigator.show(Route.WELCOME);
         Runnable goMenu = () -> navigator.show(Route.MENU);
+        Runnable goCart = () -> navigator.show(Route.CART);
+        var editing = new java.util.concurrent.atomic.AtomicReference<java.util.UUID>();
+        java.util.function.Consumer<String> chooseCategory = category -> {
+            state.menu().selectCategory(category);
+            state.menu().rememberScroll(0);
+            goMenu.run();
+        };
+        var estimates = WaitEstimateService.unavailable();
+        var backend = customerBackend(demoTakeaway);
+        var orders = backend == null ? OrderService.unavailable() : backend.orders();
+        var tracking = backend == null ? OrderTrackingService.unavailable() : backend.tracking(orderExecutor);
+        var confirmation = new OrderConfirmation(state, orders, Clock.systemUTC(), Platform::runLater);
+        Runnable goOrders = () -> navigator.show(Route.ORDERS);
+        navigator.register(Route.ORDERS, () -> new OrdersScreen(settings, state, tracking, locale -> {
+            state.setLocale(locale);
+            goOrders.run();
+        }, goHome, goMenu, goCart, chooseCategory, false));
+        Runnable review = () -> navigator.show(Route.ORDER_CONFIRMATION);
+        navigator.register(Route.ORDER_CONFIRMATION, () -> new CartScreen(settings, state, estimates, locale -> {
+            state.setLocale(locale);
+            review.run();
+        }, goHome, goMenu, null, chooseCategory, goCart, confirmation, goOrders));
+        navigator.register(Route.CART, () -> new CartScreen(settings, state, estimates, locale -> {
+            state.setLocale(locale);
+            goCart.run();
+        }, goHome, goMenu, id -> {
+            editing.set(id);
+            navigator.show(Route.DISH_DETAILS);
+        }, chooseCategory, review, null, goOrders));
         navigator.register(Route.MENU, () -> new MenuScreen(settings, state, menuService, locale -> {
             state.setLocale(locale);
             goMenu.run();
         }, goHome, itemId -> {
+            editing.set(null);
             state.menu().selectItem(itemId);
             navigator.show(Route.DISH_DETAILS);
-        }));
-        navigator.register(Route.DISH_DETAILS, () -> new DishDetailsScreen(settings, state,
-                state.menu().catalog().item(state.menu().itemId()), locale -> {
-                    state.setLocale(locale);
-                    navigator.show(Route.DISH_DETAILS);
-                }, goHome, goMenu, category -> {
-                    state.menu().selectCategory(category);
-                    state.menu().rememberScroll(0);
-                    goMenu.run();
-                }));
+        }, goCart, goOrders));
+        navigator.register(Route.DISH_DETAILS, () -> {
+            var lineId = editing.get();
+            var line = lineId == null ? null : state.cart().line(lineId);
+            var item = line == null ? state.menu().catalog().item(state.menu().itemId()) : line.item();
+            return new DishDetailsScreen(settings, state, item, locale -> {
+                state.setLocale(locale);
+                navigator.show(Route.DISH_DETAILS);
+            }, goHome, lineId == null ? goMenu : goCart, chooseCategory, goCart, lineId);
+        });
         navigator.show(Route.WELCOME);
 
         var workArea = Screen.getPrimary().getVisualBounds();
@@ -95,6 +147,30 @@ public final class CustomerApplication extends Application {
         stage.centerOnScreen();
     }
 
+    private static CustomerBackend customerBackend(boolean demo) {
+        if (demo) return null;
+        try {
+            return BackendAddress.configured(System.getenv(BackendAddress.ENVIRONMENT_VARIABLE))
+                    // Authoritative credentials and compatibility are supplied by the shared bootstrap in a later integration.
+                    .map(address -> new CustomerBackend(address, () -> null, () -> false))
+                    .orElse(null);
+        } catch (IllegalArgumentException invalid) {
+            System.getLogger(CustomerApplication.class.getName()).log(System.Logger.Level.WARNING,
+                    "Invalid ROSE_ROOTS_BACKEND_URL. Ordering stays disconnected.");
+            return null;
+        }
+    }
+
+    private static TerminalDevice loadInstallation() {
+        try {
+            return LocalDeviceConfiguration.load(LocalDeviceConfiguration.defaultPath());
+        } catch (java.io.IOException | IllegalArgumentException error) {
+            System.getLogger(CustomerApplication.class.getName()).log(System.Logger.Level.WARNING,
+                    "Terminal configuration could not be loaded. Using an unassigned local draft.");
+            return new TerminalDevice(java.util.UUID.randomUUID().toString(), null, false);
+        }
+    }
+
     public static void main(String[] args) {
         launch(args);
     }
@@ -107,7 +183,7 @@ public final class CustomerApplication extends Application {
         var request = mode == ServiceMode.TAKEAWAY ? takeaway.openOrResume() : dining.openOrResume(mode);
         request.whenComplete((session, error) -> Platform.runLater(() -> {
             content.setDisable(false);
-            if (error != null || session == null || (state.wouldDiscardCart(session) && !session.isOpen())) {
+            if (error != null || session == null || (state.wouldDiscardCart(session) && !session.allowsCart())) {
                 var welcome = content.getChildren().getFirst();
                 var message = new javafx.scene.control.Label(messages.text(mode == ServiceMode.TAKEAWAY
                         ? "session.takeawayRetry" : "session.connectionFailed"));

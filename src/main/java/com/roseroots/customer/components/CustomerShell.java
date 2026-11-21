@@ -14,7 +14,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.Node;
-import javafx.scene.control.Alert;
+
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
@@ -36,16 +36,17 @@ import javafx.scene.shape.Path;
 public final class CustomerShell extends BorderPane {
     private static final PseudoClass COMPACT = PseudoClass.getPseudoClass("compact");
     private final VBox categories = new VBox();
+    private final Button ordersAccess = new Button();
     private final CustomerState state;
     private final CartSummaryBar cartSummary;
-    private final Label cart;
+    private final Button cart;
     private final Messages messages;
 
     public CustomerShell(RestaurantSettings settings, CustomerState state, Messages messages,
-                         Consumer<Locale> chooseLanguage, Runnable goHome) {
+                         Consumer<Locale> chooseLanguage, Runnable goHome, Runnable goCart) {
         this.state = state;
         this.messages = messages;
-        cartSummary = new CartSummaryBar(state, settings, messages);
+        cartSummary = new CartSummaryBar(state, settings, messages, goCart);
         getStyleClass().add("catalog-shell");
         if (messages.language().equals("am")) {
             getStyleClass().add("ethiopic");
@@ -58,7 +59,15 @@ public final class CustomerShell extends BorderPane {
         home.setGraphic(new InterfaceIcon(InterfaceIcon.Kind.HOME));
         home.setOnAction(event -> goHome.run());
         home.getStyleClass().add("catalog-home");
-        var railContents = new VBox(27, brand, categories);
+        ordersAccess.setId("my-orders");
+        ordersAccess.setText(messages.text("orders.title"));
+        ordersAccess.setGraphic(new InterfaceIcon(InterfaceIcon.Kind.ORDERS));
+        ordersAccess.setWrapText(true);
+        ordersAccess.setMaxWidth(Double.MAX_VALUE);
+        ordersAccess.getStyleClass().add("catalog-category");
+        ordersAccess.setVisible(false);
+        ordersAccess.managedProperty().bind(ordersAccess.visibleProperty());
+        var railContents = new VBox(27, brand, new VBox(8, categories, ordersAccess));
         railContents.setAlignment(Pos.TOP_CENTER);
         railContents.getStyleClass().add("catalog-rail-content");
         categories.getStyleClass().add("catalog-categories");
@@ -128,18 +137,18 @@ public final class CustomerShell extends BorderPane {
             }
         });
 
-        var assistance = action(messages.text("catalog.assistance"), false, () -> {
-            var alert = new Alert(Alert.AlertType.INFORMATION, messages.text("catalog.assistance.help"));
-            alert.setTitle(messages.text("catalog.assistance"));
-            alert.setHeaderText(null);
-            alert.initOwner(getScene().getWindow());
-            var theme = CustomerShell.class.getResource("/styles/theme.css");
-            alert.getDialogPane().getStylesheets().add(theme.toExternalForm());
-            alert.showAndWait();
-        });
+        var assistance = action(messages.text("catalog.assistance"), false, () ->
+                new AssistanceDialog(getScene().getWindow(), state, false).show());
+        assistance.setId("header-assistance");
         assistance.setGraphic(new InterfaceIcon(InterfaceIcon.Kind.MAIN));
         assistance.getStyleClass().add("catalog-assistance");
-        cart = new Label("", new InterfaceIcon(InterfaceIcon.Kind.CART));
+        cart = action("", false, () -> {
+            if (goCart != null) {
+                goCart.run();
+            }
+        });
+        cart.setId("header-cart");
+        cart.setGraphic(new InterfaceIcon(InterfaceIcon.Kind.CART));
         cart.getStyleClass().add("catalog-cart");
         refreshCart();
         var tools = new FlowPane(8, 5, locale, assistance, cart);
@@ -168,6 +177,10 @@ public final class CustomerShell extends BorderPane {
     private final Node top;
 
     public void showContent(Node content) {
+        showContent(content, true);
+    }
+
+    public void showContent(Node content, boolean showCartSummary) {
         var area = new BorderPane(content, top, null, null, null);
         var footer = new VBox(6);
         footer.getStyleClass().add("catalog-footer");
@@ -179,8 +192,8 @@ public final class CustomerShell extends BorderPane {
             notice.getStyleClass().add("session-notice");
             footer.getChildren().add(notice);
         }
-        footer.getChildren().add(cartSummary);
-        area.setBottom(footer);
+        if (showCartSummary) footer.getChildren().add(cartSummary);
+        if (!footer.getChildren().isEmpty()) area.setBottom(footer);
         setCenter(area);
     }
 
@@ -188,6 +201,15 @@ public final class CustomerShell extends BorderPane {
         cart.setText(messages.text("catalog.cart") + "  ·  " +
                 java.text.NumberFormat.getIntegerInstance(state.locale()).format(state.cart().count()));
         cartSummary.refresh();
+    }
+
+    public void showOrdersAccess(Runnable action, boolean selected) {
+        ordersAccess.setVisible(true);
+        ordersAccess.setOnAction(event -> action.run());
+        if (selected) {
+            ordersAccess.getStyleClass().add("category-active");
+            categories.getChildren().forEach(node -> node.getStyleClass().remove("category-active"));
+        }
     }
 
     public void displayCategories(MenuCatalog catalog, Locale locale, Consumer<String> onCategory) {
@@ -248,8 +270,15 @@ public final class CustomerShell extends BorderPane {
         };
     }
 
-    private static String sessionContext(CustomerState state, Messages messages) {
+    public static String sessionContext(CustomerState state, Messages messages) {
         var session = state.terminalSession();
+        if (session != null && session.status() == com.roseroots.customer.models.TerminalSession.Status.LOCAL_DRAFT) {
+            String label = session.device().table() == null
+                    ? messages.text(state.serviceMode() == ServiceMode.DINE_IN
+                            ? "service.dineIn" : "service.takeaway")
+                    : messages.text("session.table") + " " + session.device().table().displayNumber();
+            return label + "  ·  " + messages.text("session.localDraft");
+        }
         if (state.serviceMode() == ServiceMode.DINE_IN) {
             if (session == null || session.device().table() == null) {
                 return messages.text("service.dineIn");

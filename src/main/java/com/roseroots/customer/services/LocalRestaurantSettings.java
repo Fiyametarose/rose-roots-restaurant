@@ -11,6 +11,15 @@ public final class LocalRestaurantSettings implements RestaurantSettings {
     private final ResourceBundle settings = ResourceBundle.getBundle("restaurant", Locale.ROOT);
 
     @Override
+    public List<com.roseroots.customer.models.CartPricing.Rule> cartCharges() {
+        return java.util.stream.Stream.of("service", "tax")
+                .filter(key -> settings.containsKey("cart.charge." + key + ".percent"))
+                .map(key -> new com.roseroots.customer.models.CartPricing.Rule("cart.charge." + key,
+                        new java.math.BigDecimal(settings.getString("cart.charge." + key + ".percent"))))
+                .toList();
+    }
+
+    @Override
     public Currency currency() {
         return Currency.getInstance(settings.getString("currency"));
     }

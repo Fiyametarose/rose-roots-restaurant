@@ -197,6 +197,34 @@ public final class MockMenuService implements MenuService {
         return new MenuItem(id, category, cuisine, new LocalizedText(name), new LocalizedText(summary),
                 new LocalizedText(description), BigDecimal.valueOf(price), "/images/menu/" + id + ".jpg",
                 ingredients.stream().map(LocalizedText::new).toList(), safety, spice, availability, highlights,
-                minutes == null ? null : Duration.ofMinutes(minutes), List.of());
+                minutes == null ? null : Duration.ofMinutes(minutes), options(id));
+    }
+
+    private static List<MenuItem.CustomizationGroup> options(String itemId) {
+        return switch (itemId) {
+            case "doro-wat" -> List.of(
+                    group("spice", "Spice level", MenuItem.CustomizationGroup.Selection.SPICE, 1, 1,
+                            choice("medium", "Medium", 0), choice("mild", "Mild", 0), choice("hot", "Hot", 0)),
+                    group("portion", "Portion size", MenuItem.CustomizationGroup.Selection.PORTION, 1, 1,
+                            choice("regular", "Regular", 0), choice("large", "Large", 300)),
+                    group("side", "Side dish", MenuItem.CustomizationGroup.Selection.SIDE, 1, 1,
+                            choice("injera", "Injera", 0, Allergen.WHEAT), choice("rice", "Rice", 0),
+                            choice("potatoes", "Roasted potatoes", 110)),
+                    group("extras", "Extras", MenuItem.CustomizationGroup.Selection.EXTRA, 0, 2,
+                            choice("extra-egg", "Extra egg", 90, Allergen.EGGS),
+                            choice("yogurt", "Yogurt", 120, Allergen.MILK)));
+            case "grilled-fish" -> List.of(group("side", "Side dish", MenuItem.CustomizationGroup.Selection.SIDE,
+                    1, 1, choice("potatoes", "Roasted potatoes", 0), choice("rice", "Rice", 0)));
+            default -> List.of();
+        };
+    }
+
+    private static MenuItem.CustomizationGroup group(String id, String label,
+            MenuItem.CustomizationGroup.Selection kind, int min, int max, MenuItem.CustomizationGroup.Choice... choices) {
+        return new MenuItem.CustomizationGroup(id, new LocalizedText(label), kind, min, max, List.of(choices));
+    }
+
+    private static MenuItem.CustomizationGroup.Choice choice(String id, String label, int price, Allergen... allergens) {
+        return new MenuItem.CustomizationGroup.Choice(id, new LocalizedText(label), BigDecimal.valueOf(price), Set.of(allergens));
     }
 }

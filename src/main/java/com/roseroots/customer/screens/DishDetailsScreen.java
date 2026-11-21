@@ -1,6 +1,7 @@
 package com.roseroots.customer.screens;
 
 import com.roseroots.customer.components.CustomerShell;
+import com.roseroots.customer.components.DishCustomizer;
 import com.roseroots.customer.components.FoodCard;
 import com.roseroots.customer.components.InterfaceIcon;
 import com.roseroots.customer.components.MenuPhoto;
@@ -28,13 +29,13 @@ import javafx.scene.layout.VBox;
 public final class DishDetailsScreen extends StackPane {
     public DishDetailsScreen(RestaurantSettings settings, CustomerState state, MenuItem item,
                              Consumer<Locale> onLanguage, Runnable goHome, Runnable goBack,
-                             Consumer<String> selectCategory) {
+                             Consumer<String> selectCategory, Runnable goCart, java.util.UUID lineId) {
         var locale = state.locale();
         var messages = new Messages(locale);
-        var shell = new CustomerShell(settings, state, messages, onLanguage, goHome);
+        var shell = new CustomerShell(settings, state, messages, onLanguage, goHome, goCart);
         var catalog = state.menu().catalog();
         shell.displayCategories(catalog, locale, selectCategory);
-        var back = CustomerShell.action(messages.text("catalog.backToMenu"), false, goBack);
+        var back = CustomerShell.action(messages.text(lineId == null ? "catalog.backToMenu" : "cart.review"), false, goBack);
         back.setGraphic(new InterfaceIcon(InterfaceIcon.Kind.BACK));
         back.setId("back-to-menu");
         var title = FoodCard.label(messages.text("catalog.dishDetails"), "catalog-heading");
@@ -71,16 +72,6 @@ public final class DishDetailsScreen extends StackPane {
             var attributes = new FlowPane(10, 5, meta, available);
             attributes.setAlignment(Pos.CENTER_LEFT);
             var overview = new VBox(9, photoFrame, nameRow, attributes, description);
-            var add = CustomerShell.action(messages.text("cart.add"), true, () -> {
-                if (state.addToDraft(item)) {
-                    shell.refreshCart();
-                }
-            });
-            add.setId("add-to-draft");
-            add.setMaxWidth(Double.MAX_VALUE);
-            add.getStyleClass().add("dish-add-draft");
-            add.setDisable(state.terminalSession() == null || !state.terminalSession().isOpen()
-                    || item.availability() != MenuItem.Availability.AVAILABLE);
 
             var ingredients = item.ingredients().stream().map(value -> value.in(locale)).collect(Collectors.joining(", "));
             var safety = item.safety();
@@ -105,14 +96,20 @@ public final class DishDetailsScreen extends StackPane {
                 info.getChildren().add(section(messages, "catalog.preparation",
                         minutes + " " + messages.text("catalog.minutes") + " · " + messages.text("catalog.preparationNote")));
             }
-            info.getChildren().add(add);
-            var columns = new FlowPane(18, 18, overview, info);
+            overview.getChildren().add(info);
+            var customizer = new DishCustomizer(item, lineId, state, settings, messages, () -> {
+                shell.refreshCart();
+                if (lineId != null) {
+                    goCart.run();
+                }
+            });
+            var columns = new FlowPane(18, 18, overview, customizer);
             columns.getStyleClass().add("dish-columns");
             scroller.viewportBoundsProperty().addListener((property, previous, next) -> {
                 double usable = Math.max(0, next.getWidth() - 44);
                 double columnSpace = Math.max(0, usable - 20);
                 overview.setPrefWidth(usable < 670 ? usable : columnSpace * .45);
-                info.setPrefWidth(usable < 670 ? usable : columnSpace * .55);
+                customizer.setPrefWidth(usable < 670 ? usable : columnSpace * .55);
             });
             content.getChildren().add(columns);
         }
