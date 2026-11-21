@@ -73,7 +73,9 @@ public final class CustomerApplication extends Application {
         var state = backend == null ? new CustomerState() : new CustomerState(new com.roseroots.customer.state.AssistanceState(
                 new com.roseroots.customer.services.api.SpringBootAssistanceService(
                         new com.roseroots.customer.services.api.RestAssistanceClient(backend, orderExecutor)),
-                Clock.systemUTC(), Platform::runLater));
+                Clock.systemUTC(), Platform::runLater),
+                new com.roseroots.customer.state.ReviewState(
+                        new com.roseroots.customer.services.api.RestReviewClient(backend), Platform::runLater));
         var menuService = connected
                 ? (backend == null ? (com.roseroots.customer.services.MenuService) () -> disconnected() : new ConnectedCatalog(backend, address))
                 : new MockMenuService(demoTakeaway);

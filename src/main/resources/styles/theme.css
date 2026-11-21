@@ -900,3 +900,16 @@
     -fx-padding: 7 10;
     -fx-text-fill: -rr-forest-green;
 }
+
+.review-star {
+    -fx-font-size: 28px;
+    -fx-min-width: 48;
+    -fx-min-height: 46;
+    -fx-background-color: -rr-cream;
+    -fx-border-color: -rr-line;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-text-fill: -rr-gold;
+    -fx-cursor: hand;
+}
+.review-star:focused, .review-star:hover { -fx-border-color: -rr-forest-green; }

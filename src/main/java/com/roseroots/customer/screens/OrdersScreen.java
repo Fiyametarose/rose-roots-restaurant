@@ -109,7 +109,11 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
         var billHeader = new VBox(4, billHeading,
                 FoodCard.label(CustomerShell.sessionContext(customer, messages), "orders-bill-context"));
         billHeader.getStyleClass().add("orders-bill-header");
-        var billPanel = new VBox(11, billHeader, summary, more, bill, backToOrders);
+        var review = CustomerShell.action(messages.text("review.action"), false, () ->
+                new com.roseroots.customer.components.ReviewDialog(getScene().getWindow(), customer).show());
+        review.setId("open-review");
+        review.setMaxWidth(Double.MAX_VALUE);
+        var billPanel = new VBox(11, billHeader, summary, more, bill, backToOrders, review);
         billPanel.getStyleClass().addAll("dish-information", "orders-bill-panel");
         var listScroll = scroll(cards);
         var billScroll = scroll(billPanel);
