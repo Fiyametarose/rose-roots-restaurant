@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Rose & Roots shared ordering API",
-    "version": "1.0.0-draft.2",
+    "version": "1.0.0-draft.3",
     "description": "Review draft for Customer, Staff and Spring Boot. No endpoint in this document is declared implemented."
   },
   "servers": [
@@ -2237,6 +2237,425 @@
           }
         }
       }
+    },
+    "/kitchen/orders/{id}/handoff": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Id"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "completeOrderHandoff",
+        "security": [
+          {
+            "staffBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KitchenTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "description": "Explicitly hand off READY food. SERVED requires DINE_IN; COLLECTED requires TAKEAWAY. expectedVersion is the order version. A stale replay returns VERSION_CONFLICT.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandoffChange"
+              },
+              "example": {
+                "status": "SERVED",
+                "expectedVersion": 3
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{id}/review": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Id"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getOwnReviewEligibility",
+        "security": [
+          {
+            "terminalBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewEligibility"
+                },
+                "example": {
+                  "eligible": true,
+                  "review": null
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "description": "Check review eligibility and read an existing review. Only a session owned by the terminal is visible. READY alone does not grant eligibility."
+      }
+    },
+    "/sessions/{id}/reviews": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Id"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "submitSessionReview",
+        "security": [
+          {
+            "terminalBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Review"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000201",
+                  "sessionId": "00000000-0000-4000-8000-000000000202",
+                  "submittedAt": "2026-11-21T18:10:00Z",
+                  "rating": 1,
+                  "topics": [
+                    "TEMPERATURE"
+                  ],
+                  "comment": "The soup arrived cold."
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Review"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000201",
+                  "sessionId": "00000000-0000-4000-8000-000000000202",
+                  "submittedAt": "2026-11-21T18:10:00Z",
+                  "rating": 1,
+                  "topics": [
+                    "TEMPERATURE"
+                  ],
+                  "comment": "The soup arrived cold."
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "description": "Optional review after at least one item actually served or collected. Send at least one rating, topic or nonblank comment. Skip by making no submission. One review per session. Same-key replay returns the original review. A different key after acceptance returns REVIEW_ALREADY_EXISTS.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewInput"
+              },
+              "example": {
+                "rating": 1,
+                "topics": [
+                  "TEMPERATURE"
+                ],
+                "comment": "The soup arrived cold."
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          }
+        ]
+      }
+    },
+    "/kitchen/reviews": {
+      "parameters": [
+        {
+          "name": "cursor",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 50
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listKitchenReviews",
+        "security": [
+          {
+            "staffBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KitchenReviewPage"
+                },
+                "example": {
+                  "reviews": [
+                    {
+                      "id": "00000000-0000-4000-8000-000000000201",
+                      "submittedAt": "2026-11-21T18:10:00Z",
+                      "rating": 1,
+                      "topics": [
+                        "TEMPERATURE"
+                      ],
+                      "comment": "The soup arrived cold."
+                    }
+                  ],
+                  "nextCursor": null
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "description": "Restaurant-scoped food or preparation feedback. Filters to Kitchen topics and omits the session identifier, destination, and Manager notes. Includes relevant negative feedback."
+      }
+    },
+    "/admin/reviews/{id}/follow-up": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Id"
+          }
+        }
+      ],
+      "patch": {
+        "operationId": "updateManagerReviewFollowUp",
+        "security": [
+          {
+            "managerCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagerReviewFollowUp"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000201",
+                  "followUp": "FOLLOWED_UP",
+                  "internalResponse": "Checked service process with the shift lead.",
+                  "version": 2
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "description": "Requires the existing Manager session and a CSRF token. Writes update the Manager projection and audit, never Customer or Kitchen feedback.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagerReviewFollowUpChange"
+              },
+              "example": {
+                "followUp": "FOLLOWED_UP",
+                "internalResponse": "Checked service process with the shift lead.",
+                "expectedVersion": 1
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -3615,7 +4034,9 @@
               "INVALID_TRANSITION",
               "THROTTLED",
               "SERVICE_UNAVAILABLE",
-              "ALLERGEN_CONFLICT"
+              "ALLERGEN_CONFLICT",
+              "REVIEW_NOT_ELIGIBLE",
+              "REVIEW_ALREADY_EXISTS"
             ]
           },
           "detail": {
@@ -3876,6 +4297,275 @@
             "maxLength": 500
           }
         }
+      },
+      "ReviewInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [],
+        "properties": {
+          "rating": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 5
+          },
+          "topics": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "FOOD_QUALITY",
+                "TASTE",
+                "TEMPERATURE",
+                "ORDER_ACCURACY",
+                "PREPARATION_SPEED",
+                "CLEANLINESS",
+                "STAFF_HELPFULNESS",
+                "AMBIENCE"
+              ]
+            },
+            "uniqueItems": true,
+            "maxItems": 8
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      },
+      "Review": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "sessionId",
+          "submittedAt",
+          "rating",
+          "topics",
+          "comment"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "sessionId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "submittedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "rating": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 5
+          },
+          "topics": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "FOOD_QUALITY",
+                "TASTE",
+                "TEMPERATURE",
+                "ORDER_ACCURACY",
+                "PREPARATION_SPEED",
+                "CLEANLINESS",
+                "STAFF_HELPFULNESS",
+                "AMBIENCE"
+              ]
+            },
+            "uniqueItems": true,
+            "maxItems": 8
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      },
+      "ReviewEligibility": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "eligible",
+          "review"
+        ],
+        "properties": {
+          "eligible": {
+            "type": "boolean"
+          },
+          "review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Review"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "KitchenReview": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "submittedAt",
+          "rating",
+          "topics",
+          "comment"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "submittedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "rating": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 5
+          },
+          "topics": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "FOOD_QUALITY",
+                "TASTE",
+                "TEMPERATURE",
+                "ORDER_ACCURACY",
+                "PREPARATION_SPEED",
+                "CLEANLINESS",
+                "STAFF_HELPFULNESS",
+                "AMBIENCE"
+              ]
+            },
+            "uniqueItems": true,
+            "maxItems": 8
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      },
+      "KitchenReviewPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reviews",
+          "nextCursor"
+        ],
+        "properties": {
+          "reviews": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KitchenReview"
+            },
+            "maxItems": 200
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 500
+          }
+        }
+      },
+      "HandoffChange": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "expectedVersion"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "SERVED",
+              "COLLECTED"
+            ]
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "ManagerReviewFollowUpChange": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "followUp",
+          "internalResponse",
+          "expectedVersion"
+        ],
+        "properties": {
+          "followUp": {
+            "type": "string",
+            "enum": [
+              "NEEDS_ATTENTION",
+              "FOLLOWED_UP",
+              "RESOLVED"
+            ]
+          },
+          "internalResponse": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "ManagerReviewFollowUp": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "followUp",
+          "internalResponse",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "followUp": {
+            "type": "string",
+            "enum": [
+              "NEEDS_ATTENTION",
+              "FOLLOWED_UP",
+              "RESOLVED"
+            ]
+          },
+          "internalResponse": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        }
       }
     },
     "responses": {
@@ -4022,6 +4712,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Server-issued token with admin permission"
+      },
+      "managerCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "JSESSIONID"
       }
     }
   },

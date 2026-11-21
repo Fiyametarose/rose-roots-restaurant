@@ -1,10 +1,12 @@
-# Shared Customer Reviews contract proposal
+# Shared Customer Reviews and Handoff contract
 
-**Status** Awaiting Customer, Kitchen, and Admin approval. The first slice proposes one authentic visit review per eligible dining session. Server-issued UUIDs link the review to the session internally. The current Customer checkout has no review submission interface. Kitchen's existing local model uses numeric fixture IDs and requires a rating. Admin's existing read projection supports UUIDs and unrated submissions. [Current Admin review behavior](admin-phase-3b.md)
+One optional visit review is available after food from that session has been explicitly served or collected. [OpenAPI draft 3](ordering-api-v1.openapi.json) contains the wire shapes for Customer, Kitchen, and Managers.
 
 ## Eligibility and submission
 
-Propose `POST /api/v1/sessions/{id}/reviews` for the terminal bearer that owns a session with at least one accepted, non-cancelled order. The server evaluates eligibility and assigns the UUID and timestamps. Confirm whether to allow reviews while the session is open and set a review window for closed or expired sessions. For the first slice, a review can be ratings-only or written, with at least one rating, topic, or nonblank comment.
+An authenticated Kitchen staff bearer records actual handoff via `POST /api/v1/kitchen/orders/{id}/handoff`. Send the order's current `expectedVersion` with `SERVED` for Dine-In or `COLLECTED` for Takeaway. The server checks that the order is READY in the staff member's restaurant and that each non-cancelled line is ready and cleared. It records the actor and time along with the order, item, and outbox versions. READY alone has no review eligibility.
+
+The owning terminal reads `GET /api/v1/sessions/{id}/review` for `eligible` and the existing review, if any. The terminal may submit `POST /api/v1/sessions/{id}/reviews` after at least one item has been served or collected. A session's expiry prevents further orders and leaves the existing review entitlement available to its authenticated owner. Skipping the optional form creates no request, review, or rating.
 
 | Field | Proposed contract |
 |---|---|
@@ -13,16 +15,16 @@ Propose `POST /api/v1/sessions/{id}/reviews` for the terminal bearer that owns a
 | `comment` | Optional plain text, trimmed and limited to 500 characters. |
 | `Idempotency-Key` | Required UUID scoped to the authenticated terminal and session. |
 
-`201` returns the accepted review. An identical replay returns the original acceptance with `200`. Changed input under the same key returns `409 IDEMPOTENCY_CONFLICT`. A second independently keyed submission for the same session returns `409 REVIEW_ALREADY_EXISTS`. Use `422 REVIEW_NOT_ELIGIBLE` when the owned session fails eligibility, and retain the existing Problem envelope, authentication errors, and scoped `404` behavior. Propose `GET /api/v1/sessions/{id}/review` for owner-scoped readback after reconnect.
+Send at least one rating, topic, or nonblank comment. `201` returns the accepted review. An identical replay returns the original acceptance with `200`. Changed input under the same key returns `409 IDEMPOTENCY_CONFLICT`. A second independently keyed submission returns `409 REVIEW_ALREADY_EXISTS`. An owned session without actual handoff receives `422 REVIEW_NOT_ELIGIBLE`.
 
 ## Storage and staff access
 
-Persist the review UUID, session foreign key, submitted time, nullable rating, topics, original comment, submission key, canonical request digest, and moderation visibility. A unique session constraint and transactional idempotency prevent duplicate reviews. Keep Manager follow-up and internal notes in separate records with actor, version, and timestamps when those mutations are approved.
+Persist the review UUID, session foreign key, submitted time, nullable rating, topics, original comment, submission key, and canonical request digest. A unique session constraint and transactional idempotency prevent duplicate reviews. Treat all comments as plain text. Rating and sentiment do not filter a review out of its authorized projection.
 
-- **Kitchen** uses restaurant-scoped `GET /api/v1/kitchen/reviews` with an opaque cursor and limit. Return only published food-related topics, rating, submission time, and comment cleared for Kitchen. The eligible topics are `FOOD_QUALITY`, `TASTE`, `TEMPERATURE`, `ORDER_ACCURACY`, and `PREPARATION_SPEED`. Free-text comments and session or table identifiers require an explicit privacy decision before adding them to the Kitchen projection.
-- **Managers** retain the existing cookie-protected `GET /api/v1/admin/reviews` filters and insights. Populate its existing review source from PostgreSQL. Keep internal notes and follow-up details within the Manager projection.
+- **Kitchen** uses restaurant-scoped `GET /api/v1/kitchen/reviews` with an opaque cursor and limit. Return reviews tagged with `FOOD_QUALITY`, `TASTE`, `TEMPERATURE`, `ORDER_ACCURACY`, or `PREPARATION_SPEED`. Project the matching topics, rating, submission time, and original feedback text for those reviews. The Customer form should explain that tagging a food or preparation topic shares the feedback text with Kitchen. Session and table identifiers and Manager follow-up stay private to their other projections.
+- **Managers** retain the existing cookie-protected `GET /api/v1/admin/reviews` filters and insights. `PATCH /api/v1/admin/reviews/{id}/follow-up` requires a Manager cookie and CSRF token. Send `followUp`, `internalResponse`, and the current `expectedVersion`. Persist the Manager principal, status, internal note, timestamp, and version in the private follow-up audit. A stale edit returns `409 VERSION_CONFLICT`.
 - **Customer** sees the status of its own submission. Staff credentials cannot submit on a customer's behalf. Connected views use persisted records and show empty or unavailable states as appropriate.
 
 ## Acceptance
 
-Verify PostgreSQL persistence, concurrent same-key replay, session ownership, rejection of duplicate submissions, and Kitchen and Manager access boundaries. Verify that unrated reviews do not affect averages and that suppressed comments and private fields stay out of the Kitchen projection. Confirm eligibility, nullable rating, Kitchen comment visibility, and moderation defaults before adding the schema to a shared OpenAPI revision.
+Verify explicit Dine-In and Takeaway handoff, READY rejection, PostgreSQL persistence, concurrent same-key replay, session ownership, duplicate rejection, and Kitchen and Manager access boundaries. Verify that unrated reviews do not affect averages, a skipped form leaves review counts unchanged, and relevant low ratings remain visible. Verify Manager edits are versioned and private.
