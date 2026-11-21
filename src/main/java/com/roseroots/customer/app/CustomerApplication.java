@@ -20,6 +20,8 @@ import com.roseroots.customer.components.CustomerShell;
 import com.roseroots.customer.state.CustomerState;
 import com.roseroots.customer.state.OrderConfirmation;
 import com.roseroots.customer.services.OrderService;
+import com.roseroots.customer.services.api.BackendAddress;
+import com.roseroots.customer.services.api.CustomerBackend;
 import com.roseroots.customer.services.WaitEstimateService;
 import java.time.Clock;
 import com.roseroots.customer.utils.Messages;
@@ -78,7 +80,7 @@ public final class CustomerApplication extends Application {
             goMenu.run();
         };
         var estimates = WaitEstimateService.unavailable();
-        var confirmation = new OrderConfirmation(state, OrderService.unavailable(), Clock.systemUTC(), Platform::runLater);
+        var confirmation = new OrderConfirmation(state, orderService(demoTakeaway), Clock.systemUTC(), Platform::runLater);
         Runnable review = () -> navigator.show(Route.ORDER_CONFIRMATION);
         navigator.register(Route.ORDER_CONFIRMATION, () -> new CartScreen(settings, state, estimates, locale -> {
             state.setLocale(locale);
@@ -123,6 +125,20 @@ public final class CustomerApplication extends Application {
         stage.setFullScreen(getParameters().getRaw().contains("--fullscreen"));
         stage.show();
         stage.centerOnScreen();
+    }
+
+    private static OrderService orderService(boolean demo) {
+        if (demo) return OrderService.unavailable();
+        try {
+            return BackendAddress.configured(System.getenv(BackendAddress.ENVIRONMENT_VARIABLE))
+                    // Authoritative credentials and compatibility are supplied by the shared bootstrap in a later integration.
+                    .<OrderService>map(address -> new CustomerBackend(address, () -> null, () -> false).orders())
+                    .orElseGet(OrderService::unavailable);
+        } catch (IllegalArgumentException invalid) {
+            System.getLogger(CustomerApplication.class.getName()).log(System.Logger.Level.WARNING,
+                    "Invalid ROSE_ROOTS_BACKEND_URL. Ordering stays disconnected.");
+            return OrderService.unavailable();
+        }
     }
 
     private static TerminalDevice loadInstallation() {

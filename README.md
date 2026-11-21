@@ -90,3 +90,7 @@ table.displayNumber=07
 ```
 
 Restart after editing. Preserve a different `device.id` on each tablet. In production the operator should provision the ID and protect the file with OS permissions. The future authenticated backend must validate the device and table mapping and issue its own session ID and pickup reference. Local drafts stay in memory. Returning to Welcome and selecting the same mode restores the draft. Changing service modes with items prompts before discarding the previous draft.
+
+## Two-PC Windows demonstration
+
+See the [Windows deployment and physical acceptance plan](docs/two-pc-windows-demo.md) for independent launch, `ROSE_ROOTS_BACKEND_URL`, TLS, firewall setup and the real order and reconnect checks.

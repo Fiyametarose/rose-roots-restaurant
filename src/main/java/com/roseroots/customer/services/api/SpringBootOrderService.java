@@ -40,6 +40,43 @@ public final class SpringBootOrderService implements OrderService {
         this.compatible = compatible;
     }
 
+    public SpringBootOrderService(BackendAddress address, Supplier<String> credential, BooleanSupplier compatible) {
+        this(address.api(), credential, compatible);
+    }
+
+    /** Rebuild the current session view after subscribing or reconnecting. */
+    public CompletionStage<SessionSnapshot> snapshot(UUID session) {
+        String prefix = "sessions/" + session;
+        return history(session, prefix + "/orders", null, new java.util.HashSet<>(), new java.util.ArrayList<>())
+                .thenCombine(get(prefix + "/bill"), (orders, bill) -> {
+                    if (!session.equals(id(bill, "sessionId"))) throw new Problem("INVALID_RESPONSE", false);
+                    return new SessionSnapshot(session, orders, totals(bill.getAsJsonObject("totals")));
+                });
+    }
+
+    public record SessionSnapshot(UUID sessionId, List<Ordering.Accepted> orders, Ordering.Totals totals) {
+        public SessionSnapshot { orders = List.copyOf(orders); }
+    }
+
+    private CompletionStage<List<Ordering.Accepted>> history(UUID session, String path, String cursor,
+            java.util.Set<String> seen, java.util.List<Ordering.Accepted> orders) {
+        var suffix = cursor == null ? "" : "?cursor=" + java.net.URLEncoder.encode(cursor, java.nio.charset.StandardCharsets.UTF_8);
+        return get(path + suffix).thenCompose(page -> {
+            for (var order : list(page, "orders", SpringBootOrderService::readAccepted)) {
+                if (!session.equals(order.sessionId())) throw new Problem("INVALID_RESPONSE", false);
+                orders.add(order);
+            }
+            if (page.get("nextCursor").isJsonNull()) return java.util.concurrent.CompletableFuture.completedFuture(orders);
+            String next = string(page, "nextCursor");
+            if (next.isBlank() || next.length() > 500 || !seen.add(next)) throw new Problem("INVALID_RESPONSE", false);
+            return history(session, path, next, seen, orders);
+        });
+    }
+
+    private CompletionStage<JsonObject> get(String path) {
+        return exchange(request(path).GET().build(), false, Function.identity());
+    }
+
     @Override public boolean available() { return compatible.getAsBoolean(); }
 
     @Override public CompletionStage<Ordering.Quote> quote(Ordering.Draft draft) {
@@ -54,27 +91,34 @@ public final class SpringBootOrderService implements OrderService {
     }
 
     private <T> CompletionStage<T> call(String path, JsonObject body, UUID key, Function<JsonObject, T> read) {
-        if (!available()) throw new Problem("SERVICE_UNAVAILABLE", key != null);
-        var token = credential.get();
-        if (token == null || token.isBlank()) throw new Problem("UNAUTHENTICATED", key != null);
-        var request = HttpRequest.newBuilder(api.resolve(path)).timeout(Duration.ofSeconds(12))
-                .header("Authorization", "Bearer " + token)
-                .header("Accept", "application/json, application/problem+json")
-                .header("Content-Type", "application/json")
+        var request = request(path).header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString()));
         if (key != null) request.header("Idempotency-Key", key.toString());
-        return client.sendAsync(request.build(), HttpResponse.BodyHandlers.ofString()).handle((reply, failure) -> {
-            if (failure != null) throw new Problem("CONNECTION_INTERRUPTED", key != null);
+        return exchange(request.build(), key != null, read);
+    }
+
+    private HttpRequest.Builder request(String path) {
+        if (!available()) throw new Problem("SERVICE_UNAVAILABLE", true);
+        var token = credential.get();
+        if (token == null || !token.matches("[A-Za-z0-9._~+/-]+=*")) throw new Problem("UNAUTHENTICATED", true);
+        return HttpRequest.newBuilder(api.resolve(path)).timeout(Duration.ofSeconds(12))
+                .header("Authorization", "Bearer " + token)
+                .header("Accept", "application/json, application/problem+json");
+    }
+
+    private <T> CompletionStage<T> exchange(HttpRequest request, boolean submitting, Function<JsonObject, T> read) {
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofString()).handle((reply, failure) -> {
+            if (failure != null) throw new Problem("CONNECTION_INTERRUPTED", submitting);
             int status = reply.statusCode();
             var media = reply.headers().firstValue("Content-Type").orElse("").split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
-            if ((status == 200 || (key != null && status == 201)) && media.equals("application/json")) {
+            if ((status == 200 || (submitting && status == 201)) && media.equals("application/json")) {
                 try {
                     return read.apply(JsonParser.parseString(reply.body()).getAsJsonObject());
                 } catch (RuntimeException error) {
-                    throw new Problem("INVALID_RESPONSE", key != null);
+                    throw new Problem("INVALID_RESPONSE", submitting);
                 }
             }
-            throw responseProblem(status, media, reply.body(), key != null);
+            throw responseProblem(status, media, reply.body(), submitting);
         });
     }
 
