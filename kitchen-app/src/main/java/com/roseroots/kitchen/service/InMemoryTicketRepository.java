@@ -14,7 +14,7 @@ public final class InMemoryTicketRepository implements TicketRepository {
     }
 
     @Override
-    public synchronized List<Ticket> activeTickets() {
+    public synchronized List<Ticket> tickets() {
         return List.copyOf(tickets.values());
     }
 

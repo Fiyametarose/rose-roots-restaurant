@@ -6,7 +6,13 @@ import com.roseroots.kitchen.model.Ticket.Status;
 import java.util.List;
 
 public interface KitchenService {
+    default boolean local() { return true; }
+
+    default boolean writesAvailable() { return true; }
+
     List<Ticket> activeTickets();
+
+    List<Ticket> historyTickets();
 
     // Advance only items currently in the expected state and visible in the station scope.
     void advance(long ticketId, Station station, Status expected);

@@ -22,17 +22,18 @@ public final class OrderDetails extends VBox {
     private static final DateTimeFormatter SUBMITTED = DateTimeFormatter.ofPattern("MMM d, yyyy · h:mm:ss a xxx", Locale.ENGLISH);
     private final KitchenService service;
     private final Clock clock;
+    private final Button backButton = new Button();
     private final VBox content = new VBox(9);
     private final Label elapsed = label("", "elapsed");
     private final FlowPane badges = new FlowPane(6, 4);
     private Ticket ticket;
+    private long selectedTicketId;
     private boolean delayed;
 
     public OrderDetails(KitchenService service, Clock clock, Runnable back) {
         this.service = service;
         this.clock = clock;
         setSpacing(9);
-        Button backButton = new Button("← Live Orders");
         backButton.getStyleClass().addAll("filter", "back-to-orders");
         backButton.setOnAction(event -> back.run());
         ScrollPane scroll = new ScrollPane(content);
@@ -42,7 +43,13 @@ public final class OrderDetails extends VBox {
         getChildren().addAll(backButton, scroll);
     }
 
-    public void open(long ticketId) {
+    public void open(long ticketId, String backDestination) {
+        selectedTicketId = ticketId;
+        backButton.setText("← " + backDestination);
+        render(ticketId);
+    }
+
+    private void render(long ticketId) {
         ticket = service.activeTickets().stream().filter(order -> order.id() == ticketId).findFirst().orElse(null);
         content.getChildren().clear();
         if (ticket == null) {
@@ -55,7 +62,7 @@ public final class OrderDetails extends VBox {
         header.setAlignment(Pos.CENTER_LEFT);
         FlowPane progress = new FlowPane(7, 4);
         progress.getStyleClass().add("detail-progress");
-        for (Status status : Status.values()) {
+        for (Status status : Status.LANES) {
             long count = ticket.items().stream().filter(item -> item.status() == status).count();
             Label stage = label(status.label + " · " + count, "detail-stage");
             stage.setAccessibleText(status.label + " items: " + count);
@@ -72,15 +79,25 @@ public final class OrderDetails extends VBox {
 
         long ready = ticket.items().stream().filter(item -> item.status() == Status.READY).count();
         Label heading = label("Order items  ·  " + ready + " of " + ticket.items().size() + " ready", "detail-section");
-        content.getChildren().addAll(overview, heading);
+        content.getChildren().add(overview);
+        if (ticket.server() != null && !ticket.server().visitAllergy().isBlank()) {
+            content.getChildren().add(label("Visit allergy: " + ticket.server().visitAllergy(), "allergen"));
+        }
+        content.getChildren().add(heading);
         for (var item : ticket.items()) {
-            var row = TicketCard.itemRow(item, selected -> {
+            var row = TicketCard.itemRow(item, service.writesAvailable() ? selected -> {
                 service.advanceItem(ticketId, selected.id(), selected.status());
-                open(ticketId);
-            });
+                if (service.local()) {
+                    render(ticketId);
+                }
+            } : null);
             row.getStyleClass().add("detail-item");
             content.getChildren().add(row);
         }
+    }
+
+    public void refresh() {
+        render(selectedTicketId);
     }
 
     public void tick() {

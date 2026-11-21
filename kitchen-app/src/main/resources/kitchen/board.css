@@ -167,3 +167,12 @@
 }
 .combo-box, .text-area { -fx-font-size: 12px; }
 .combo-box-popup .list-cell:filled:selected { -fx-background-color: forest; -fx-text-fill: ivory; }
+
+.station-count { -fx-background-color: #f5e7c8; -fx-background-radius: 5; -fx-padding: 2 5; -fx-font-size: 11px; }
+.station-card .item-start { -fx-background-color: forest; -fx-text-fill: ivory; }
+.station-card .item-ready { -fx-background-color: gold; -fx-text-fill: ink; }
+.assistance-card .button { -fx-padding: 5 10; }
+
+.review-stars { -fx-font-size: 17px; -fx-text-fill: #785118; }
+.review-comment { -fx-font-size: 13px; }
+.connection-state { -fx-font-size: 12px; }

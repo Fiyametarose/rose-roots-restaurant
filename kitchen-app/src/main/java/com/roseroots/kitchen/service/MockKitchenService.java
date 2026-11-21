@@ -25,7 +25,16 @@ public final class MockKitchenService implements KitchenService {
 
     @Override
     public List<Ticket> activeTickets() {
-        return repository.activeTickets();
+        return repository.tickets().stream().filter(MockKitchenService::isActive).toList();
+    }
+
+    @Override
+    public List<Ticket> historyTickets() {
+        return repository.tickets().stream().filter(ticket -> ticket.completion() != null).toList();
+    }
+
+    private static boolean isActive(Ticket ticket) {
+        return ticket.completion() == null || ticket.completion().active();
     }
 
     @Override
@@ -46,7 +55,7 @@ public final class MockKitchenService implements KitchenService {
         }
         Action action = enabled ? Action.APPLY_RUSH : Action.REMOVE_RUSH;
         repository.update(ticketId, ticket -> {
-            if (ticket.status() == Status.READY) {
+            if (!isActive(ticket) || ticket.status() == Status.READY) {
                 throw new IllegalStateException("Priority changes apply to unfinished orders.");
             }
             if (ticket.rush() == enabled) {
@@ -60,8 +69,13 @@ public final class MockKitchenService implements KitchenService {
         if (expected == null || expected == Status.READY) {
             throw new IllegalArgumentException("Choose a preparation state that can advance.");
         }
-        repository.update(ticketId, ticket -> ticket.withItems(ticket.items().stream()
-                .map(item -> scope.test(item) && item.status() == expected ? item.advance() : item)
-                .toList()));
+        repository.update(ticketId, ticket -> {
+            if (!isActive(ticket)) {
+                throw new IllegalStateException("This order has already left active preparation.");
+            }
+            return ticket.withItems(ticket.items().stream()
+                    .map(item -> scope.test(item) && item.status() == expected ? item.advance() : item)
+                    .toList(), OffsetDateTime.now(clock));
+        });
     }
 }

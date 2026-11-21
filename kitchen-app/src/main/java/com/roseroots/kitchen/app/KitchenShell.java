@@ -1,11 +1,18 @@
 package com.roseroots.kitchen.app;
 
 import com.roseroots.kitchen.model.StaffMember;
+import com.roseroots.kitchen.screens.AssistanceView;
 import com.roseroots.kitchen.screens.HandoffView;
 import com.roseroots.kitchen.screens.LiveBoard;
+import com.roseroots.kitchen.screens.HistoryView;
+import com.roseroots.kitchen.screens.ReviewsView;
 import com.roseroots.kitchen.screens.OrderDetails;
 import com.roseroots.kitchen.screens.PriorityQueueView;
+import com.roseroots.kitchen.screens.StationsView;
+import com.roseroots.kitchen.service.AssistanceService;
 import com.roseroots.kitchen.service.KitchenService;
+import com.roseroots.kitchen.service.KitchenReviewService;
+import com.roseroots.kitchen.service.KitchenSync;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -34,44 +41,94 @@ final class KitchenShell extends BorderPane {
     private final HandoffView handoff;
     private final OrderDetails details;
     private final PriorityQueueView priority;
+    private final StationsView stations;
+    private final AssistanceView assistance;
+    private final ReviewsView reviews;
+    private final HistoryView history;
+    private final KitchenSync sync;
+    private final Runnable unsubscribeSync;
+    private final Label connection = label("", "connection");
+    private Runnable backFromDetails;
     private final Label title = label("Kitchen Display Board", "title");
     private final Label wallClock = label("", "wall-clock");
     private final Timeline timer;
 
-    KitchenShell(KitchenService service, List<StaffMember> staff, Consumer<String> selectProfile,
-                 Clock clock, Runnable toggleFullScreen, Runnable openAdmin) {
+    KitchenShell(KitchenService service, AssistanceService assistanceService, KitchenReviewService reviewService,
+                 KitchenSync sync, List<StaffMember> staff, Consumer<String> selectProfile, Clock clock,
+                 Runnable toggleFullScreen, Runnable openAdmin) {
+        this.sync = sync;
         getStyleClass().add("board");
         VBox workspace = new VBox(10);
-        details = new OrderDetails(service, clock, () -> showLive(workspace));
-        live = new LiveBoard(service, clock, ticketId -> {
-            details.open(ticketId);
-            show(workspace, details, "Kitchen Order Details");
-        });
+        details = new OrderDetails(service, clock, () -> backFromDetails.run());
+        live = new LiveBoard(service, clock, ticketId ->
+                openDetails(workspace, ticketId, "Live Orders", () -> showLive(workspace)));
+        stations = new StationsView(service, clock, ticketId ->
+                openDetails(workspace, ticketId, "Stations", () -> showStations(workspace)));
+        assistance = new AssistanceView(assistanceService);
+        reviews = new ReviewsView(reviewService);
+        history = new HistoryView(service, sync);
         handoff = new HandoffView(service);
         priority = new PriorityQueueView(service, staff, selectProfile, clock);
         workspace.getStyleClass().add("workspace");
         HBox header = new HBox(12, title, spacer(), wallClock);
         header.setAlignment(Pos.CENTER_LEFT);
         header.getStyleClass().add("header");
-        workspace.getChildren().addAll(header, live);
+        Label requestStatus = label("", "customer-note");
+        requestStatus.setWrapText(true);
+        requestStatus.managedProperty().bind(requestStatus.textProperty().isNotEmpty());
+        requestStatus.visibleProperty().bind(requestStatus.managedProperty());
+        VBox heading = new VBox(5, header, requestStatus);
+        Button refresh = new Button("Refresh tickets");
+        if (!service.local()) {
+            refresh.getStyleClass().add("filter");
+            refresh.setOnAction(event -> sync.refresh());
+            header.getChildren().add(refresh);
+        }
+        workspace.getChildren().addAll(heading, live);
         VBox.setVgrow(live, Priority.ALWAYS);
         setCenter(workspace);
-        setLeft(navigation(workspace, toggleFullScreen, openAdmin));
+        setLeft(navigation(workspace, toggleFullScreen, openAdmin, service.local()));
+        connection.setText(sync.status().label);
+        unsubscribeSync = sync.onOrdersChanged(() -> {
+            connection.setText(sync.status().label);
+            requestStatus.setText(sync.message());
+            refresh.setDisable(sync.busy());
+            live.redraw();
+            Node visible = workspace.getChildren().get(1);
+            if (visible == history) {
+                history.refresh();
+            } else if (visible == details) {
+                details.refresh();
+            } else if (visible == handoff) {
+                handoff.refresh();
+            } else if (visible == stations) {
+                stations.refresh();
+            } else if (visible == priority) {
+                priority.tick();
+            }
+        });
         wallClock.setText(CLOCK.format(LocalDateTime.now(clock)));
         timer = new Timeline(new KeyFrame(Duration.seconds(1), event -> {
             wallClock.setText(CLOCK.format(LocalDateTime.now(clock)));
+            connection.setText(sync.status().label);
             Node visible = workspace.getChildren().get(1);
             if (visible == details) {
                 details.tick();
             } else if (visible == priority) {
                 priority.tick();
+            } else if (visible == stations) {
+                stations.refresh();
+            } else if (visible == assistance) {
+                assistance.refresh();
+            } else if (visible == history) {
+                history.refreshConnection();
             }
         }));
         timer.setCycleCount(Timeline.INDEFINITE);
         timer.play();
     }
 
-    private VBox navigation(VBox workspace, Runnable toggleFullScreen, Runnable openAdmin) {
+    private VBox navigation(VBox workspace, Runnable toggleFullScreen, Runnable openAdmin, boolean local) {
         VBox brand = new VBox(0, label("❦", "botanical"), label("Rose & Roots", "brand-name"),
                 label("R E S T A U R A N T", "brand-caption"));
         brand.getStyleClass().add("brand");
@@ -83,13 +140,27 @@ final class KitchenShell extends BorderPane {
             priority.tick();
             show(workspace, priority, "Priority Management");
         });
+        ToggleButton stationsButton = destination("Stations", group, () -> showStations(workspace));
+        ToggleButton assistanceButton = destination("Assistance", group, () -> {
+            assistance.refresh();
+            show(workspace, assistance, "Assistance Requests");
+        });
         ToggleButton handoffButton = destination("Handoff", group, () -> {
             handoff.refresh();
             show(workspace, handoff, "Service & Pickup Handoff");
         });
+        ToggleButton reviewsButton = destination("Reviews", group, () -> {
+            reviews.refresh();
+            show(workspace, reviews, "Kitchen Feedback & Reviews");
+        });
+        ToggleButton historyButton = destination("History & Sync", group, () -> {
+            history.refresh();
+            show(workspace, history, "History & Sync");
+        });
+        assistanceButton.setDisable(!local);
+        reviewsButton.setDisable(!local);
         Region spring = new Region();
         VBox.setVgrow(spring, Priority.ALWAYS);
-        Label connection = label("Local mode — Server not connected", "connection");
         connection.setWrapText(true);
         Button fullScreen = new Button("Toggle full screen");
         fullScreen.getStyleClass().addAll("utility", "navigation-button");
@@ -99,13 +170,24 @@ final class KitchenShell extends BorderPane {
         admin.getStyleClass().addAll("utility", "navigation-button");
         admin.setMaxWidth(Double.MAX_VALUE);
         admin.setOnAction(event -> openAdmin.run());
-        VBox menu = new VBox(6, brand, liveButton, priorityButton, pending("Stations"),
-                pending("Assistance"), pending("Reviews"), handoffButton, pending("History & Sync"),
+        VBox menu = new VBox(6, brand, liveButton, priorityButton, stationsButton,
+                assistanceButton, reviewsButton, handoffButton, historyButton,
                 spring, connection, fullScreen, admin);
         menu.getStyleClass().add("sidebar");
         menu.setMinWidth(145);
         menu.setPrefWidth(152);
         return menu;
+    }
+
+    private void openDetails(VBox workspace, long ticketId, String origin, Runnable back) {
+        backFromDetails = back;
+        details.open(ticketId, origin);
+        show(workspace, details, "Kitchen Order Details");
+    }
+
+    private void showStations(VBox workspace) {
+        stations.refresh();
+        show(workspace, stations, "Kitchen Station Queues");
     }
 
     private void showLive(VBox workspace) {
@@ -133,15 +215,8 @@ final class KitchenShell extends BorderPane {
         return button;
     }
 
-    private static Button pending(String text) {
-        Button button = new Button(text);
-        button.getStyleClass().add("navigation-button");
-        button.setMaxWidth(Double.MAX_VALUE);
-        button.setDisable(true);
-        return button;
-    }
-
     void stop() {
+        unsubscribeSync.run();
         live.stop();
         timer.stop();
     }

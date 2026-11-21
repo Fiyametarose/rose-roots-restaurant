@@ -18,6 +18,10 @@ public final class MockRushAuthorization implements RushAuthorization {
         current = STAFF.stream().filter(staff -> staff.id().equals(staffId)).findFirst().orElse(null);
     }
 
+    public synchronized StaffMember currentStaff() {
+        return current;
+    }
+
     @Override
     public synchronized StaffMember requireAuthorizer() {
         if (current == null || !current.role().canAuthorizeRush()) {

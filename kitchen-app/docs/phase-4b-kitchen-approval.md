@@ -1,0 +1,24 @@
+# Kitchen approval for the minimum REST slice
+
+Kitchen approves the minimum workflow on Customer OpenAPI `1.0.0-draft.1` described in Customer's joint integration decision record at commit `3ae7b3b789fd2182ade03a58f752b92b28804671`. This is Kitchen sign-off on behavior. Shared implementation remains gated on Admin confirmation of security, storage, deployment and the catalog fixture. The [Phase 4B proposal](phase-4b-kitchen-contract-proposal.md) remains a proposal for subsequent contract changes.
+
+| Area | Kitchen decision |
+| --- | --- |
+| A. Ticket retrieval | Approve staff-scoped `GET /api/v1/kitchen/orders` backed by the shared PostgreSQL orders. Preserve the opaque server-issued order, item and session UUIDs across reads and writes. Approve server-issued human-readable references as a full UI requirement. The draft carries `serviceDestination`, but lacks `orderReference`, per-item station snapshots and operational timestamps. For the first single-item fixture, use the server destination, accepted timestamp and UUID display fallback. If needed, leave unavailable metadata explicitly unknown. Never synthesize a server reference or infer station from a dish name. |
+| B. Preparation | Approve the unchanged `PATCH /api/v1/kitchen/items/{id}/status` body `{status,expectedVersion}`, using the latest item version. The first slice uses only `RECEIVED → PREPARING → READY`. Reject stale versions and invalid transitions. Update the line and derive whole-order state atomically. A mixed-station order stays unfinished until all non-cancelled items are ready. |
+| C. Allergy safety | Approve separate review and preparation states. Require the server to reject preparation if review is unclear or held, even for Rush. Require authenticated staff permission and a cleared state of `NOT_REQUIRED` or `APPROVED_FOR_PREPARATION`. Detailed reviewer permissions, substitution and safe audit projection require later approval. |
+| D. Priority | Approve independent Rush and Delayed attributes and server-side Supervisor/Manager enforcement for applying and removing Rush. Require a reason, authenticated actor, order and timestamp in a durable audit trail. Priority changes preserve preparation progress and allergy holds. Production Rush is outside the first slice. Agree role mapping, audit projection and delay policy before enabling it. |
+| E. Handoff | Approve keeping READY active and eligible for Handoff. SERVED and COLLECTED require a separate, explicit, mode-correct and authorized confirmation. The minimum slice sends neither terminal status. The later dedicated handoff route and narrowed PATCH schema require joint approval. |
+| F. Recovery | Approve authoritative REST reload, post-commit scoped WebSocket invalidations, deduplication by event ID and resource version, and reconciliation after uncertain writes. First prove persisted REST behavior. Before WSS implementation, agree CONNECT header spelling, heartbeat, subscription readiness, pagination and reconnect handling. |
+
+## Smallest safe reconciliation
+
+Use existing approved routes and request/response shapes for the single-item REST proof. Defer strict UUID v4 validation, ticket/detail/history additions, snapshot fields, new mutation paths and enums, separate handoff writes, audit projection, and later-staged operations from Phase 4B. Follow the existing canonical UUID shape. Disable connected actions whose backing contracts or permissions are unavailable and retain local-only functionality through the mock provider.
+
+For the HTTP adapter, inject a backend origin and authenticated staff credential source, keep opaque UUID handles and versions at the provider boundary, and perform network I/O off the JavaFX thread. Map authoritative reads into view state. On stale or uncertain writes, reload and reconcile before offering retry. Use the explicit local provider only for isolated development and testing. Keep a shared authority and avoid introducing any parallel order store.
+
+## Implementation gate
+
+Kitchen can implement its portion once Admin confirms the shared order/session/quote schema, PostgreSQL migrations and transactional order persistence, terminal and staff credential provisioning and scope, catalog UUID and station mapping for the test dish, and trusted HTTPS/LAN configuration. The inspected Admin migrations cover catalog, images/import and branding. The staff ordering endpoints and terminal/staff bearer enforcement still require shared server delivery. Customer must wire the real session, quote/submit and persisted readback. No authoritative OpenAPI changes or implementation are authorized by this Kitchen record.
+
+The [two-PC Windows runbook](two-pc-deployment.md) remains mandatory. Physical LAN traffic, returning status updates and reconnect recovery are pending a genuine two-computer rehearsal.

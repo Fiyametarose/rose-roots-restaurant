@@ -47,7 +47,7 @@ public final class LiveBoard extends VBox {
         this.openDetails = openDetails;
         setSpacing(9);
         HBox lanes = new HBox(12);
-        for (Status status : Status.values()) {
+        for (Status status : Status.LANES) {
             lanes.getChildren().add(lane(status));
         }
         ScrollPane laneScroller = new ScrollPane(lanes);
@@ -67,7 +67,7 @@ public final class LiveBoard extends VBox {
         HBox row = new HBox(8, label("Order Summary", "summary-title"));
         row.setAlignment(Pos.CENTER_LEFT);
         row.getStyleClass().add("summary");
-        for (Status status : Status.values()) {
+        for (Status status : Status.LANES) {
             Label count = label("0", "summary-number");
             summaryCounts.put(status, count);
             row.getChildren().add(metric(status.label, count));
@@ -94,7 +94,12 @@ public final class LiveBoard extends VBox {
         ToggleButton all = filter("All Orders", group, () -> select(null));
         row.getChildren().add(all);
         for (Station value : Station.values()) {
-            row.getChildren().add(filter(value.label, group, () -> select(value)));
+            ToggleButton stationFilter = filter(value.label, group, () -> select(value));
+            if (!service.local()) {
+                stationFilter.setDisable(true);
+                stationFilter.setTooltip(new javafx.scene.control.Tooltip("Station assignments are unavailable from this API."));
+            }
+            row.getChildren().add(stationFilter);
         }
         all.setSelected(true);
         return row;
@@ -126,6 +131,7 @@ public final class LiveBoard extends VBox {
             case RECEIVED -> "Orders to start";
             case PREPARING -> "Currently being prepared";
             case READY -> "";
+            default -> throw new IllegalArgumentException("Unsupported board lane");
         };
         VBox heading = new VBox(2, label(status.label, "lane-title"), status == Status.READY ? readyCaption : label(caption, "lane-caption"));
         HBox banner = new HBox(10, heading, spacer(), count);
@@ -155,7 +161,7 @@ public final class LiveBoard extends VBox {
         active.setText(Integer.toString(tickets.size()));
         readyCaption.setText(station == null ? "All order items ready" : "Station items ready");
         cards.clear();
-        for (Status status : Status.values()) {
+        for (Status status : Status.LANES) {
             var entries = columns.get(status);
             VBox list = lists.get(status);
             list.getChildren().clear();
@@ -164,13 +170,15 @@ public final class LiveBoard extends VBox {
                 list.getChildren().add(label("No " + status.label.toLowerCase(Locale.ROOT) + " tickets", "empty"));
             }
             for (var entry : entries) {
-                TicketCard card = new TicketCard(entry, now, expected -> {
+                TicketCard card = new TicketCard(entry, now, service.local() ? expected -> {
                     service.advance(entry.ticket().id(), entry.station(), expected);
                     redraw();
-                }, item -> {
+                } : null, service.writesAvailable() ? item -> {
                     service.advanceItem(entry.ticket().id(), item.id(), item.status());
-                    redraw();
-                }, () -> openDetails.accept(entry.ticket().id()));
+                    if (service.local()) {
+                        redraw();
+                    }
+                } : null, () -> openDetails.accept(entry.ticket().id()));
                 cards.add(card);
                 list.getChildren().add(card);
             }

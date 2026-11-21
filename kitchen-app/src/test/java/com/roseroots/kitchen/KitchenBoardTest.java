@@ -242,6 +242,43 @@ class KitchenBoardTest {
         assertFalse(shorterTarget.rush());
     }
 
+    @Test
+    void stationQueueGroupsTheSameTicketByStationAndCountsOnlyItsAssignedItems() {
+        var hot = KitchenBoard.stationQueue(service.activeTickets(), Station.HOT, NOW);
+        var cold = KitchenBoard.stationQueue(service.activeTickets(), Station.COLD, NOW);
+        var drinks = KitchenBoard.stationQueue(service.activeTickets(), Station.BEVERAGES, NOW);
+        assertEquals(List.of(1023L, 1024L, 1019L, 1020L, 1017L, 1018L), ids(hot.cards()));
+        assertEquals(List.of(1026L), ids(cold.cards()));
+        assertEquals(List.of(1023L, 1020L), ids(drinks.cards()));
+        assertEquals(2L, hot.counts().get(Status.RECEIVED));
+        assertEquals(2L, hot.counts().get(Status.PREPARING));
+        assertEquals(2L, hot.counts().get(Status.READY));
+        assertEquals(1L, drinks.counts().get(Status.RECEIVED));
+        assertEquals(0L, drinks.counts().get(Status.PREPARING));
+        assertEquals(1L, drinks.counts().get(Status.READY));
+        assertTrue(drinks.cards().stream().flatMap(card -> card.items().stream())
+                .allMatch(item -> item.station() == Station.BEVERAGES));
+    }
+
+    @Test
+    void stationItemActionsUpdateLiveOrdersWithoutCompletingAnotherStation() {
+        service.advanceItem(1023, 2, Status.RECEIVED);
+        assertEquals(1L, KitchenBoard.stationQueue(service.activeTickets(), Station.BEVERAGES, NOW)
+                .counts().get(Status.PREPARING));
+        service.advanceItem(1023, 2, Status.PREPARING);
+        assertEquals(2L, KitchenBoard.stationQueue(service.activeTickets(), Station.BEVERAGES, NOW)
+                .counts().get(Status.READY));
+        assertEquals(Status.RECEIVED, current(1023).items().getFirst().status());
+        assertTrue(ids(KitchenBoard.columns(service.activeTickets(), null, NOW).get(Status.PREPARING)).contains(1023L));
+        assertFalse(handoffIds(Type.DINE_IN).contains(1023L));
+
+        service.advanceItem(1023, 1, Status.RECEIVED);
+        service.advanceItem(1023, 1, Status.PREPARING);
+        assertEquals(Status.READY, current(1023).status());
+        assertTrue(ids(KitchenBoard.columns(service.activeTickets(), null, NOW).get(Status.READY)).contains(1023L));
+        assertTrue(handoffIds(Type.DINE_IN).contains(1023L));
+    }
+
     private List<Long> queueIds(Status status) {
         return KitchenBoard.priorityQueue(service.activeTickets(), status, NOW).stream().map(Ticket::id).toList();
     }
