@@ -44,6 +44,45 @@ class OrderConfirmationTest {
         assertTrue(customer.saveDish(null, new ConfiguredDish(item, 1, Map.of(), "Less oil", disclosed)));
     }
 
+    @Test void undeclaredAllergiesDoNotRequireAnAcknowledgmentOrChangeVisitState() {
+        var original = customer.cart().lines().getFirst();
+        customer.rememberAllergy(AllergyDeclaration.unreviewed());
+        assertTrue(customer.saveDish(original.id(),
+                new ConfiguredDish(original.item(), 1, Map.of(), "", AllergyDeclaration.unreviewed())));
+        assertFalse(flow.requiresAllergyAcknowledgement());
+        flow.requestQuote(changed);
+        flow.submit(false, changed);
+        assertEquals(1, orders.calls.size());
+        assertTrue(orders.draft.visitAllergy().none());
+        assertEquals(AllergyDeclaration.unreviewed(), customer.sessionAllergy());
+    }
+
+    @Test void selectedCustomizationConflictBlocksQuotesUntilEdited() {
+        var original = customer.cart().lines().getFirst();
+        var seed = original.item();
+        var choice = new MenuItem.CustomizationGroup.Choice(UUID.randomUUID().toString(), seed.name(),
+                java.math.BigDecimal.ZERO, Set.of(MenuItem.Allergen.MILK));
+        var group = new MenuItem.CustomizationGroup(UUID.randomUUID().toString(), seed.name(),
+                MenuItem.CustomizationGroup.Selection.EXTRA, 0, 1, List.of(choice));
+        var item = new MenuItem(seed.id(), seed.categoryId(), seed.cuisine(), seed.name(), seed.summary(),
+                seed.description(), seed.price(), seed.image(), seed.ingredients(), seed.safety(), seed.spice(),
+                seed.availability(), seed.highlights(), seed.preparationTime(), List.of(group));
+        assertTrue(customer.saveDish(original.id(), new ConfiguredDish(item, 1,
+                Map.of(group.id(), Set.of(choice.id())), "", AllergyDeclaration.unreviewed())));
+        assertTrue(flow.hasIngredientConflict());
+        assertFalse(flow.canQuote());
+        flow.requestQuote(changed);
+        assertEquals(0, orders.quoteCalls);
+        assertEquals(disclosed, customer.sessionAllergy());
+        assertTrue(customer.saveDish(original.id(), new ConfiguredDish(item, 1, Map.of(), "", AllergyDeclaration.unreviewed())));
+        assertFalse(flow.hasIngredientConflict());
+        assertTrue(flow.requiresAllergyAcknowledgement());
+        flow.requestQuote(changed);
+        flow.submit(true, changed);
+        orders.response.complete(accepted(sessionId, false));
+        assertEquals(Ordering.Review.PENDING_ALLERGY_REVIEW, flow.accepted().lines().getFirst().review());
+    }
+
     @Test void requiresSessionAndConnectivityAndDoesNotCallBackendForDemo() {
         var offline = new OrderConfirmation(customer, OrderService.unavailable(), Clock.systemUTC(), Runnable::run);
         assertFalse(offline.active());

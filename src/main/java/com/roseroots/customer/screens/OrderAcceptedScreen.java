@@ -30,7 +30,8 @@ public final class OrderAcceptedScreen extends StackPane {
                     FoodCard.label(CustomerShell.sessionContext(state, text), "catalog-muted"),
                     FoodCard.label(text.text("orders.number") + " " + order.id(), "dish-section-heading"),
                     FoodCard.label(text.text("custom.visitAllergies") + ": "
-                            + MenuText.allergyDisclosure(order.visitAllergy(), text), "dish-description"));
+                            + (order.visitAllergy().none() ? text.text("confirm.noAllergiesDeclared")
+                                    : MenuText.allergyDisclosure(order.visitAllergy(), text)), "dish-description"));
             for (var line : order.lines()) {
                 var details = new VBox(4, FoodCard.label(line.pricing().name() + " ×" + line.pricing().quantity(),
                         "dish-section-heading"));
@@ -42,8 +43,9 @@ public final class OrderAcceptedScreen extends StackPane {
                 }
                 if (line.review() == Ordering.Review.DECLINED) {
                     details.getChildren().add(FoodCard.label(text.text("confirm.declined"), "customization-warning"));
-                } else if (line.review() != Ordering.Review.NOT_REQUIRED && line.review() != Ordering.Review.APPROVED_FOR_PREPARATION) {
-                    details.getChildren().add(FoodCard.label(text.text("cart.allergiesPending"), "customization-warning"));
+                } else if (line.review() != Ordering.Review.NOT_REQUIRED) {
+                    details.getChildren().add(FoodCard.label(text.text("orders.review."
+                            + line.review().name().toLowerCase(Locale.ROOT)), "dish-description"));
                 }
                 if (!line.reviewMessage().isBlank()) details.getChildren().add(FoodCard.label(line.reviewMessage(), "dish-description"));
                 card.getChildren().add(details);

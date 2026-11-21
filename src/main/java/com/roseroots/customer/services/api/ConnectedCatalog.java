@@ -66,7 +66,9 @@ public final class ConnectedCatalog implements MenuService {
                 list(group, "choices", node -> {
                     var choice = node.getAsJsonObject();
                     return new MenuItem.CustomizationGroup.Choice(orderingOptionId(groupId + "/option/", string(choice, "id")),
-                            new LocalizedText(string(choice, "name")), choice.get("priceAdjustment").getAsBigDecimal());
+                            new LocalizedText(string(choice, "name")), choice.get("priceAdjustment").getAsBigDecimal(),
+                            choice.has("allergens") && !choice.get("allergens").isJsonNull()
+                                    ? enums(choice, "allergens", MenuItem.Allergen::valueOf) : Set.of());
                 }));
     }
 

@@ -9,6 +9,13 @@ public record AllergyReview(AllergyDeclaration itemDeclaration, AllergyDeclarati
         CUSTOMER_APPROVAL_REQUIRED, APPROVED_FOR_PREPARATION, DECLINED
     }
 
+    public java.util.Set<MenuItem.Allergen> ingredientConflicts() {
+        var matches = java.util.EnumSet.noneOf(MenuItem.Allergen.class);
+        matches.addAll(itemRisks.ingredients());
+        matches.addAll(visitRisks.ingredients());
+        return java.util.Set.copyOf(matches);
+    }
+
     public static AllergyReview forDish(ConfiguredDish dish, AllergyDeclaration visit) {
         var item = dish.allergy();
         var itemRisks = dish.review(item);

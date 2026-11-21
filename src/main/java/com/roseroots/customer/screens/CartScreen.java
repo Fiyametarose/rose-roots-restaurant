@@ -227,9 +227,7 @@ public final class CartScreen extends StackPane {
             else pricing.getChildren().add(FoodCard.label(messages.text("confirm.preview"), "catalog-muted"));
             renderConfirmation();
         }
-        boolean pending = items.stream().map(this::review).anyMatch(CartScreen::pending);
-        allergy.setText(MenuText.allergyDisclosure(state.sessionAllergy(), messages)
-                + (pending ? "\n" + messages.text("cart.allergiesPending") : ""));
+        allergy.setText(MenuText.allergyDisclosure(state.sessionAllergy(), messages));
         shell.refreshCart();
         refreshEstimate();
     }
@@ -240,7 +238,7 @@ public final class CartScreen extends StackPane {
         photo.setMinWidth(104);
         photo.setPrefWidth(125);
         photo.setMaxWidth(145);
-        var quote = confirmation == null ? null : confirmation.quote();
+        var quote = confirmation == null || confirmation.hasIngredientConflict() ? null : confirmation.quote();
         var price = quote == null ? null : quote.lines().stream()
                 .filter(value -> value.clientLineId().equals(line.id())).findFirst().orElse(null);
         var details = new VBox(5, valueRow(line.item().name().in(state.locale()),
@@ -350,6 +348,7 @@ public final class CartScreen extends StackPane {
                 case "QUOTE_EXPIRED", "PRICE_CHANGED" -> "confirm.requote";
                 case "INVALID_SELECTION", "ITEM_UNAVAILABLE" -> "confirm.invalid";
                 case "IDEMPOTENCY_CONFLICT" -> "confirm.conflict";
+                case "ALLERGEN_CONFLICT" -> "confirm.allergyBlocked";
                 case "SESSION_CLOSED", "SESSION_EXPIRED", "UNAUTHENTICATED" -> "confirm.session";
                 case "REVIEW_REQUIRED" -> "confirm.reviewRequired";
                 default -> "confirm.failure";
@@ -364,7 +363,7 @@ public final class CartScreen extends StackPane {
             reviewControls.getChildren().add(retry);
             return;
         }
-        if (editingVisit || (!state.sessionAllergy().none() && !state.sessionAllergy().disclosed())) {
+        if (editingVisit) {
             var prior = state.sessionAllergy();
             var none = CustomerShell.action(messages.text("custom.none"), false, () -> {
                 state.rememberAllergy(new AllergyDeclaration(true, java.util.Set.of(), ""));
@@ -406,7 +405,7 @@ public final class CartScreen extends StackPane {
                 refresh();
             });
             var buttons = new FlowPane(7, 6, none, save);
-            if (editingVisit) buttons.getChildren().add(cancel);
+            buttons.getChildren().add(cancel);
             reviewControls.getChildren().addAll(choices, other, buttons);
             return;
         }
@@ -415,6 +414,10 @@ public final class CartScreen extends StackPane {
             refresh();
         });
         reviewControls.getChildren().add(editVisit);
+        if (confirmation.hasIngredientConflict()) {
+            reviewControls.getChildren().add(FoodCard.label(messages.text("confirm.allergyBlocked"), "dish-description"));
+            return;
+        }
         var quote = confirmation.quote();
         if (quote == null) {
             var getQuote = confirmationAction("confirm.quote", this::refreshQuote);
@@ -424,8 +427,11 @@ public final class CartScreen extends StackPane {
         }
         reviewControls.getChildren().add(FoodCard.label(messages.text("confirm.quoted"), "catalog-muted"));
         var place = confirmationAction("confirm.place", () -> submit(reviewed.isSelected()));
-        place.disableProperty().bind(reviewed.selectedProperty().not());
-        reviewControls.getChildren().addAll(reviewed, place);
+        if (confirmation.requiresAllergyAcknowledgement()) {
+            place.disableProperty().bind(reviewed.selectedProperty().not());
+            reviewControls.getChildren().add(reviewed);
+        }
+        reviewControls.getChildren().add(place);
         quoteExpiry.setDuration(javafx.util.Duration.millis(Math.max(1,
                 java.time.Duration.between(Instant.now(), quote.expiresAt()).toMillis())));
         quoteExpiry.setOnFinished(event -> {
@@ -458,12 +464,10 @@ public final class CartScreen extends StackPane {
         return AllergyReview.forDish(line.dish(), state.sessionAllergy());
     }
 
-    private static boolean pending(AllergyReview review) {
-        return review.status() == AllergyReview.Status.PENDING_ALLERGY_REVIEW;
-    }
+
 
     private String reviewWarning(AllergyReview review) {
-        var direct = riskNames(review.itemRisks().ingredients(), review.visitRisks().ingredients());
+        var direct = riskNames(review.ingredientConflicts(), java.util.Set.of());
         var contact = riskNames(review.itemRisks().crossContact(), review.visitRisks().crossContact());
         return Stream.of(
                 direct.isBlank() ? "" : messages.text("confirm.directConflict") + ": " + direct,
@@ -500,7 +504,7 @@ public final class CartScreen extends StackPane {
         var session = state.terminalSession();
         if (getScene() == null || session == null || !session.canSubmitOrders() || state.cart().lines().isEmpty()) return;
         var items = state.cart().lines().stream().map(line -> new WaitEstimate.Item(line.item().id(),
-                line.quantity(), line.dish().selections(), pending(review(line)))).toList();
+                line.quantity(), line.dish().selections(), review(line).status() == AllergyReview.Status.PENDING_ALLERGY_REVIEW)).toList();
         estimates.estimate(new WaitEstimate.Request(session.sessionId(), items)).whenComplete((result, error) ->
                 Platform.runLater(() -> {
                     if (requested != estimateRevision || getScene() == null || error != null) return;
