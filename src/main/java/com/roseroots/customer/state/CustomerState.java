@@ -95,10 +95,15 @@ public final class CustomerState {
         }
     }
 
+    public java.util.Set<MenuItem.Allergen> ingredientConflicts(ConfiguredDish dish) {
+        return com.roseroots.customer.models.AllergyReview.forDish(dish, sessionAllergy()).ingredientConflicts();
+    }
+
     public boolean saveDish(UUID line, ConfiguredDish dish) {
         if (terminalSession == null || !terminalSession.allowsCart()
                 || dish.item().availability() != MenuItem.Availability.AVAILABLE
-                || (line != null && cart.line(line) == null)) {
+                || (line != null && cart.line(line) == null)
+                || !ingredientConflicts(dish).isEmpty()) {
             return false;
         }
         cart.save(line, dish);

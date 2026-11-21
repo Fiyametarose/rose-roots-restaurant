@@ -52,10 +52,12 @@ class CustomizationCartTest {
         assertEquals(Set.of(com.roseroots.customer.models.MenuItem.Allergen.MILK,
                 com.roseroots.customer.models.MenuItem.Allergen.EGGS), dish.review(allergy).ingredients());
         assertEquals(Set.of(com.roseroots.customer.models.MenuItem.Allergen.WHEAT), dish.review(allergy).crossContact());
-        assertTrue(state.saveDish(null, dish));
+        assertFalse(state.saveDish(null, dish));
         assertTrue(dish.review(new AllergyDeclaration(false, Set.of(), "Sesame")).uncertain());
+        var crossContactOnly = new AllergyDeclaration(false, Set.of(Allergen.WHEAT), "Sesame");
+        assertTrue(state.saveDish(null, new ConfiguredDish(item, 1, choices, "Remove the egg", crossContactOnly)));
         assertEquals(1, state.cart().count());
-        assertEquals(allergy, state.cart().lines().getFirst().dish().allergy());
+        assertEquals(crossContactOnly, state.cart().lines().getFirst().dish().allergy());
     }
 
     @Test
@@ -65,7 +67,7 @@ class CustomizationCartTest {
         state.rememberAllergy(visit);
         open(ServiceMode.DINE_IN);
         assertEquals(visit, state.sessionAllergy());
-        assertTrue(state.addToDraft(menu.loadCatalog().toCompletableFuture().join().item("doro-wat")));
+        assertFalse(state.addToDraft(menu.loadCatalog().toCompletableFuture().join().item("doro-wat")));
         open(ServiceMode.TAKEAWAY);
         assertEquals(AllergyDeclaration.unreviewed(), state.sessionAllergy());
         open(ServiceMode.DINE_IN);
