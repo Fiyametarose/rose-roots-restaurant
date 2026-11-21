@@ -4,5 +4,6 @@ public enum Route {
     WELCOME,
     MENU,
     DISH_DETAILS,
-    CART
+    CART,
+    ORDER_CONFIRMATION
 }

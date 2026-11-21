@@ -783,3 +783,9 @@
 
 
 
+
+.confirmation-heading {
+    -fx-border-color: transparent transparent -rr-gold transparent;
+    -fx-border-width: 0 0 2 0;
+    -fx-padding: 0 8 5 0;
+}

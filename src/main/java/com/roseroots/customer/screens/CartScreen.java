@@ -14,6 +14,9 @@ import com.roseroots.customer.services.RestaurantSettings;
 import com.roseroots.customer.services.WaitEstimateService;
 import com.roseroots.customer.state.CartDraft;
 import com.roseroots.customer.state.CustomerState;
+import com.roseroots.customer.state.OrderConfirmation;
+import com.roseroots.customer.models.Ordering;
+import javafx.scene.control.CheckBox;
 import com.roseroots.customer.utils.MenuText;
 import com.roseroots.customer.utils.Messages;
 import java.math.BigDecimal;
@@ -50,46 +53,58 @@ public final class CartScreen extends StackPane {
     private final Label waitTime;
     private final Label allergy;
     private final Button clear;
+    private final OrderConfirmation confirmation;
+    private final VBox reviewControls = new VBox(7);
+    private final CheckBox reviewed;
+    private final PauseTransition quoteExpiry = new PauseTransition();
+    private boolean editingVisit;
     private final PauseTransition expiry = new PauseTransition();
     private long estimateRevision;
 
     public CartScreen(RestaurantSettings settings, CustomerState state, WaitEstimateService estimates,
                       Consumer<Locale> language, Runnable home, Runnable menu, Consumer<UUID> edit,
-                      Consumer<String> category) {
+                      Consumer<String> category, Runnable destination, OrderConfirmation confirmation) {
         this.settings = settings;
         this.state = state;
         this.estimates = estimates;
         this.edit = edit;
+        this.confirmation = confirmation;
         messages = new Messages(state.locale());
         var overlay = new StackPane();
         overlay.setVisible(false);
         overlay.getStyleClass().add("filter-overlay");
         shell = new CustomerShell(settings, state, messages, language, home, null);
-        shell.disableProperty().bind(overlay.visibleProperty());
+        overlay.visibleProperty().addListener((property, before, visible) -> shell.setDisable(visible));
         shell.displayCategories(state.menu().catalog(), state.locale(), category);
 
-        var title = FoodCard.label(messages.text("cart.title"), "catalog-heading");
-        var back = CustomerShell.action(messages.text("cart.continue"), false, menu);
-        back.setId("cart-continue");
-        var actions = new FlowPane(7, 5, back);
+        var title = FoodCard.label(messages.text(confirmation == null ? "cart.title" : "confirm.title"), "catalog-heading");
+        if (confirmation != null) title.getStyleClass().add("confirmation-heading");
+        var back = CustomerShell.action(messages.text(confirmation == null ? "cart.continue" : "confirm.back"),
+                false, confirmation == null ? menu : destination);
+        back.setId(confirmation == null ? "cart-continue" : "confirmation-back");
         clear = CustomerShell.action(messages.text("cart.clear"), false, () -> confirmClear(overlay));
         clear.setId("clear-cart");
-        actions.getChildren().add(clear);
 
         var left = scroller(lines);
         waitTime = FoodCard.label("", "cart-wait");
         waitTime.setId("cart-wait-estimate");
         allergy = FoodCard.label("", "dish-description");
-        var place = CustomerShell.action(messages.text("cart.placeUnavailable"), true, () -> {});
-        place.setMaxWidth(Double.MAX_VALUE);
-        place.setDisable(true);
+
+        reviewed = new CheckBox(messages.text("confirm.reviewed"));
+        reviewed.setWrapText(true);
+        reviewed.setId("confirm-allergies-reviewed");
+        if (confirmation == null) {
+            var review = CustomerShell.action(messages.text("confirm.open"), true, destination);
+            review.setMaxWidth(Double.MAX_VALUE);
+            review.setId("review-order");
+            reviewControls.getChildren().add(review);
+        }
         var order = new VBox(11, FoodCard.label(messages.text("cart.orderDetails"), "cart-summary-heading"),
                 valueRow(messages.text("cart.service"), messages.text(state.serviceMode()
                         == com.roseroots.customer.models.ServiceMode.DINE_IN ? "service.dineIn" : "service.takeaway"), null),
                 FoodCard.label(CustomerShell.sessionContext(state, messages), "catalog-muted"),
                 pricing, FoodCard.label(messages.text("cart.waitTitle"), "dish-section-heading"), waitTime,
-                FoodCard.label(messages.text("custom.visitAllergies"), "dish-section-heading"), allergy, place,
-                FoodCard.label(messages.text("cart.connectionRequired"), "catalog-muted"));
+                FoodCard.label(messages.text("custom.visitAllergies"), "dish-section-heading"), allergy, reviewControls);
         order.getStyleClass().add("dish-information");
         var right = scroller(order);
         var columns = new HBox(13, left, right);
@@ -116,7 +131,16 @@ public final class CartScreen extends StackPane {
                 split.getChildren().setAll(columns);
             }
         });
-        var body = new VBox(10, new FlowPane(14, 6, title, actions), split);
+        Region heading;
+        if (confirmation == null) {
+            heading = new FlowPane(14, 6, title, new FlowPane(7, 5, back, clear));
+        } else {
+            back.setMinWidth(Region.USE_PREF_SIZE);
+            var reviewHeading = new HBox(14, title, back);
+            reviewHeading.setAlignment(Pos.CENTER_LEFT);
+            heading = reviewHeading;
+        }
+        var body = new VBox(10, heading, split);
         body.getStyleClass().add("catalog-content");
         VBox.setVgrow(split, Priority.ALWAYS);
         shell.showContent(body);
@@ -125,7 +149,9 @@ public final class CartScreen extends StackPane {
             if (current == null) {
                 estimateRevision++;
                 expiry.stop();
+                quoteExpiry.stop();
             } else {
+                if (confirmation != null) refresh();
                 refreshEstimate();
             }
         });
@@ -176,7 +202,9 @@ public final class CartScreen extends StackPane {
     private void refresh() {
         var items = state.cart().lines();
         lines.getChildren().setAll(items.stream().map(this::itemRow).toList());
-        if (items.isEmpty()) {
+        if (confirmation != null && confirmation.accepted() != null) {
+            showAccepted(confirmation.accepted());
+        } else if (items.isEmpty()) {
             lines.getChildren().add(FoodCard.label(messages.text("custom.emptyCart"), "cart-empty"));
         }
 
@@ -190,7 +218,19 @@ public final class CartScreen extends StackPane {
         finalAmount.setMaxWidth(Double.MAX_VALUE);
         pricing.getChildren().add(finalAmount);
         clear.setDisable(items.isEmpty());
+        if (confirmation == null) {
+            reviewControls.getChildren().getFirst().setDisable(items.isEmpty());
+        } else {
+            var quote = confirmation.quote();
+            if (quote != null) renderServerTotals(quote.totals());
+            else if (items.isEmpty() && confirmation.accepted() != null) renderServerTotals(confirmation.accepted().totals());
+            renderConfirmation();
+        }
+        var accepted = confirmation == null ? null : confirmation.accepted();
         boolean pending = items.stream().map(this::review).anyMatch(CartScreen::pending);
+        if (items.isEmpty() && accepted != null) {
+            pending = accepted.lines().stream().anyMatch(line -> awaitingReview(line.review()));
+        }
         allergy.setText(disclosure(state.sessionAllergy(), messages)
                 + (pending ? "\n" + messages.text("cart.allergiesPending") : ""));
         shell.refreshCart();
@@ -203,14 +243,26 @@ public final class CartScreen extends StackPane {
         photo.setMinWidth(104);
         photo.setPrefWidth(125);
         photo.setMaxWidth(145);
-        var details = new VBox(5, valueRow(line.item().name().in(state.locale()), money(dish.total()), "cart-line-heading"),
-                valueRow(messages.text("cart.baseUnit"), money(line.item().price()), null));
+        var quote = confirmation == null ? null : confirmation.quote();
+        var price = quote == null ? null : quote.lines().stream()
+                .filter(value -> value.clientLineId().equals(line.id())).findFirst().orElse(null);
+        var details = new VBox(5, valueRow(line.item().name().in(state.locale()),
+                price == null ? money(dish.total()) : minor(price.extendedMinor()), "cart-line-heading"),
+                valueRow(messages.text("cart.baseUnit"),
+                        price == null ? money(line.item().price()) : minor(price.baseUnitMinor()), null));
+        if (confirmation != null) {
+            details.getChildren().add(valueRow(messages.text("confirm.quantity"), Integer.toString(line.quantity()), null));
+        }
         HBox.setHgrow(details, Priority.ALWAYS);
         for (var group : line.item().customizationGroups()) {
             for (var option : group.choices()) {
                 if (dish.selections().getOrDefault(group.id(), java.util.Set.of()).contains(option.id())) {
+                    var adjustment = price == null ? option.priceAdjustment() : price.options().stream()
+                            .filter(value -> value.groupId().toString().equals(group.id())
+                                    && value.optionId().toString().equals(option.id()))
+                            .map(value -> BigDecimal.valueOf(value.unitAdjustmentMinor(), 2)).findFirst().orElseThrow();
                     details.getChildren().add(valueRow(group.name().in(state.locale()) + ": " + option.name().in(state.locale()),
-                            option.priceAdjustment().signum() == 0 ? money(BigDecimal.ZERO) : "+ " + money(option.priceAdjustment()), null));
+                            (adjustment.signum() > 0 ? "+ " : "") + money(adjustment), null));
                 }
             }
         }
@@ -225,6 +277,14 @@ public final class CartScreen extends StackPane {
         if (pending(review)) {
             details.getChildren().add(FoodCard.label(reviewWarning(review), "customization-warning"));
         }
+        if (confirmation == null) addEditActions(details, line);
+        var row = new HBox(10, photo, details);
+        row.setAlignment(Pos.TOP_LEFT);
+        row.getStyleClass().addAll("dish-information", "cart-line");
+        return row;
+    }
+
+    private void addEditActions(VBox details, CartDraft.Line line) {
         var minus = CustomerShell.action("−", false, () -> {
             state.changeQuantity(line.id(), line.quantity() - 1);
             refresh();
@@ -247,10 +307,165 @@ public final class CartScreen extends StackPane {
         remove.setId("cart-remove");
         details.getChildren().add(new FlowPane(7, 5, editButton, remove, minus,
                 FoodCard.label(Integer.toString(line.quantity()), "dish-section-heading"), plus));
-        var row = new HBox(10, photo, details);
-        row.setAlignment(Pos.TOP_LEFT);
-        row.getStyleClass().addAll("dish-information", "cart-line");
-        return row;
+    }
+
+    private void renderConfirmation() {
+        quoteExpiry.stop();
+        reviewControls.getChildren().clear();
+        shell.setDisable(confirmation.busy());
+        if (state.cart().lines().isEmpty() && !confirmation.unresolved()) return;
+        if (!confirmation.active()) {
+            reviewControls.getChildren().add(FoodCard.label(messages.text("confirm.draft"), "catalog-muted"));
+            var place = confirmationAction("cart.placeUnavailable", () -> {});
+            place.setDisable(true);
+            reviewControls.getChildren().addAll(place, FoodCard.label(messages.text("cart.connectionRequired"), "catalog-muted"));
+            return;
+        }
+        if (confirmation.busy()) {
+            var progress = new javafx.scene.control.ProgressIndicator();
+            progress.setPrefSize(25, 25);
+            reviewControls.getChildren().add(new HBox(9, progress,
+                    FoodCard.label(messages.text(confirmation.phase() == OrderConfirmation.Phase.SENDING
+                            ? "confirm.sending" : "confirm.quoting"), "dish-description")));
+            return;
+        }
+        if (confirmation.unresolved() || !confirmation.problem().isEmpty()) {
+            String message = confirmation.unresolved() ? "confirm.uncertain" : switch (confirmation.problem()) {
+                case "QUOTE_EXPIRED", "PRICE_CHANGED" -> "confirm.requote";
+                case "INVALID_SELECTION", "ITEM_UNAVAILABLE" -> "confirm.invalid";
+                case "SESSION_CLOSED", "SESSION_EXPIRED", "UNAUTHENTICATED" -> "confirm.session";
+                case "REVIEW_REQUIRED" -> "confirm.reviewRequired";
+                default -> "confirm.failure";
+            };
+            reviewControls.getChildren().add(FoodCard.label(messages.text(message), "customization-warning"));
+        }
+        if (confirmation.unresolved()) {
+            var retry = confirmationAction("confirm.retry", () -> confirmation.submit(false, this::refresh));
+            retry.setDisable(!confirmation.retryPossible());
+            reviewControls.getChildren().add(retry);
+            return;
+        }
+        if (editingVisit || (!state.sessionAllergy().none() && !state.sessionAllergy().disclosed())) {
+            var prior = state.sessionAllergy();
+            var none = CustomerShell.action(messages.text("custom.none"), false, () -> {
+                state.rememberAllergy(new AllergyDeclaration(true, java.util.Set.of(), ""));
+                editingVisit = false;
+                reviewed.setSelected(false);
+                refresh();
+            });
+            none.setWrapText(true);
+            var other = new javafx.scene.control.TextArea(prior.other());
+            other.setPromptText(messages.text("custom.other"));
+            other.setPrefRowCount(2);
+            other.setWrapText(true);
+            var choices = new FlowPane(9, 7);
+            var allergens = new java.util.EnumMap<AllergyDeclaration.Allergen, CheckBox>(AllergyDeclaration.Allergen.class);
+            for (var allergen : AllergyDeclaration.Allergen.values()) {
+                var check = new CheckBox(DishCustomizer.allergenLabel(messages, allergen));
+                check.setSelected(prior.allergens().contains(allergen));
+                choices.getChildren().add(check);
+                allergens.put(allergen, check);
+            }
+            var save = CustomerShell.action(messages.text("confirm.saveAllergies"), false, () -> {
+                var selected = java.util.EnumSet.noneOf(AllergyDeclaration.Allergen.class);
+                allergens.forEach((allergen, check) -> {
+                    if (check.isSelected()) selected.add(allergen);
+                });
+                state.rememberAllergy(new AllergyDeclaration(false, selected, other.getText()));
+                editingVisit = false;
+                reviewed.setSelected(false);
+                refresh();
+            });
+            Runnable validate = () -> {
+                boolean selected = allergens.values().stream().anyMatch(CheckBox::isSelected);
+                save.setDisable(other.getText().length() > 240 || (!selected && other.getText().isBlank()));
+                none.setDisable(selected || !other.getText().isBlank());
+            };
+            other.textProperty().addListener((property, previous, next) -> validate.run());
+            allergens.values().forEach(check -> check.selectedProperty().addListener((property, previous, next) -> validate.run()));
+            validate.run();
+            var cancel = CustomerShell.action(messages.text("catalog.cancelFilters"), false, () -> {
+                editingVisit = false;
+                refresh();
+            });
+            var buttons = new FlowPane(7, 6, none, save);
+            if (editingVisit) buttons.getChildren().add(cancel);
+            reviewControls.getChildren().addAll(choices, other, buttons);
+            return;
+        }
+        var editVisit = CustomerShell.action(messages.text("confirm.editAllergies"), false, () -> {
+            editingVisit = true;
+            refresh();
+        });
+        reviewControls.getChildren().add(editVisit);
+        var quote = confirmation.quote();
+        if (quote == null) {
+            var getQuote = confirmationAction("confirm.quote", () -> {
+                reviewed.setSelected(false);
+                confirmation.requestQuote(this::refresh);
+            });
+            getQuote.setDisable(!confirmation.canQuote());
+            reviewControls.getChildren().add(getQuote);
+            return;
+        }
+        reviewControls.getChildren().add(FoodCard.label(messages.text("confirm.quoted"), "catalog-muted"));
+        var place = confirmationAction("confirm.place", () -> confirmation.submit(reviewed.isSelected(), this::refresh));
+        place.disableProperty().bind(reviewed.selectedProperty().not());
+        reviewControls.getChildren().addAll(reviewed, place);
+        quoteExpiry.setDuration(javafx.util.Duration.millis(Math.max(1,
+                java.time.Duration.between(Instant.now(), quote.expiresAt()).toMillis())));
+        quoteExpiry.setOnFinished(event -> {
+            reviewed.setSelected(false);
+            refresh();
+        });
+        quoteExpiry.playFromStart();
+    }
+
+    private Button confirmationAction(String key, Runnable action) {
+        var button = CustomerShell.action(messages.text(key), true, action);
+        button.setMaxWidth(Double.MAX_VALUE);
+        button.setId("place-order");
+        return button;
+    }
+
+    private void renderServerTotals(Ordering.Totals totals) {
+        pricing.getChildren().setAll(valueRow(messages.text("cart.subtotal"), minor(totals.subtotalMinor()), null));
+        if (totals.serviceMinor() != 0) pricing.getChildren().add(valueRow(messages.text("confirm.serviceCharge"), minor(totals.serviceMinor()), null));
+        if (totals.taxMinor() != 0) pricing.getChildren().add(valueRow(messages.text("confirm.tax"), minor(totals.taxMinor()), null));
+        var amount = FoodCard.label(messages.text("cart.total") + "  " + minor(totals.totalMinor()), "cart-final-total");
+        amount.setMaxWidth(Double.MAX_VALUE);
+        pricing.getChildren().add(amount);
+    }
+
+    private void showAccepted(Ordering.Accepted accepted) {
+        lines.getChildren().add(FoodCard.label(messages.text("confirm.accepted") + " · " + accepted.id(), "cart-empty"));
+        for (var line : accepted.lines()) {
+            var item = new VBox(5, valueRow(line.pricing().name(), minor(line.billable() ? line.pricing().extendedMinor() : 0),
+                    "cart-line-heading"), valueRow(messages.text("confirm.quantity"), Integer.toString(line.pricing().quantity()), null));
+            if (line.allergy().disclosed()) {
+                item.getChildren().add(FoodCard.label(messages.text("custom.itemAllergies") + ": "
+                        + disclosure(line.allergy(), messages), "dish-description"));
+            }
+            item.getStyleClass().add("dish-information");
+            if (line.review() == Ordering.Review.DECLINED) {
+                item.getChildren().add(FoodCard.label(messages.text("confirm.declined"), "customization-warning"));
+            } else if (awaitingReview(line.review())) {
+                item.getChildren().add(FoodCard.label(messages.text("cart.allergiesPending"), "customization-warning"));
+            }
+            if (!line.reviewMessage().isBlank()) item.getChildren().add(FoodCard.label(line.reviewMessage(), "dish-description"));
+            lines.getChildren().add(item);
+        }
+    }
+
+    private static boolean awaitingReview(Ordering.Review status) {
+        return switch (status) {
+            case PENDING_ALLERGY_REVIEW, CLARIFICATION_REQUESTED, DEFERRED, CUSTOMER_APPROVAL_REQUIRED -> true;
+            default -> false;
+        };
+    }
+
+    private String minor(long amount) {
+        return MenuText.price(BigDecimal.valueOf(amount, 2), java.util.Currency.getInstance("KES"), state.locale());
     }
 
     private AllergyReview review(CartDraft.Line line) {

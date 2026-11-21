@@ -18,6 +18,10 @@ import com.roseroots.customer.services.TakeawaySessionService;
 import com.roseroots.customer.models.ServiceMode;
 import com.roseroots.customer.components.CustomerShell;
 import com.roseroots.customer.state.CustomerState;
+import com.roseroots.customer.state.OrderConfirmation;
+import com.roseroots.customer.services.OrderService;
+import com.roseroots.customer.services.WaitEstimateService;
+import java.time.Clock;
 import com.roseroots.customer.utils.Messages;
 import java.util.Objects;
 
@@ -73,13 +77,20 @@ public final class CustomerApplication extends Application {
             state.menu().rememberScroll(0);
             goMenu.run();
         };
-        navigator.register(Route.CART, () -> new CartScreen(settings, state, com.roseroots.customer.services.WaitEstimateService.unavailable(), locale -> {
+        var estimates = WaitEstimateService.unavailable();
+        var confirmation = new OrderConfirmation(state, OrderService.unavailable(), Clock.systemUTC(), Platform::runLater);
+        Runnable review = () -> navigator.show(Route.ORDER_CONFIRMATION);
+        navigator.register(Route.ORDER_CONFIRMATION, () -> new CartScreen(settings, state, estimates, locale -> {
+            state.setLocale(locale);
+            review.run();
+        }, goHome, goMenu, null, chooseCategory, goCart, confirmation));
+        navigator.register(Route.CART, () -> new CartScreen(settings, state, estimates, locale -> {
             state.setLocale(locale);
             goCart.run();
         }, goHome, goMenu, id -> {
             editing.set(id);
             navigator.show(Route.DISH_DETAILS);
-        }, chooseCategory));
+        }, chooseCategory, review, null));
         navigator.register(Route.MENU, () -> new MenuScreen(settings, state, menuService, locale -> {
             state.setLocale(locale);
             goMenu.run();

@@ -39,6 +39,12 @@ public final class CartDraft {
     public BigDecimal total() {
         return lines.values().stream().map(line -> line.dish().total()).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
+    void removeSubmitted(List<Line> submitted) {
+        submitted.forEach(line -> {
+            if (lines.get(line.id()) == line) lines.remove(line.id());
+        });
+    }
+
     void clear() { lines.clear(); }
     void remove(UUID id) { lines.remove(id); }
 
