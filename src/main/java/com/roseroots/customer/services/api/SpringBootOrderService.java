@@ -160,21 +160,32 @@ public final class SpringBootOrderService implements OrderService {
 
     static Problem responseProblem(int status, String media, String body, boolean submitting) {
         String code = "INVALID_RESPONSE";
+        List<Violation> violations = List.of();
         if (media.equals("application/problem+json")) {
             try {
                 var problem = JsonParser.parseString(body).getAsJsonObject();
-                if (integer(problem, "status") == status) code = string(problem, "code");
+                if (integer(problem, "status") == status) {
+                    code = string(problem, "code");
+                    if (problem.has("violations")) {
+                        violations = list(problem, "violations", value -> new Violation(string(value, "pointer"),
+                                string(value, "code"), string(value, "message")));
+                    }
+                    if (violations.isEmpty() && problem.has("detail")
+                            && ("INVALID_SELECTION".equals(code) || "ITEM_UNAVAILABLE".equals(code))) {
+                        violations = List.of(new Violation("", code, string(problem, "detail")));
+                    }
+                }
             } catch (RuntimeException ignored) {
                 // A malformed error cannot establish whether an order was saved.
             }
         }
         boolean definite = switch (status) {
             case 409 -> List.of("PRICE_CHANGED", "QUOTE_EXPIRED", "ITEM_UNAVAILABLE",
-                    "SESSION_CLOSED", "SESSION_EXPIRED", "INVALID_SELECTION").contains(code);
+                    "SESSION_CLOSED", "SESSION_EXPIRED", "INVALID_SELECTION", "IDEMPOTENCY_CONFLICT").contains(code);
             case 422 -> List.of("ITEM_UNAVAILABLE", "INVALID_SELECTION", "REVIEW_REQUIRED").contains(code);
             default -> false;
         };
-        return new Problem(code, submitting && !definite);
+        return new Problem(code, submitting && !definite, violations);
     }
 
     static JsonObject draftBody(Ordering.Draft draft) {

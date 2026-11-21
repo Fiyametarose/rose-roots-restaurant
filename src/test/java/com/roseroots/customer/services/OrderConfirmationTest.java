@@ -92,6 +92,43 @@ class OrderConfirmationTest {
         assertEquals(0, customer.cart().count());
     }
 
+    @Test void addingASecondDishPreservesVisitDisclosureWithoutCopyingItIntoTheItem() {
+        var item = customer.cart().lines().getFirst().item();
+        assertTrue(customer.addToDraft(item));
+        var added = customer.cart().lines().getLast().dish();
+        assertEquals(disclosed, customer.sessionAllergy());
+        assertEquals(AllergyDeclaration.unreviewed(), added.allergy());
+        assertEquals(com.roseroots.customer.models.AllergyReview.Status.PENDING_ALLERGY_REVIEW,
+                com.roseroots.customer.models.AllergyReview.forDish(added, customer.sessionAllergy()).status());
+    }
+
+    @Test void idempotencyConflictIsNotRetryableForTheSameDraft() {
+        flow.requestQuote(changed);
+        flow.submit(true, changed);
+        orders.response.completeExceptionally(new OrderService.Problem("IDEMPOTENCY_CONFLICT", false));
+        assertEquals("IDEMPOTENCY_CONFLICT", flow.problem());
+        assertFalse(flow.unresolved());
+        assertFalse(flow.canQuote());
+        assertEquals(1, customer.cart().count());
+        assertEquals(disclosed, customer.sessionAllergy());
+        flow.submit(true, changed);
+        assertEquals(1, orders.calls.size());
+        assertTrue(customer.changeQuantity(customer.cart().lines().getFirst().id(), 2));
+        assertTrue(flow.canQuote());
+    }
+
+    @Test void invalidOptionExplainsWhichDraftLineWasRejected() {
+        flow.requestQuote(changed);
+        flow.submit(true, changed);
+        orders.response.completeExceptionally(new OrderService.Problem("INVALID_SELECTION", false, List.of(
+                new OrderService.Violation("/lines/0/selections/0/optionIds/0", "INVALID_OPTION", "Option changed"))));
+        assertEquals("INVALID_SELECTION", flow.problem());
+        assertTrue(flow.diagnostics().getFirst().contains("Doro Wat"));
+        assertTrue(flow.diagnostics().getFirst().contains("optionIds/0"));
+        assertEquals(1, customer.cart().count());
+        assertEquals(disclosed, customer.cart().lines().getFirst().dish().allergy());
+    }
+
     @Test void definitiveRejectionPreservesCartAndRequiresAnotherQuote() {
         flow.requestQuote(changed);
         flow.submit(true, changed);

@@ -6,5 +6,6 @@ public enum Route {
     DISH_DETAILS,
     CART,
     ORDER_CONFIRMATION,
+    ORDER_ACCEPTED,
     ORDERS
 }

@@ -30,17 +30,26 @@ public interface OrderService {
         };
     }
 
+    record Violation(String pointer, String code, String message) {}
+
     final class Problem extends RuntimeException {
         private final String code;
         private final boolean retrySameKey;
+        private final java.util.List<Violation> violations;
 
         public Problem(String code, boolean retrySameKey) {
+            this(code, retrySameKey, java.util.List.of());
+        }
+
+        public Problem(String code, boolean retrySameKey, java.util.List<Violation> violations) {
             super(code);
+            this.violations = java.util.List.copyOf(violations);
             this.code = code;
             this.retrySameKey = retrySameKey;
         }
 
         public String code() { return code; }
+        public java.util.List<Violation> violations() { return violations; }
         public boolean retrySameKey() { return retrySameKey; }
     }
 }

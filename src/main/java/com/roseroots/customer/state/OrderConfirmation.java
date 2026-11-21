@@ -27,6 +27,17 @@ public final class OrderConfirmation {
     private Phase phase = Phase.IDLE;
     private String problem = "";
     private String problemContext;
+    private List<String> diagnostics = List.of();
+    private final java.util.Map<String, Ordering.Draft> conflicts = new java.util.HashMap<>();
+
+    public List<String> diagnostics() { return problem().isEmpty() ? List.of() : diagnostics; }
+
+    public boolean conflicted() {
+        var conflict = conflicts.get(context());
+        if (conflict == null) return false;
+        try { return conflict.equals(snapshot().draft()); }
+        catch (RuntimeException invalid) { return false; }
+    }
     private Ordering.Accepted accepted;
 
     public OrderConfirmation(CustomerState customer, OrderService service, Clock clock, Executor ui) {
@@ -63,13 +74,18 @@ public final class OrderConfirmation {
         return session == null ? null : session.cartContextId();
     }
 
-    public boolean canQuote() { return active() && !busy() && !unresolved() && !customer.cart().lines().isEmpty(); }
+    public boolean canQuote() { return active() && !busy() && !unresolved() && !conflicted() && !customer.cart().lines().isEmpty(); }
 
     public void requestQuote(Runnable changed) {
         if (!canQuote()) return;
         final Snapshot snapshot;
         try {
             snapshot = snapshot();
+        } catch (InvalidReference invalid) {
+            fail("INVALID_SELECTION");
+            diagnostics = List.of(invalid.getMessage());
+            changed.run();
+            return;
         } catch (RuntimeException invalid) {
             fail("INVALID_SELECTION");
             changed.run();
@@ -78,10 +94,11 @@ public final class OrderConfirmation {
         quote = null;
         accepted = null;
         problem = "";
+        diagnostics = List.of();
         phase = Phase.QUOTING;
         changed.run();
         complete(() -> service.quote(snapshot.draft()), (value, error) -> {
-            if (error != null) fail(error.code());
+            if (error != null) fail(error, snapshot);
             else if (!matches(snapshot) || value == null || !value.sessionId().equals(snapshot.draft().sessionId())
                     || !value.expiresAt().isAfter(clock.instant())
                     || !validPricing(snapshot.draft(), value.lines(), value.totals(), true)) fail("INVALID_RESPONSE");
@@ -109,6 +126,7 @@ public final class OrderConfirmation {
         var context = context();
         phase = Phase.SENDING;
         problem = "";
+        diagnostics = List.of();
         changed.run();
         complete(() -> service.submit(attempt.snapshot().draft(), attempt.quote().id(), attempt.key()), (value, error) -> {
             if (error == null && identifies(attempt, value)) {
@@ -120,7 +138,7 @@ public final class OrderConfirmation {
                 }
                 phase = Phase.ACCEPTED;
                 refreshAccepted(value, changed);
-            } else if (error == null || error.retrySameKey()) {
+            } else if (error == null || (error.retrySameKey() && !"IDEMPOTENCY_CONFLICT".equals(error.code()))) {
                 unresolvedAttempts.put(context, attempt);
                 problem = error == null ? "INVALID_RESPONSE" : error.code();
                 problemContext = context;
@@ -128,7 +146,8 @@ public final class OrderConfirmation {
             } else {
                 unresolvedAttempts.remove(context);
                 quote = null;
-                fail(error.code());
+                if ("IDEMPOTENCY_CONFLICT".equals(error.code())) conflicts.put(context, attempt.snapshot().draft());
+                fail(error, attempt.snapshot());
             }
             changed.run();
         });
@@ -198,11 +217,17 @@ public final class OrderConfirmation {
         var lines = customer.cart().lines();
         if (lines.size() > 100) throw new IllegalArgumentException("Too many order lines");
         var items = lines.stream().map(line -> {
-            canonicalId(line.item().id());
-            line.dish().selections().forEach((group, options) -> {
-                if (!options.isEmpty()) canonicalId(group);
-                options.forEach(Ordering::canonicalId);
-            });
+            var name = line.item().name().in(customer.locale());
+            validateId(line.item().id(), name);
+            for (var group : line.item().customizationGroups()) {
+                var selected = line.dish().selections().getOrDefault(group.id(), java.util.Set.of());
+                for (var option : group.choices()) {
+                    if (!selected.contains(option.id())) continue;
+                    var description = name + " / " + group.name().in(customer.locale()) + " / " + option.name().in(customer.locale());
+                    validateId(group.id(), description);
+                    validateId(option.id(), description);
+                }
+            }
             return new Ordering.Line(line.id(), line.item().id(), line.quantity(), line.dish().selections(),
                     line.dish().allergy(), line.dish().instructions());
         }).toList();
@@ -227,7 +252,60 @@ public final class OrderConfirmation {
         return true;
     }
 
+    private static void validateId(String id, String name) {
+        try { canonicalId(id); }
+        catch (IllegalArgumentException invalid) { throw new InvalidReference(name + " (" + id + ")"); }
+    }
+
+    private static final class InvalidReference extends IllegalArgumentException {
+        InvalidReference(String detail) { super(detail); }
+    }
+
+    private void fail(OrderService.Problem error, Snapshot snapshot) {
+        fail(error.code());
+        diagnostics = error.violations().stream().limit(12).map(violation -> {
+            var pointer = violation.pointer().split("/");
+            String label = violation.pointer();
+            if (pointer.length > 2 && "lines".equals(pointer[1])) {
+                try {
+                    var line = snapshot.lines().get(Integer.parseInt(pointer[2]));
+                    label = line.item().name().in(customer.locale()) + " (" + violation.pointer() + ")";
+                    if (pointer.length >= 5 && "selections".equals(pointer[3])) {
+                        label = selectionLabel(line, pointer, label);
+                    }
+                } catch (IndexOutOfBoundsException | NumberFormatException ignored) {
+                    // The server pointer remains visible if it cannot be resolved.
+                }
+            }
+            return label.isBlank() ? violation.message() : label + " · " + violation.message();
+        }).toList();
+    }
+
+    private String selectionLabel(CartDraft.Line line, String[] pointer, String fallback) {
+        var selectedGroups = line.dish().selections().entrySet().stream()
+                .filter(entry -> !entry.getValue().isEmpty()).sorted(java.util.Map.Entry.comparingByKey()).toList();
+        int index = Integer.parseInt(pointer[4]);
+        if (index < 0 || index >= selectedGroups.size()) return fallback;
+        var selected = selectedGroups.get(index);
+        for (var group : line.item().customizationGroups()) {
+            if (!group.id().equals(selected.getKey())) continue;
+            String result = fallback + " / " + group.name().in(customer.locale());
+            if (pointer.length >= 7 && "optionIds".equals(pointer[5])) {
+                var optionIds = selected.getValue().stream().sorted().toList();
+                int optionIndex = Integer.parseInt(pointer[6]);
+                if (optionIndex >= 0 && optionIndex < optionIds.size()) {
+                    String id = optionIds.get(optionIndex);
+                    var option = group.choices().stream().filter(choice -> choice.id().equals(id)).findFirst();
+                    if (option.isPresent()) result += " / " + option.get().name().in(customer.locale());
+                }
+            }
+            return result;
+        }
+        return fallback;
+    }
+
     private void fail(String code) {
+        diagnostics = List.of();
         phase = Phase.ERROR;
         problem = code;
         problemContext = context();

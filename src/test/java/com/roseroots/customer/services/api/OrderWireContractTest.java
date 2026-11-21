@@ -16,6 +16,22 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class OrderWireContractTest {
+    @Test void mapsLegacyOptionsExactlyLikeIntegratedOrderingPricing() {
+        String dish = "00000000-0000-4000-8000-000000000099";
+        String group = ConnectedCatalog.orderingOptionId(dish + "/group/", "portion");
+        assertEquals("65c64d7a-c4bd-3859-b348-8f8143160f81", group);
+        assertEquals("55ab7537-e193-3fdc-ab15-1943171187d6",
+                ConnectedCatalog.orderingOptionId(group + "/option/", "large"));
+        assertEquals(dish, ConnectedCatalog.orderingOptionId(group + "/option/", dish));
+        assertThrows(IllegalArgumentException.class, () -> ConnectedCatalog.orderingOptionId(group + "/option/", ""));
+    }
+
+    @Test void conflictResponseDoesNotAuthorizeSameKeyRetry() {
+        var problem = SpringBootOrderService.responseProblem(409, "application/problem+json",
+                "{\"status\":409,\"code\":\"IDEMPOTENCY_CONFLICT\"}", true);
+        assertEquals("IDEMPOTENCY_CONFLICT", problem.code());
+        assertFalse(problem.retrySameKey());
+    }
     private static JsonObject operation(String path) throws Exception {
         var document = JsonParser.parseString(Files.readString(Path.of("docs", "ordering-api-v1.openapi.json")));
         return document.getAsJsonObject().getAsJsonObject("paths").getAsJsonObject(path).getAsJsonObject("post");

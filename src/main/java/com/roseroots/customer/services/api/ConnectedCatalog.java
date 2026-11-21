@@ -41,6 +41,7 @@ public final class ConnectedCatalog implements MenuService {
     }
 
     private MenuItem item(JsonObject item) {
+        var dishId = id(item, "id");
         var description = new LocalizedText(string(item, "description"));
         var name = new LocalizedText(string(item, "name"));
         var safety = new MenuItem.FoodSafety(
@@ -48,24 +49,33 @@ public final class ConnectedCatalog implements MenuService {
                 enums(item, "allergens", MenuItem.Allergen::valueOf), Set.of(), false);
         var image = item.get("imageReference");
         var prep = item.get("prepMinutes");
-        return new MenuItem(id(item, "id"), id(item, "categoryId"), MenuItem.Cuisine.valueOf(string(item, "cuisine")),
+        return new MenuItem(dishId, id(item, "categoryId"), MenuItem.Cuisine.valueOf(string(item, "cuisine")),
                 name, description, description, item.getAsJsonPrimitive("price").getAsBigDecimal(),
                 image == null || image.isJsonNull() ? null : imageUrl(image.getAsString()),
                 list(item, "ingredients", ingredient -> new LocalizedText(ingredient.getAsString())),
                 safety, null, MenuItem.Availability.valueOf(string(item, "availability")), Set.of(),
                 prep == null || prep.isJsonNull() ? null : Duration.ofMinutes(prep.getAsLong()),
-                list(item, "customizationGroups", node -> group(node.getAsJsonObject())));
+                list(item, "customizationGroups", node -> group(dishId, node.getAsJsonObject())));
     }
 
-    private static MenuItem.CustomizationGroup group(JsonObject group) {
-        return new MenuItem.CustomizationGroup(string(group, "id"), new LocalizedText(string(group, "name")),
+    private static MenuItem.CustomizationGroup group(String dishId, JsonObject group) {
+        var groupId = orderingOptionId(dishId + "/group/", string(group, "id"));
+        return new MenuItem.CustomizationGroup(groupId, new LocalizedText(string(group, "name")),
                 MenuItem.CustomizationGroup.Selection.valueOf(string(group, "selection")),
                 group.get("minimum").getAsInt(), group.get("maximum").getAsInt(),
                 list(group, "choices", node -> {
                     var choice = node.getAsJsonObject();
-                    return new MenuItem.CustomizationGroup.Choice(string(choice, "id"),
+                    return new MenuItem.CustomizationGroup.Choice(orderingOptionId(groupId + "/option/", string(choice, "id")),
                             new LocalizedText(string(choice, "name")), choice.get("priceAdjustment").getAsBigDecimal());
                 }));
+    }
+
+    // Mirrors the integrated server's OrderingPricing.catalogId for legacy catalog references.
+    static String orderingOptionId(String namespace, String value) {
+        if (value.matches("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}")) return value;
+        if (value.isBlank()) throw new IllegalArgumentException("Missing customization reference");
+        return java.util.UUID.nameUUIDFromBytes((namespace + value)
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
     }
 
     private String imageUrl(String location) {

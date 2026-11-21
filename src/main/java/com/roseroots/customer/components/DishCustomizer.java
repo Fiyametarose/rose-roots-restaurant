@@ -42,7 +42,7 @@ public final class DishCustomizer extends VBox {
         var total = FoodCard.label("", "dish-price");
         total.setId("customization-total");
         var selectedAllergens = new EnumMap<AllergyDeclaration.Allergen, CheckBox>(AllergyDeclaration.Allergen.class);
-        var disclosure = prior == null ? state.sessionAllergy() : prior.allergy();
+        var disclosure = prior == null ? AllergyDeclaration.unreviewed() : prior.allergy();
         var other = notes(messages.text("custom.other"), disclosure.other(), "other-allergies");
         var instructions = notes(messages.text("custom.instructions"), prior == null ? "" : prior.instructions(),
                 "preparation-instructions");
@@ -101,8 +101,8 @@ public final class DishCustomizer extends VBox {
                 var status = !hasSession ? messages.text("custom.noSession")
                         : !available ? messages.text("custom.unavailable") : "";
                 var detail = java.util.stream.Stream.of(
-                        direct.isBlank() ? "" : messages.text("catalog.contains") + ": " + direct,
-                        cross.isBlank() ? "" : messages.text("catalog.crossContact") + ": " + cross,
+                        direct.isBlank() ? "" : messages.text("confirm.directConflict") + ": " + direct,
+                        cross.isBlank() ? "" : messages.text("confirm.possibleContact") + ": " + cross,
                         status).filter(value -> !value.isBlank()).collect(Collectors.joining("\n"));
                 warning.setText(detail);
                 warning.setVisible(!detail.isEmpty());
@@ -155,7 +155,8 @@ public final class DishCustomizer extends VBox {
                 java.util.stream.Stream.concat(selectedAllergens.values().stream().map(CheckBox::selectedProperty),
                         java.util.stream.Stream.of(none.selectedProperty(), other.textProperty()))
                         .toArray(javafx.beans.Observable[]::new)));
-        getChildren().addAll(FoodCard.label(messages.text("custom.allergies"), "dish-panel-title"),
+        getChildren().addAll(FoodCard.label(messages.text("custom.itemAllergies"), "dish-panel-title"),
+                FoodCard.label(messages.text("confirm.itemAllergyScope"), "catalog-muted"),
                 none, allergies, other, instructions, FoodCard.label(messages.text("custom.note"), "catalog-muted"),
                 remember, warning, total, add, notice);
         selectors.values().forEach(group -> group.values().forEach(property -> property.addListener(o -> update.run())));
