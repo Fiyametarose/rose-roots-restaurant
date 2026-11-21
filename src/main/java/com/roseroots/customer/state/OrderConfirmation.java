@@ -119,6 +119,7 @@ public final class OrderConfirmation {
                     customer.cart().removeSubmitted(attempt.snapshot().lines());
                 }
                 phase = Phase.ACCEPTED;
+                refreshAccepted(value, changed);
             } else if (error == null || error.retrySameKey()) {
                 unresolvedAttempts.put(context, attempt);
                 problem = error == null ? "INVALID_RESPONSE" : error.code();
@@ -130,6 +131,16 @@ public final class OrderConfirmation {
                 fail(error.code());
             }
             changed.run();
+        });
+    }
+
+    private void refreshAccepted(Ordering.Accepted original, Runnable changed) {
+        complete(() -> service.order(original.sessionId(), original.id()), (latest, error) -> {
+            if (error == null && latest != null && accepted == original && sameSession(latest.sessionId(), latest.mode())
+                    && original.id().equals(latest.id())) {
+                accepted = latest;
+                changed.run();
+            }
         });
     }
 
