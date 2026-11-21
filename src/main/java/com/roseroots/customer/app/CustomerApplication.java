@@ -6,6 +6,7 @@ import com.roseroots.customer.screens.DishDetailsScreen;
 import com.roseroots.customer.screens.CartScreen;
 import com.roseroots.customer.screens.MenuScreen;
 import com.roseroots.customer.screens.OrdersScreen;
+import com.roseroots.customer.screens.OrderAcceptedScreen;
 import com.roseroots.customer.screens.WelcomeScreen;
 import com.roseroots.customer.services.LocalRestaurantSettings;
 import com.roseroots.customer.services.DiningSessionService;
@@ -111,18 +112,21 @@ public final class CustomerApplication extends Application {
             state.setLocale(locale);
             goOrders.run();
         }, goHome, goMenu, goCart, chooseCategory, false));
+        Runnable goAccepted = () -> navigator.show(Route.ORDER_ACCEPTED);
+        navigator.register(Route.ORDER_ACCEPTED, () -> new OrderAcceptedScreen(settings, state, confirmation.accepted(),
+                locale -> { state.setLocale(locale); goAccepted.run(); }, goHome, goMenu, goCart, goOrders, chooseCategory));
         Runnable review = () -> navigator.show(Route.ORDER_CONFIRMATION);
         navigator.register(Route.ORDER_CONFIRMATION, () -> new CartScreen(settings, state, estimates, locale -> {
             state.setLocale(locale);
             review.run();
-        }, goHome, goMenu, null, chooseCategory, goCart, confirmation, goOrders));
+        }, goHome, goMenu, null, chooseCategory, goCart, confirmation, goOrders, goAccepted));
         navigator.register(Route.CART, () -> new CartScreen(settings, state, estimates, locale -> {
             state.setLocale(locale);
             goCart.run();
         }, goHome, goMenu, id -> {
             editing.set(id);
             navigator.show(Route.DISH_DETAILS);
-        }, chooseCategory, review, null, goOrders));
+        }, chooseCategory, review, null, goOrders, goAccepted));
         navigator.register(Route.MENU, () -> new MenuScreen(settings, state, menuService, locale -> {
             state.setLocale(locale);
             goMenu.run();

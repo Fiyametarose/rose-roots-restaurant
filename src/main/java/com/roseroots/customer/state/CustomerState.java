@@ -81,7 +81,7 @@ public final class CustomerState {
                 || item.availability() != MenuItem.Availability.AVAILABLE) {
             return false;
         }
-        return saveDish(null, new ConfiguredDish(item, 1, ConfiguredDish.defaults(item), "", sessionAllergy()));
+        return saveDish(null, new ConfiguredDish(item, 1, ConfiguredDish.defaults(item), "", AllergyDeclaration.unreviewed()));
     }
 
     public AllergyDeclaration sessionAllergy() {
