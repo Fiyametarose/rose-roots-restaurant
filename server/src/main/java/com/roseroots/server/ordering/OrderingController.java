@@ -23,8 +23,12 @@ class OrderingController {
     private static final String JSON_MEDIA = MediaType.APPLICATION_JSON_VALUE;
     private static final int MAX_REQUEST_BYTES = 2 * 1024 * 1024;
     private final OrderingService ordering;
+    private final AssistanceRequests assistance;
 
-    OrderingController(OrderingService ordering) { this.ordering = ordering; }
+    OrderingController(OrderingService ordering, AssistanceRequests assistance) {
+        this.ordering = ordering;
+        this.assistance = assistance;
+    }
 
     @GetMapping("/device")
     ResponseEntity<String> device(@AuthenticationPrincipal Actor actor) {
@@ -104,6 +108,40 @@ class OrderingController {
     ResponseEntity<String> problem(OrderingProblem error) {
         return ResponseEntity.status(error.status).contentType(MediaType.APPLICATION_PROBLEM_JSON)
                 .cacheControl(CacheControl.noStore()).body(error.body().toString());
+    }
+
+    @PostMapping(path = "/assistance", consumes = JSON_MEDIA)
+    ResponseEntity<String> submitAssistance(@AuthenticationPrincipal Actor actor, HttpServletRequest request,
+            @RequestHeader(name = "Idempotency-Key", required = false) String key) {
+        JsonNode input = body(request);
+        boolean noteProvided = input != null && input.has("note");
+        fields(input, noteProvided ? new String[]{"sessionId", "type", "note"} : new String[]{"sessionId", "type"});
+        return response(assistance.submit(actor, id(input, "sessionId"), id(key),
+                choice(input, "type", "WAITER", "DRINKING_WATER", "CUTLERY", "NAPKINS", "ORDER_HELP", "BILL", "OTHER"),
+                noteProvided ? text(input, "note", 240).strip() : ""));
+    }
+
+    @GetMapping("/sessions/{id}/assistance")
+    ResponseEntity<String> sessionAssistance(@AuthenticationPrincipal Actor actor, @PathVariable("id") String session,
+            @RequestParam(name = "cursor", required = false) String cursor,
+            @RequestParam(name = "limit", required = false) String limit) {
+        return response(200, assistance.page(actor, id(session), cursor, limit(limit)));
+    }
+
+    @GetMapping("/kitchen/assistance")
+    ResponseEntity<String> kitchenAssistance(@AuthenticationPrincipal Actor actor,
+            @RequestParam(name = "cursor", required = false) String cursor,
+            @RequestParam(name = "limit", required = false) String limit) {
+        return response(200, assistance.page(actor, null, cursor, limit(limit)));
+    }
+
+    @PatchMapping(path = "/kitchen/assistance/{id}", consumes = JSON_MEDIA)
+    ResponseEntity<String> updateAssistance(@AuthenticationPrincipal Actor actor, @PathVariable("id") String requestId,
+            HttpServletRequest request) {
+        var input = fields(body(request), "status", "expectedVersion");
+        return response(200, assistance.transition(actor, id(requestId),
+                choice(input, "status", "ACKNOWLEDGED", "IN_PROGRESS", "COMPLETED"),
+                integer(input, "expectedVersion", 1, MAX_SAFE)));
     }
 
     @ExceptionHandler(DataAccessException.class)

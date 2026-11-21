@@ -2,6 +2,8 @@ package com.roseroots.kitchen.app;
 
 import com.roseroots.kitchen.model.StaffMember;
 import com.roseroots.kitchen.screens.AssistanceView;
+import com.roseroots.kitchen.screens.ConnectedAssistanceView;
+import com.roseroots.kitchen.service.http.SpringBootKitchenService;
 import com.roseroots.kitchen.screens.HandoffView;
 import com.roseroots.kitchen.screens.LiveBoard;
 import com.roseroots.kitchen.screens.HistoryView;
@@ -43,6 +45,8 @@ final class KitchenShell extends BorderPane {
     private final PriorityQueueView priority;
     private final StationsView stations;
     private final AssistanceView assistance;
+    private ConnectedAssistanceView connectedAssistance;
+    private ToggleButton assistanceButton;
     private final ReviewsView reviews;
     private final HistoryView history;
     private final KitchenSync sync;
@@ -141,10 +145,12 @@ final class KitchenShell extends BorderPane {
             show(workspace, priority, "Priority Management");
         });
         ToggleButton stationsButton = destination("Stations", group, () -> showStations(workspace));
-        ToggleButton assistanceButton = destination("Assistance", group, () -> {
+        assistanceButton = destination("Assistance", group, () -> {
             if (local) {
                 assistance.refresh();
                 show(workspace, assistance, "Assistance Requests");
+            } else if (connectedAssistance != null) {
+                show(workspace, connectedAssistance, "Assistance Requests");
             } else {
                 show(workspace, label("Customer assistance is unavailable from the connected server.", "empty"),
                         "Assistance Requests");
@@ -225,9 +231,15 @@ final class KitchenShell extends BorderPane {
 
     void stop() {
         unsubscribeSync.run();
+        if (connectedAssistance != null) connectedAssistance.stop();
         sync.stop();
         live.stop();
         timer.stop();
+    }
+
+    void startConnectedAssistance(SpringBootKitchenService service) {
+        connectedAssistance = new ConnectedAssistanceView(service,
+                count -> assistanceButton.setText(count == 0 ? "Assistance" : "Assistance (" + count + ")"));
     }
 
     private static Region spacer() {

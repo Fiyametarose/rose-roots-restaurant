@@ -48,6 +48,7 @@ public final class KitchenApplication extends Application {
                     List.of(), id -> {}, clock, () -> stage.setFullScreen(!stage.isFullScreen()),
                     () -> new AdminWorkspace(stage));
             remote.startAutomaticRefresh();
+            board.startConnectedAssistance(remote);
         } else {
             openLocal(stage, clock);
         }

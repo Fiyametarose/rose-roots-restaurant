@@ -400,6 +400,41 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
                 .thenApply(snapshot -> rejectOlderVersions(previous, snapshot));
     }
 
+    public CompletableFuture<List<ConnectedAssistanceRequest>> assistanceRequests() {
+        return assistancePage(null, new ArrayList<>(), new HashSet<>(), new HashSet<>());
+    }
+
+    public CompletableFuture<ConnectedAssistanceRequest> advanceAssistance(ConnectedAssistanceRequest displayed) {
+        var next = displayed.status().next();
+        var body = new JsonObject();
+        body.addProperty("status", next.name());
+        body.addProperty("expectedVersion", displayed.version());
+        return send("/api/v1/kitchen/assistance/" + displayed.id(), body)
+                .thenApply(raw -> parse(() -> {
+                    var updated = ConnectedAssistanceRequest.parse(KitchenTicketJson.object(raw));
+                    if (!updated.id().equals(displayed.id()) || !updated.sessionId().equals(displayed.sessionId())
+                            || updated.status() != next || updated.version() != displayed.version() + 1) throw unreadable();
+                    return updated;
+                }));
+    }
+
+    private CompletableFuture<List<ConnectedAssistanceRequest>> assistancePage(String cursor,
+            List<ConnectedAssistanceRequest> rows, HashSet<String> cursors, HashSet<UUID> ids) {
+        String suffix = cursor == null ? "" : "&cursor=" + URLEncoder.encode(cursor, StandardCharsets.UTF_8);
+        return send("/api/v1/kitchen/assistance?limit=50" + suffix, null).thenCompose(raw -> {
+            var page = parse(() -> KitchenTicketJson.object(raw));
+            for (var element : page.getAsJsonArray("requests")) {
+                var request = parse(() -> ConnectedAssistanceRequest.parse(element.getAsJsonObject()));
+                if (!ids.add(request.id())) throw unreadable();
+                rows.add(request);
+            }
+            if (page.get("nextCursor").isJsonNull()) return CompletableFuture.completedFuture(List.copyOf(rows));
+            String next = page.get("nextCursor").getAsString();
+            if (next.isBlank() || next.length() > 500 || !cursors.add(next) || cursors.size() > 2000) throw unreadable();
+            return assistancePage(next, rows, cursors, ids);
+        });
+    }
+
     private static List<Ticket> rejectOlderVersions(List<Ticket> previous, List<Ticket> snapshot) {
         var orderVersions = new HashMap<UUID, Long>();
         var itemVersions = new HashMap<UUID, Long>();

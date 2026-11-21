@@ -32,7 +32,7 @@ class OrderingService {
     record Result(int status, JsonNode body) {}
 
     private record Device(UUID id, UUID tableId, String tableNumber, long version) {}
-    private record Session(UUID id, String mode, UUID tableId, String tableNumber, String pickup, String status,
+    record Session(UUID id, String mode, UUID tableId, String tableNumber, String pickup, String status,
                            Instant createdAt, Instant expiresAt, Instant closedAt) {
         String currentStatus(Instant now) {
             return status.equals("OPEN") && !expiresAt.isAfter(now) ? "EXPIRED" : status;
@@ -49,7 +49,7 @@ class OrderingService {
 
     private record Quote(Instant expiresAt, JsonNode draft, JsonNode pricing) {}
     private record Submission(byte[] fingerprint, JsonNode response) {}
-    private record Cursor(long after, long through) {}
+    record Cursor(long after, long through) {}
 
     private final JdbcClient jdbc;
     private final OrderingPricing pricing;
@@ -388,12 +388,12 @@ class OrderingService {
                 ? encodeCursor(cursorScope, rows.get(limit - 1).sequence(), cursor.through()) : null);
     }
 
-    private static String encodeCursor(String scope, long after, long through) {
+    static String encodeCursor(String scope, long after, long through) {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(
                 (scope + ":" + after + ":" + through).getBytes(StandardCharsets.UTF_8));
     }
 
-    private static Cursor decodeCursor(String value, String scope) {
+    static Cursor decodeCursor(String value, String scope) {
         try {
             if (value.isEmpty() || value.length() > 500) {
                 throw new IllegalArgumentException();
@@ -453,7 +453,7 @@ class OrderingService {
                 .orElseThrow(OrderingProblem::missing);
     }
 
-    private Session ownedSession(Actor actor, UUID id, boolean lock) {
+    Session ownedSession(Actor actor, UUID id, boolean lock) {
         return jdbc.sql("""
                 SELECT * FROM dining_session WHERE id = :id AND terminal_id = :terminal AND restaurant_id = :restaurant
                 """ + (lock ? " FOR UPDATE" : "")).param("id", id).param("terminal", actor.terminalId())

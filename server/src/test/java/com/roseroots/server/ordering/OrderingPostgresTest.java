@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.roseroots.kitchen.model.Ticket;
 import com.roseroots.kitchen.service.KitchenSync;
 import com.roseroots.kitchen.service.http.LoopbackKitchenClient;
+import com.roseroots.kitchen.screens.ConnectedAssistanceView;
+import com.roseroots.kitchen.screens.OrderDetails;
 import com.roseroots.server.ServerApplication;
 import java.net.CookieManager;
 import java.net.URI;
@@ -17,11 +19,16 @@ import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.sql.DriverManager;
 import java.time.Duration;
+import java.time.Clock;
 import java.util.Base64;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import org.flywaydb.core.Flyway;
@@ -34,6 +41,16 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.web.server.servlet.context.ServletWebServerApplicationContext;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import javafx.application.Platform;
+import javafx.scene.Parent;
+import javafx.scene.Scene;
+import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.DialogPane;
+import javafx.scene.control.Label;
+import javafx.scene.control.TextField;
+import javafx.stage.Stage;
+import javafx.stage.Window;
 
 import static com.roseroots.server.ordering.OrderingJson.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -52,6 +69,7 @@ class OrderingPostgresTest {
     private static ServletWebServerApplicationContext server;
     private static JdbcClient db;
     private static HttpClient client;
+    private static boolean fxStarted;
 
     @TempDir
     static Path media;
@@ -86,6 +104,7 @@ class OrderingPostgresTest {
 
     @AfterAll
     static void stop() throws Exception {
+        if (fxStarted) Platform.exit();
         if (client != null) {
             client.close();
         }
@@ -95,6 +114,210 @@ class OrderingPostgresTest {
         try (var connection = DriverManager.getConnection(DATABASE, USER, PASSWORD);
              var statement = connection.createStatement()) {
             statement.execute("DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE");
+        }
+    }
+
+    @Test
+    void assistancePersistsAllTypesWithScopedHistoryAndIdempotentAcceptance() throws Exception {
+        String terminal = terminal(true);
+        String another = terminal(true);
+        String session = session(terminal, "DINE_IN", 201);
+        var types = java.util.List.of("WAITER", "DRINKING_WATER", "CUTLERY", "NAPKINS", "ORDER_HELP", "BILL", "OTHER");
+        var key = UUID.randomUUID();
+        ObjectNode other = object().put("sessionId", session).put("type", "OTHER").put("note", "Please help");
+        for (String type : types.subList(0, 6)) {
+            json(send(terminal, "POST", "/assistance", object().put("sessionId", session).put("type", type),
+                    UUID.randomUUID()), 201);
+        }
+        JsonNode accepted = json(send(terminal, "POST", "/assistance", other, key), 201);
+        String id = accepted.path("id").asText();
+        assertEquals("SUBMITTED", accepted.path("status").asText());
+        assertEquals("Table 07", accepted.path("serviceDestination").asText());
+        assertEquals(accepted, json(send(terminal, "POST", "/assistance", other, key), 200));
+        problem(send(terminal, "POST", "/assistance", other.deepCopy().put("note", "Changed"), key),
+                409, "IDEMPOTENCY_CONFLICT");
+        problem(send(terminal, "POST", "/assistance", other.deepCopy().put("type", "BILL"), UUID.randomUUID()),
+                422, "INVALID_SELECTION");
+        problem(send(another, "GET", "/sessions/" + session + "/assistance", null, null), 404, "NOT_FOUND");
+        problem(send(another, "POST", "/assistance", other, UUID.randomUUID()), 404, "NOT_FOUND");
+        problem(send(terminal, "GET", "/kitchen/assistance", null, null), 403, "FORBIDDEN");
+        problem(send(terminal, "PATCH", "/kitchen/assistance/" + id, transition("ACKNOWLEDGED", 1), null),
+                403, "FORBIDDEN");
+        problem(send(STAFF_TOKEN, "PATCH", "/kitchen/assistance/" + id, transition("COMPLETED", 1), null),
+                409, "INVALID_TRANSITION");
+        var first = get(terminal, "/sessions/" + session + "/assistance?limit=2", 200);
+        assertEquals(2, first.path("requests").size());
+        assertEquals(5, get(terminal, "/sessions/" + session + "/assistance?cursor="
+                + first.path("nextCursor").asText(), 200).path("requests").size());
+        assertEquals(7L, db.sql("""
+                SELECT count(*) FROM assistance_request WHERE session_id = CAST(:id AS uuid)
+                """).param("id", session).query(Long.class).single());
+        var ack = json(send(STAFF_TOKEN, "PATCH", "/kitchen/assistance/" + id, transition("ACKNOWLEDGED", 1), null), 200);
+        assertEquals("ACKNOWLEDGED", ack.path("status").asText());
+        problem(send(STAFF_TOKEN, "PATCH", "/kitchen/assistance/" + id, transition("IN_PROGRESS", 1), null),
+                409, "VERSION_CONFLICT");
+        assertEquals(accepted, json(send(terminal, "POST", "/assistance", other, key), 200));
+        assertEquals("ACKNOWLEDGED", assistanceState(terminal, session, id));
+        assertTrue(get(terminal, "/sessions/" + session + "/bill", 200).path("orders").isEmpty());
+    }
+
+    @Test
+    void javaFxKitchenDiscoversPersistedAssistanceAndCustomerReadsEveryTransition() throws Exception {
+        startFx();
+        String terminal = terminal(true);
+        String session = session(terminal, "DINE_IN", 201);
+        var kitchen = LoopbackKitchenClient.create(server.getWebServer().getPort(), STAFF_TOKEN);
+        var stage = fx(() -> {
+            var window = new Stage();
+            window.setScene(new Scene(new ConnectedAssistanceView(kitchen, count -> {}), 800, 560));
+            window.show();
+            return window;
+        });
+        try {
+            Parent root = stage.getScene().getRoot();
+            awaitKitchen(() -> uiText(root, "Assistance synchronizes automatically."));
+            var input = object().put("sessionId", session).put("type", "BILL");
+            var accepted = json(send(terminal, "POST", "/assistance", input, UUID.randomUUID()), 201);
+            String id = accepted.path("id").asText();
+            awaitKitchen(() -> uiText(root, id));
+            click(root, "Acknowledge", id);
+            awaitKitchen(() -> uiText(root, "Acknowledged") && statusIs(terminal, session, id, "ACKNOWLEDGED"));
+            click(root, "Start", id);
+            awaitKitchen(() -> statusIs(terminal, session, id, "IN_PROGRESS"));
+            click(root, "Complete", id);
+            awaitKitchen(() -> statusIs(terminal, session, id, "COMPLETED") && uiText(root, "Completed"));
+            assertEquals(3L, db.sql("""
+                    SELECT count(*) FROM assistance_transition a JOIN ordering_credential c ON c.id = a.staff_credential_id
+                    WHERE a.request_id = CAST(:id AS uuid) AND c.token_sha256 = :hash
+                    """).param("id", id).param("hash", digest(STAFF_TOKEN)).query(Long.class).single());
+        } finally {
+            fx(() -> {
+                ((ConnectedAssistanceView) stage.getScene().getRoot()).stop();
+                stage.close();
+                return null;
+            });
+            kitchen.stop();
+        }
+    }
+
+    @Test
+    void javaFxChefReviewReleasesHoldAgainstRealBackend() throws Exception {
+        startFx();
+        String terminal = terminal(true);
+        String session = session(terminal, "DINE_IN", 201);
+        var draft = draft(session, dish());
+        draft.withObject("/visitAllergy").put("kind", "DISCLOSED").putArray("allergens").add("SOY");
+        var quote = json(send(terminal, "POST", "/order-quotes", draft, null), 200);
+        var persisted = json(send(terminal, "POST", "/orders", submitBody(draft, quote), UUID.randomUUID()), 201);
+        String order = persisted.path("id").asText();
+        var chef = LoopbackKitchenClient.create(server.getWebServer().getPort(), CHEF_TOKEN);
+        chef.startAutomaticRefresh();
+        Stage stage = null;
+        Runnable remove = () -> {};
+        try {
+            Supplier<Optional<Ticket>> selected = () -> chef.activeTickets().stream()
+                    .filter(ticket -> ticket.reference().equals(order)).findFirst();
+            awaitKitchen(() -> selected.get().isPresent());
+            var details = fx(() -> new OrderDetails(chef, Clock.systemUTC(), () -> {}));
+            remove = chef.onOrdersChanged(() -> Platform.runLater(details::refresh));
+            stage = fx(() -> {
+                var window = new Stage();
+                window.setScene(new Scene(details, 800, 560));
+                details.open(selected.get().orElseThrow().id(), "Live Orders");
+                window.show();
+                return window;
+            });
+            awaitKitchen(() -> uiText(details, "PENDING_ALLERGY_REVIEW"));
+            fx(() -> {
+                Platform.runLater(() -> {
+                    var dialog = Window.getWindows().stream().filter(Window::isShowing)
+                            .map(window -> window.getScene().getRoot()).filter(DialogPane.class::isInstance)
+                            .map(DialogPane.class::cast).findFirst().orElseThrow();
+                    ((TextField) dialog.lookup(".text-field")).setText("Verified the preparation controls.");
+                    ((Button) dialog.lookupButton(ButtonType.OK)).fire();
+                });
+                button(details, "Approve preparation").fire();
+                return null;
+            });
+            awaitKitchen(() -> selected.get().orElseThrow().items().getFirst().actionable());
+            assertTrue(fx(() -> button(details, "Start item").isVisible()));
+            assertEquals("APPROVED_FOR_PREPARATION", get(terminal, "/orders/" + order, 200)
+                    .at("/lines/0/allergyReviewStatus").asText());
+        } finally {
+            remove.run();
+            chef.stop();
+            if (stage != null) {
+                Stage shown = stage;
+                fx(() -> { shown.close(); return null; });
+            }
+        }
+    }
+
+    private static void startFx() throws Exception {
+        if (fxStarted) return;
+        var ready = new CountDownLatch(1);
+        Platform.startup(() -> {
+            Platform.setImplicitExit(false);
+            ready.countDown();
+        });
+        assertTrue(ready.await(10, TimeUnit.SECONDS));
+        fxStarted = true;
+    }
+
+    private static <T> T fx(Callable<T> action) throws Exception {
+        var task = new FutureTask<>(action);
+        Platform.runLater(task);
+        return task.get(10, TimeUnit.SECONDS);
+    }
+
+    private static boolean uiText(Parent root, String text) {
+        try {
+            return fx(() -> {
+                root.applyCss();
+                root.layout();
+                return root.lookupAll(".label").stream().map(Label.class::cast)
+                        .anyMatch(label -> label.getText().contains(text));
+            });
+        } catch (Exception error) {
+            throw new AssertionError(error);
+        }
+    }
+
+    private static void click(Parent root, String action, String id) throws Exception {
+        awaitKitchen(() -> {
+            try {
+                return fx(() -> {
+                    root.applyCss();
+                    root.layout();
+                    if (!(root.lookup("#assistance-action-" + id) instanceof Button button)
+                            || !button.getText().equals(action) || button.isDisabled()) return false;
+                    button.fire();
+                    return true;
+                });
+            } catch (Exception error) {
+                throw new AssertionError(error);
+            }
+        });
+    }
+
+    private static Button button(Parent root, String text) {
+        root.applyCss();
+        root.layout();
+        return root.lookupAll(".button").stream().map(Button.class::cast)
+                .filter(button -> button.getText().equals(text)).findFirst().orElseThrow();
+    }
+
+    private static String assistanceState(String terminal, String session, String id) throws Exception {
+        var requests = get(terminal, "/sessions/" + session + "/assistance", 200).path("requests");
+        for (JsonNode request : requests) if (request.path("id").asText().equals(id)) return request.path("status").asText();
+        return "";
+    }
+
+    private static boolean statusIs(String terminal, String session, String id, String state) {
+        try {
+            return assistanceState(terminal, session, id).equals(state);
+        } catch (Exception error) {
+            throw new AssertionError(error);
         }
     }
 
@@ -142,10 +365,11 @@ class OrderingPostgresTest {
 
     private static void awaitKitchen(BooleanSupplier completed) throws InterruptedException {
         long deadline = System.nanoTime() + Duration.ofSeconds(12).toNanos();
-        while (!completed.getAsBoolean() && System.nanoTime() < deadline) {
+        while (System.nanoTime() < deadline) {
+            if (completed.getAsBoolean()) return;
             Thread.sleep(20);
         }
-        assertTrue(completed.getAsBoolean(), "Kitchen did not observe the persisted change");
+        fail("Kitchen did not observe the persisted change");
     }
 
     @Test

@@ -17,3 +17,11 @@ Customer maps its seven types directly to `AssistanceType`. Kitchen displays wir
 Status moves one step at a time through `SUBMITTED`, `ACKNOWLEDGED`, `IN_PROGRESS`, and `COMPLETED`. Customer acceptance is `SUBMITTED`. Staff actions use the request version and advance to the next state. They return `409 VERSION_CONFLICT` for an outdated version and `409 INVALID_TRANSITION` for a skipped or terminal transition.
 
 Both list operations return `requests` and a nullable opaque `nextCursor`. Customer reads the terminal-owned session collection. Kitchen reads its restaurant collection. Both project the same request UUID and state. They omit private actor audit details. REST polling is sufficient for the first rollout.
+
+## Provisioning and deployment
+
+Flyway V7 adds the Chef permission and allergy audit. V8 adds Assistance requests and their transition audit in the same PostgreSQL database. The existing terminal, staff, and Manager sign-in setup applies. [Credential provisioning and TLS](ordering-backend-4c2a.md)
+
+Provision a distinct `KITCHEN` credential for each person. After confirming the Chef's qualification, set `ordering_credential.allergy_reviewer=true` for that credential UUID through the operator database connection. New credentials start with the permission off. Keep the credential-to-person assignment in the provisioning records. The review audit retains the credential UUID, decision, reason, and versions.
+
+Catalog operators can record known option allergens in the Manager customization editor using `Name | price adjustment | MILK, EGGS`. The optional third column uses the existing catalog allergen codes. Records without declared allergens still need a Chef decision when a declared Customer allergy triggers a preparation hold.
