@@ -16,6 +16,18 @@ public final class CustomerState {
     private ServiceMode serviceMode;
     private TerminalSession terminalSession;
     private final CartDraft cart = new CartDraft();
+    private final AssistanceState assistance;
+
+    public CustomerState() {
+        this(new AssistanceState(com.roseroots.customer.services.AssistanceService.unavailable(),
+                java.time.Clock.systemUTC(), Runnable::run));
+    }
+
+    public CustomerState(AssistanceState assistance) {
+        this.assistance = Objects.requireNonNull(assistance);
+    }
+
+    public AssistanceState assistance() { return assistance; }
     private final Map<String, AllergyDeclaration> declarations = new HashMap<>();
     private final MenuBrowseState menu = new MenuBrowseState();
 

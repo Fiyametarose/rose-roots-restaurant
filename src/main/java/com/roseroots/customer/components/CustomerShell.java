@@ -14,7 +14,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.Node;
-import javafx.scene.control.Alert;
+
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
@@ -137,15 +137,9 @@ public final class CustomerShell extends BorderPane {
             }
         });
 
-        var assistance = action(messages.text("catalog.assistance"), false, () -> {
-            var alert = new Alert(Alert.AlertType.INFORMATION, messages.text("catalog.assistance.help"));
-            alert.setTitle(messages.text("catalog.assistance"));
-            alert.setHeaderText(null);
-            alert.initOwner(getScene().getWindow());
-            var theme = CustomerShell.class.getResource("/styles/theme.css");
-            alert.getDialogPane().getStylesheets().add(theme.toExternalForm());
-            alert.showAndWait();
-        });
+        var assistance = action(messages.text("catalog.assistance"), false, () ->
+                new AssistanceDialog(getScene().getWindow(), state, false).show());
+        assistance.setId("header-assistance");
         assistance.setGraphic(new InterfaceIcon(InterfaceIcon.Kind.MAIN));
         assistance.getStyleClass().add("catalog-assistance");
         cart = action("", false, () -> {
