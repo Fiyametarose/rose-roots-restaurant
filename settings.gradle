@@ -1,1 +1,2 @@
 rootProject.name = 'rose-roots-customer'
+include 'kitchen-app', 'server'

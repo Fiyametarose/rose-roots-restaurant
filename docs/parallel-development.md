@@ -11,6 +11,10 @@ Keep the verified Customer application at the repository root for now. All featu
 
 Agree on API contracts, DTOs, identity and permission boundaries before integration. The proposed Gradle structure has Customer JavaFX, Staff JavaFX, the Spring Boot server, and shared API contracts. Kitchen and protected Admin functionality belong to the single Staff JavaFX application. The Spring Boot server owns the single PostgreSQL database and its migrations. Both JavaFX clients use the backend APIs. Moving the current Customer app into a Gradle subproject is a separate, coordinated migration.
 
+The [two-PC Windows demonstration plan](two-pc-demonstration.md) records the
+deployment layout, REST and WebSocket coordination, and physical-network
+acceptance checks for all three owners.
+
 Open the working directories in separate VS Code windows from their parent directory.
 
 ```powershell

@@ -1,0 +1,33 @@
+name: rose-roots
+
+services:
+  db:
+    image: postgres:17
+    container_name: rose-roots-db
+    environment:
+      POSTGRES_DB: rose_roots
+      POSTGRES_USER: rose_roots
+      POSTGRES_PASSWORD_FILE: /run/secrets/database_password
+    ports:
+      - "127.0.0.1:${ROSE_DB_PORT:-5434}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - catalog
+    secrets:
+      - database_password
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "rose_roots", "-d", "rose_roots"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+networks:
+  catalog:
+
+volumes:
+  postgres_data:
+
+secrets:
+  database_password:
+    file: ./.env.rose-roots-db-password

@@ -1,0 +1,113 @@
+
+.root {
+    -fx-font-family: "Segoe UI";
+    -fx-font-size: 14px;
+    -fx-background-color: #f7f2e8;
+    -fx-accent: #0f3d29;
+    -fx-focus-color: #a77936;
+    -fx-faint-focus-color: #a7793633;
+}
+.label { -fx-text-fill: #172b20; }
+.admin-header {
+    -fx-background-color: #fffaf1;
+    -fx-border-color: transparent transparent #ded2bc transparent;
+    -fx-padding: 12 24;
+}
+.header-title, .field-label { -fx-font-weight: bold; }
+.header-title { -fx-font-size: 17px; }
+.admin-sidebar, .navigation, .navigation > .viewport { -fx-background-color: #0f3d29; }
+.admin-sidebar { -fx-padding: 22 10; }
+.brand, .login-brand { -fx-font-family: "Georgia"; -fx-font-size: 28px; }
+.brand { -fx-text-fill: #fffaf1; -fx-padding: 0 8; }
+.brand-caption { -fx-text-fill: #e6ca92; -fx-font-size: 11px; -fx-padding: 0 9 18 9; }
+.heading { -fx-font-family: "Georgia"; -fx-font-size: 34px; -fx-font-weight: bold; -fx-text-fill: #0f3d29; }
+.admin-page { -fx-padding: 24; -fx-background-color: #f7f2e8; }
+.scroll-pane { -fx-padding: 0; -fx-background-insets: 0; }
+.admin-workspace-scroll > .viewport { -fx-background-color: #f7f2e8; }
+.button {
+    -fx-background-color: #0f3d29;
+    -fx-background-radius: 8;
+    -fx-text-fill: #fffaf1;
+    -fx-font-weight: bold;
+    -fx-padding: 9 15;
+    -fx-cursor: hand;
+}
+.button:hover { -fx-background-color: #215c42; }
+.button:focused, .destination:focused { -fx-border-color: #bd9553; -fx-border-radius: 8; }
+.secondary { -fx-background-color: #eee2cc; -fx-text-fill: #0f3d29; }
+.secondary:hover { -fx-background-color: #e8d4b2; }
+.destination {
+    -fx-background-color: transparent;
+    -fx-background-radius: 8;
+    -fx-text-fill: #fffaef;
+    -fx-alignment: center-left;
+    -fx-wrap-text: true;
+    -fx-padding: 9 10;
+    -fx-cursor: hand;
+}
+.destination:hover { -fx-background-color: #215c42; }
+.destination:selected { -fx-background-color: #f5e4bd; -fx-text-fill: #0f3d29; -fx-font-weight: bold; }
+.muted, .panel-message { -fx-text-fill: #526359; }
+.feedback { -fx-text-fill: #85432c; }
+.login-card, .metric, .panel {
+    -fx-background-color: #fffaf1;
+    -fx-background-radius: 12;
+    -fx-border-color: #e4d8c1;
+    -fx-border-radius: 12;
+}
+.login-card { -fx-padding: 30; }
+.login-brand { -fx-text-fill: #805b25; }
+.text-field { -fx-background-radius: 6; -fx-padding: 9 11; }
+.metric { -fx-padding: 14 16; }
+.metric-value { -fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #0f3d29; }
+.panel-title {
+    -fx-background-color: #0f3d29;
+    -fx-background-radius: 11 11 0 0;
+    -fx-text-fill: #fffaf1;
+    -fx-font-family: "Georgia";
+    -fx-font-size: 18px;
+    -fx-padding: 10 14;
+}
+.panel-message { -fx-padding: 16; }
+.list-item { -fx-padding: 2 0; }
+.table-view, .table-view .column-header-background { -fx-background-color: #fffaf1; }
+.table-view .column-header { -fx-background-color: #f2e5ca; }
+.catalog-content { -fx-padding: 15; }
+.branding-preview {
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+    -fx-padding: 18;
+}
+.branding-preview-name {
+    -fx-font-family: "Georgia";
+    -fx-font-weight: bold;
+    -fx-font-size: 27px;
+    -fx-text-alignment: center;
+}
+.branding-preview-tagline { -fx-font-family: "Georgia"; -fx-font-size: 16px; -fx-text-alignment: center; }
+.catalog-stat {
+    -fx-padding: 13 18;
+    -fx-background-color: #fffaf1;
+    -fx-background-radius: 9;
+    -fx-border-color: #e4d8c1;
+    -fx-border-radius: 9;
+    -fx-text-fill: #0f3d29;
+    -fx-font-weight: bold;
+}
+.catalog-photo { -fx-padding: 5; -fx-text-fill: #805b25; }
+.catalog-emphasis { -fx-font-weight: bold; -fx-font-size: 18px; }
+.catalog-badge { -fx-background-radius: 12; -fx-padding: 3 8; -fx-font-size: 12px; }
+.catalog-available { -fx-background-color: #e0ecdc; -fx-text-fill: #174b33; }
+.catalog-sold-out { -fx-background-color: #f5e1ce; -fx-text-fill: #783d23; }
+.catalog-archived { -fx-background-color: #ede6d9; -fx-text-fill: #515b53; }
+.photo-preview {
+    -fx-background-color: #efe6d3;
+    -fx-background-radius: 9;
+    -fx-border-color: #dfd0b3;
+    -fx-border-radius: 9;
+}
+.photo-dialog, .photo-dialog .scroll-pane > .viewport { -fx-background-color: #f7f2e8; }
+.photo-dialog .slider .thumb { -fx-background-color: #0f3d29; }
+.operations-tab { -fx-background-radius: 8; -fx-padding: 9 15; -fx-background-color: #eee2cc; -fx-text-fill: #0f3d29; }
+.operations-tab:selected { -fx-background-color: #0f3d29; -fx-text-fill: #fffaf1; -fx-font-weight: bold; }
+.operations-record { -fx-background-color: #f7f2e8; -fx-background-radius: 8; -fx-padding: 12 14; }
