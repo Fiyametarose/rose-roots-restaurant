@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Rose & Roots shared ordering API",
-    "version": "1.0.0-draft.1",
+    "version": "1.0.0-draft.2",
     "description": "Review draft for Customer, Staff and Spring Boot. No endpoint in this document is declared implemented."
   },
   "servers": [
@@ -1313,10 +1313,21 @@
               "schema": {
                 "$ref": "#/components/schemas/StaffReview"
               },
-              "example": {
-                "decision": "REQUEST_CLARIFICATION",
-                "reason": "Confirm whether sesame is an allergy.",
-                "expectedVersion": 1
+              "examples": {
+                "approve": {
+                  "value": {
+                    "decision": "APPROVE",
+                    "reason": "Verified the ingredients and cross-contact controls.",
+                    "expectedVersion": 1
+                  }
+                },
+                "decline": {
+                  "value": {
+                    "decision": "DECLINE",
+                    "reason": "The available preparation setup cannot manage the risk.",
+                    "expectedVersion": 1
+                  }
+                }
               }
             }
           }
@@ -1356,7 +1367,8 @@
           "503": {
             "$ref": "#/components/responses/Problem503"
           }
-        }
+        },
+        "description": "This slice accepts APPROVE and DECLINE on held, unstarted items. A same-restaurant Kitchen bearer with the individually provisioned allergy-review permission is required. expectedVersion refers to the item. Replays using the previous version return VERSION_CONFLICT. Reasons are private audit data. Customer sees a separate safe reviewMessage. Decline cancels only the affected item and removes it from the payable bill."
       }
     },
     "/kitchen/orders/{id}/rush": {
@@ -1825,6 +1837,376 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PrepTime"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/assistance": {
+      "post": {
+        "operationId": "submitAssistance",
+        "description": "Open owned session required for first submission. Scope idempotency to session and UUID key. Identical replay returns the original acceptance, even if the request has advanced; history returns current state.",
+        "security": [
+          {
+            "terminalBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistanceCreate"
+              },
+              "example": {
+                "sessionId": "00000000-0000-4000-8000-000000000102",
+                "type": "BILL"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Original accepted request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistanceRequest"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000101",
+                  "sessionId": "00000000-0000-4000-8000-000000000102",
+                  "mode": "DINE_IN",
+                  "serviceDestination": "Table 07",
+                  "type": "BILL",
+                  "note": "",
+                  "status": "SUBMITTED",
+                  "submittedAt": "2026-11-21T18:10:00Z",
+                  "updatedAt": "2026-11-21T18:10:00Z",
+                  "version": 1
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "New accepted request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistanceRequest"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000101",
+                  "sessionId": "00000000-0000-4000-8000-000000000102",
+                  "mode": "DINE_IN",
+                  "serviceDestination": "Table 07",
+                  "type": "BILL",
+                  "note": "",
+                  "status": "SUBMITTED",
+                  "submittedAt": "2026-11-21T18:10:00Z",
+                  "updatedAt": "2026-11-21T18:10:00Z",
+                  "version": 1
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/sessions/{id}/assistance": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        {
+          "name": "cursor",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 50
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listSessionAssistance",
+        "description": "Current requests for the terminal-owned session.",
+        "security": [
+          {
+            "terminalBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Assistance page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistancePage"
+                },
+                "example": {
+                  "requests": [
+                    {
+                      "id": "00000000-0000-4000-8000-000000000101",
+                      "sessionId": "00000000-0000-4000-8000-000000000102",
+                      "mode": "DINE_IN",
+                      "serviceDestination": "Table 07",
+                      "type": "BILL",
+                      "note": "",
+                      "status": "SUBMITTED",
+                      "submittedAt": "2026-11-21T18:10:00Z",
+                      "updatedAt": "2026-11-21T18:10:00Z",
+                      "version": 1
+                    }
+                  ],
+                  "nextCursor": null
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/kitchen/assistance": {
+      "parameters": [
+        {
+          "name": "cursor",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 50
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listKitchenAssistance",
+        "description": "Current and completed requests scoped to the staff restaurant.",
+        "security": [
+          {
+            "staffBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Assistance page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistancePage"
+                },
+                "example": {
+                  "requests": [
+                    {
+                      "id": "00000000-0000-4000-8000-000000000101",
+                      "sessionId": "00000000-0000-4000-8000-000000000102",
+                      "mode": "DINE_IN",
+                      "serviceDestination": "Table 07",
+                      "type": "BILL",
+                      "note": "",
+                      "status": "SUBMITTED",
+                      "submittedAt": "2026-11-21T18:10:00Z",
+                      "updatedAt": "2026-11-21T18:10:00Z",
+                      "version": 1
+                    }
+                  ],
+                  "nextCursor": null
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        }
+      }
+    },
+    "/kitchen/assistance/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Id"
+          }
+        }
+      ],
+      "patch": {
+        "operationId": "transitionAssistance",
+        "description": "Advance one state from SUBMITTED to ACKNOWLEDGED to IN_PROGRESS to COMPLETED. Requires the current request version. Staff identity is derived from its bearer.",
+        "security": [
+          {
+            "staffBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistanceTransition"
+              },
+              "example": {
+                "status": "ACKNOWLEDGED",
+                "expectedVersion": 1
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistanceRequest"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000101",
+                  "sessionId": "00000000-0000-4000-8000-000000000102",
+                  "mode": "DINE_IN",
+                  "serviceDestination": "Table 07",
+                  "type": "BILL",
+                  "note": "",
+                  "status": "ACKNOWLEDGED",
+                  "submittedAt": "2026-11-21T18:10:00Z",
+                  "updatedAt": "2026-11-21T18:10:10Z",
+                  "version": 2
                 }
               }
             }
@@ -3232,7 +3614,8 @@
               "REVIEW_REQUIRED",
               "INVALID_TRANSITION",
               "THROTTLED",
-              "SERVICE_UNAVAILABLE"
+              "SERVICE_UNAVAILABLE",
+              "ALLERGEN_CONFLICT"
             ]
           },
           "detail": {
@@ -3350,6 +3733,149 @@
             }
           }
         ]
+      },
+      "AssistanceType": {
+        "type": "string",
+        "enum": [
+          "WAITER",
+          "DRINKING_WATER",
+          "CUTLERY",
+          "NAPKINS",
+          "ORDER_HELP",
+          "BILL",
+          "OTHER"
+        ]
+      },
+      "AssistanceStatus": {
+        "type": "string",
+        "enum": [
+          "SUBMITTED",
+          "ACKNOWLEDGED",
+          "IN_PROGRESS",
+          "COMPLETED"
+        ]
+      },
+      "AssistanceCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sessionId",
+          "type"
+        ],
+        "properties": {
+          "sessionId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "type": {
+            "$ref": "#/components/schemas/AssistanceType"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 240,
+            "description": "Trimmed text for OTHER only. Omit or use an empty string for the other six types."
+          }
+        }
+      },
+      "AssistanceTransition": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "expectedVersion"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACKNOWLEDGED",
+              "IN_PROGRESS",
+              "COMPLETED"
+            ]
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "AssistanceRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "sessionId",
+          "mode",
+          "serviceDestination",
+          "type",
+          "note",
+          "status",
+          "submittedAt",
+          "updatedAt",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "sessionId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ServiceMode"
+          },
+          "serviceDestination": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "type": {
+            "$ref": "#/components/schemas/AssistanceType"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "status": {
+            "$ref": "#/components/schemas/AssistanceStatus"
+          },
+          "submittedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "AssistancePage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requests",
+          "nextCursor"
+        ],
+        "properties": {
+          "requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssistanceRequest"
+            },
+            "maxItems": 200
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 500
+          }
+        }
       }
     },
     "responses": {
@@ -3417,6 +3943,25 @@
           "application/problem+json": {
             "schema": {
               "$ref": "#/components/schemas/Problem"
+            },
+            "examples": {
+              "allergenConflict": {
+                "value": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Entity",
+                  "status": 422,
+                  "code": "ALLERGEN_CONFLICT",
+                  "detail": "The selected configuration conflicts with a declared allergy.",
+                  "traceId": "00000000-0000-4000-8000-000000000101",
+                  "violations": [
+                    {
+                      "pointer": "/lines/0",
+                      "code": "ALLERGEN_CONFLICT",
+                      "message": "Declared allergens in this configuration: MILK."
+                    }
+                  ]
+                }
+              }
             }
           }
         }
