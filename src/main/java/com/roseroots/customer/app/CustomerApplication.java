@@ -117,8 +117,7 @@ public final class CustomerApplication extends Application {
             state.menu().rememberScroll(0);
             goMenu.run();
         };
-        var estimates = backend == null ? WaitEstimateService.unavailable()
-                : new com.roseroots.customer.services.api.RestWaitEstimates(backend);
+        WaitEstimateService estimates = backend == null ? WaitEstimateService.unavailable() : backend;
         var orders = backend == null ? OrderService.unavailable() : backend;
         var tracking = backend == null ? OrderTrackingService.unavailable() : new RestOrderTracking(backend, orderExecutor);
         var confirmation = new OrderConfirmation(state, orders, Clock.systemUTC(), Platform::runLater);

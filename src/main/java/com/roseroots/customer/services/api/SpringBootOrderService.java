@@ -7,10 +7,12 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.roseroots.customer.models.AllergyDeclaration;
-import com.roseroots.customer.models.Ordering;
 import com.roseroots.customer.models.OrderHistory;
+import com.roseroots.customer.models.Ordering;
 import com.roseroots.customer.models.ServiceMode;
+import com.roseroots.customer.models.WaitEstimate;
 import com.roseroots.customer.services.OrderService;
+import com.roseroots.customer.services.WaitEstimateService;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -19,13 +21,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public final class SpringBootOrderService implements OrderService {
+public final class SpringBootOrderService implements OrderService, WaitEstimateService {
     private final HttpClient client;
     private final URI api;
     private final Supplier<String> credential;
@@ -99,12 +102,8 @@ public final class SpringBootOrderService implements OrderService {
         return call("sessions/" + session + "/reviews", body, key, Function.identity());
     }
 
-    CompletionStage<java.util.Optional<com.roseroots.customer.models.WaitEstimate>> estimateDraft(Ordering.Draft draft) {
-        return call("wait-estimates", draftBody(draft), null, RestWaitEstimates::read);
-    }
-
-    CompletionStage<java.util.Optional<com.roseroots.customer.models.WaitEstimate>> estimateOrder(UUID order) {
-        return get("orders/" + order + "/wait-estimate").thenApply(RestWaitEstimates::read);
+    CompletionStage<Optional<WaitEstimate>> estimateOrder(UUID order) {
+        return get("orders/" + order + "/wait-estimate").thenApply(SpringBootOrderService::readEstimate);
     }
 
     CompletionStage<JsonObject> postAssistance(JsonObject body, UUID key) {
@@ -130,6 +129,28 @@ public final class SpringBootOrderService implements OrderService {
     }
 
     @Override public boolean available() { return compatible.getAsBoolean(); }
+
+    @Override public boolean live() { return true; }
+
+    @Override public CompletionStage<Optional<WaitEstimate>> estimate(Ordering.Draft draft) {
+        return call("wait-estimates", draftBody(draft), null, SpringBootOrderService::readEstimate);
+    }
+
+    static Optional<WaitEstimate> readEstimate(JsonObject body) {
+        if ("UNAVAILABLE".equals(string(body, "state"))) return Optional.empty();
+        if (!"AVAILABLE".equals(string(body, "state"))) throw new Problem("INVALID_RESPONSE", false);
+        return Optional.of(new WaitEstimate(
+                estimateMinutes(body, "minimumMinutes"), estimateMinutes(body, "maximumMinutes"),
+                Instant.parse(string(body, "calculatedAt")), Instant.parse(string(body, "validUntil"))));
+    }
+
+    private static Duration estimateMinutes(JsonObject body, String key) {
+        var value = body.getAsJsonPrimitive(key);
+        if (!value.isNumber()) throw new Problem("INVALID_RESPONSE", false);
+        int minutes = value.getAsBigDecimal().intValueExact();
+        if (minutes < 0 || minutes > 1440) throw new Problem("INVALID_RESPONSE", false);
+        return Duration.ofMinutes(minutes);
+    }
 
     @Override public CompletionStage<Ordering.Quote> quote(Ordering.Draft draft) {
         return call("order-quotes", draftBody(draft), null, SpringBootOrderService::readQuote);

@@ -1,5 +1,6 @@
 package com.roseroots.customer.services;
 
+import com.roseroots.customer.models.Ordering;
 import com.roseroots.customer.models.WaitEstimate;
 import java.time.Instant;
 import java.util.Optional;
@@ -10,7 +11,7 @@ import java.util.concurrent.CompletionStage;
 public interface WaitEstimateService {
     default boolean live() { return false; }
     /** Spring Boot supplies a range from current staffing, station workload, and preparation priorities. */
-    CompletionStage<Optional<WaitEstimate>> estimate(WaitEstimate.Request request);
+    CompletionStage<Optional<WaitEstimate>> estimate(Ordering.Draft request);
 
     static WaitEstimateService unavailable() {
         return request -> CompletableFuture.completedFuture(Optional.empty());

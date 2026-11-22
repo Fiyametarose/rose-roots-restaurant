@@ -497,39 +497,34 @@ public final class CartScreen extends StackPane {
         return MenuText.price(amount, settings.currency(), state.locale());
     }
 
+    private void refreshEstimateAfter(long milliseconds) {
+        expiry.setDuration(javafx.util.Duration.millis(milliseconds));
+        expiry.setOnFinished(event -> refreshEstimate());
+        expiry.playFromStart();
+    }
+
     private void refreshEstimate() {
         long requested = ++estimateRevision;
         expiry.stop();
         waitTime.setText(messages.text("cart.waitUnavailable"));
         var session = state.terminalSession();
         if (getScene() == null || session == null || !session.canSubmitOrders() || state.cart().lines().isEmpty()) return;
-        var items = state.cart().lines().stream().map(line -> new WaitEstimate.Item(line.item().id(),
-                line.quantity(), line.dish().selections(), review(line).status() == AllergyReview.Status.PENDING_ALLERGY_REVIEW)).toList();
-        com.roseroots.customer.models.Ordering.Draft wire = null;
-        if (estimates.live()) {
-            try {
-                wire = OrderConfirmation.draftForEstimate(state);
-            } catch (IllegalArgumentException invalid) {
-                return;
-            }
-        }
-        java.util.concurrent.CompletableFuture.completedFuture(new WaitEstimate.Request(session.sessionId(), items, wire))
-                .thenCompose(estimates::estimate).whenComplete((result, error) ->
-                Platform.runLater(() -> {
-                    if (requested != estimateRevision || getScene() == null || state.terminalSession() != session) return;
+        var visit = state.sessionAllergy();
+        java.util.concurrent.CompletableFuture.completedFuture(state)
+                .thenApply(OrderConfirmation::draftForEstimate).thenCompose(estimates::estimate)
+                .whenComplete((result, error) -> Platform.runLater(() -> {
+                    if (requested != estimateRevision || getScene() == null || state.terminalSession() != session
+                            || !state.sessionAllergy().equals(visit)) return;
                     var now = Instant.now();
-                    var current = error == null && result != null ? WaitEstimateService.current(result, now) : java.util.Optional.<WaitEstimate>empty();
-                    current.ifPresent(value -> {
+                    var current = error == null && result != null
+                            ? WaitEstimateService.current(result, now) : java.util.Optional.<WaitEstimate>empty();
+                    current.ifPresentOrElse(value -> {
                         waitTime.setText(MenuText.waitRange(value, state.locale(), messages)
                                 + " · " + messages.text("cart.waitNotGuaranteed"));
-                        expiry.setDuration(javafx.util.Duration.millis(Math.max(1,
-                                java.time.Duration.between(now, value.validUntil()).toMillis())));
+                        refreshEstimateAfter(Math.max(1, java.time.Duration.between(now, value.validUntil()).toMillis()));
+                    }, () -> {
+                        if (estimates.live()) refreshEstimateAfter(15_000);
                     });
-                    if (current.isEmpty() && estimates.live()) expiry.setDuration(javafx.util.Duration.seconds(15));
-                    if (current.isPresent() || estimates.live()) {
-                        expiry.setOnFinished(event -> refreshEstimate());
-                        expiry.playFromStart();
-                    }
                 }));
     }
 

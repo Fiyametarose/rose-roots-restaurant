@@ -28,6 +28,8 @@ public final class ConnectedCatalog implements MenuService {
         this.address = address;
     }
 
+    @Override public boolean refreshWhileVisible() { return true; }
+
     @Override public CompletionStage<MenuCatalog> loadCatalog() {
         long generation = refreshGeneration.incrementAndGet();
         var translations = rest.get("menu-translations").thenApply(ConnectedCatalog::translations).handle((next, error) -> {
