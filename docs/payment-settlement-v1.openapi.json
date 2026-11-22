@@ -1,0 +1,1457 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Rose & Roots payment settlement",
+    "version": "1.0.0",
+    "description": "Ratified cash-first checkout contract. The Manager cookie and CSRF protect staff mutations."
+  },
+  "servers": [
+    {
+      "url": "/api/v1"
+    }
+  ],
+  "paths": {
+    "/sessions/{id}/payable-balance": {
+      "get": {
+        "operationId": "readPayableBalance",
+        "security": [
+          {
+            "terminalBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Balance"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{id}/payments": {
+      "post": {
+        "operationId": "startPayment",
+        "security": [
+          {
+            "terminalBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Start"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Identical replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attempt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "New attempt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attempt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{id}/payments/{paymentId}": {
+      "get": {
+        "operationId": "readPayment",
+        "security": [
+          {
+            "terminalBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "path",
+            "name": "paymentId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attempt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{id}/payments/{paymentId}/cancel": {
+      "post": {
+        "operationId": "requestPaymentCancellation",
+        "security": [
+          {
+            "terminalBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "path",
+            "name": "paymentId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Versioned"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attempt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{id}/receipts/{receiptId}": {
+      "get": {
+        "operationId": "readReceipt",
+        "security": [
+          {
+            "terminalBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "path",
+            "name": "receiptId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Receipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/payments": {
+      "get": {
+        "operationId": "listCashAttempts",
+        "security": [
+          {
+            "managerCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Attempt"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/staff/payments/{paymentId}/confirm-cash": {
+      "post": {
+        "operationId": "confirmCash",
+        "security": [
+          {
+            "managerCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paymentId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-TOKEN",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Confirm"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attempt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/payments/{paymentId}/resolve-cash": {
+      "post": {
+        "operationId": "resolveUncollectedCash",
+        "security": [
+          {
+            "managerCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paymentId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-TOKEN",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Resolve"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attempt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/sessions/{id}/close": {
+      "post": {
+        "operationId": "closeSettledSession",
+        "security": [
+          {
+            "managerCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-TOKEN",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Close"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Closed"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem response. Inspect its stable code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "terminalBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      },
+      "managerCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "JSESSIONID"
+      }
+    },
+    "schemas": {
+      "Method": {
+        "type": "string",
+        "enum": [
+          "CASH",
+          "MPESA",
+          "CARD"
+        ]
+      },
+      "Status": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "SUCCEEDED",
+          "FAILED",
+          "CANCELLED"
+        ]
+      },
+      "Balance": {
+        "type": "object",
+        "required": [
+          "sessionId",
+          "billVersion",
+          "currency",
+          "payableMinor",
+          "settledMinor",
+          "outstandingMinor",
+          "orders",
+          "blockedReasons",
+          "openAttemptId",
+          "availableMethods"
+        ],
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "billVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "currency": {
+            "const": "KES"
+          },
+          "payableMinor": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "settledMinor": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "outstandingMinor": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "orders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PayableOrder"
+            }
+          },
+          "blockedReasons": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "CHEF_DECISION_PENDING",
+                "PAYMENT_PENDING",
+                "SESSION_NOT_OPEN",
+                "ALREADY_SETTLED",
+                "NOTHING_DUE"
+              ]
+            }
+          },
+          "openAttemptId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "availableMethods": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Method"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "PayableOrder": {
+        "type": "object",
+        "required": [
+          "orderId",
+          "amountMinor"
+        ],
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "amountMinor": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "additionalProperties": false
+      },
+      "Attempt": {
+        "type": "object",
+        "required": [
+          "id",
+          "sessionId",
+          "method",
+          "status",
+          "billVersion",
+          "version",
+          "amountMinor",
+          "currency",
+          "createdAt",
+          "updatedAt",
+          "cancellationRequested",
+          "receiptId"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "method": {
+            "$ref": "#/components/schemas/Method"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "billVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "amountMinor": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "currency": {
+            "const": "KES"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cancellationRequested": {
+            "type": "boolean"
+          },
+          "receiptId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "Receipt": {
+        "type": "object",
+        "required": [
+          "id",
+          "sessionId",
+          "paymentId",
+          "method",
+          "currency",
+          "amountMinor",
+          "verifiedAt",
+          "orders",
+          "lines"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "paymentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "method": {
+            "$ref": "#/components/schemas/Method"
+          },
+          "currency": {
+            "const": "KES"
+          },
+          "amountMinor": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "verifiedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "orders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PayableOrder"
+            }
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "orderId",
+                "itemId",
+                "pricing"
+              ],
+              "properties": {
+                "orderId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "itemId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "pricing": {
+                  "$ref": "ordering-api-v1.openapi.json#/components/schemas/PricedLine"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "Start": {
+        "type": "object",
+        "required": [
+          "method",
+          "expectedBillVersion"
+        ],
+        "properties": {
+          "method": {
+            "$ref": "#/components/schemas/Method"
+          },
+          "expectedBillVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "additionalProperties": false
+      },
+      "Versioned": {
+        "type": "object",
+        "required": [
+          "expectedVersion"
+        ],
+        "properties": {
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "additionalProperties": false
+      },
+      "Confirm": {
+        "type": "object",
+        "required": [
+          "expectedVersion",
+          "expectedBillVersion"
+        ],
+        "properties": {
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "expectedBillVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "additionalProperties": false
+      },
+      "Resolve": {
+        "type": "object",
+        "required": [
+          "expectedVersion",
+          "status",
+          "reason"
+        ],
+        "properties": {
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "FAILED",
+              "CANCELLED"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          }
+        },
+        "additionalProperties": false
+      },
+      "Close": {
+        "type": "object",
+        "required": [
+          "expectedBillVersion"
+        ],
+        "properties": {
+          "expectedBillVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "additionalProperties": false
+      },
+      "Closed": {
+        "type": "object",
+        "required": [
+          "sessionId",
+          "billVersion",
+          "status",
+          "closedAt"
+        ],
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "billVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "status": {
+            "const": "CLOSED"
+          },
+          "closedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}
