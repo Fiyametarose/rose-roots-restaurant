@@ -913,3 +913,10 @@
     -fx-cursor: hand;
 }
 .review-star:focused, .review-star:hover { -fx-border-color: -rr-forest-green; }
+
+.assistance-dialog.ethiopic .label, .assistance-dialog.ethiopic .button,
+.assistance-dialog.ethiopic .toggle-button, .assistance-dialog.ethiopic .check-box,
+.assistance-dialog.ethiopic .text-area,
+.catalog-shell.ethiopic .text-field, .catalog-shell.ethiopic .text-area {
+    -fx-font-family: "Noto Sans Ethiopic";
+}

@@ -23,6 +23,19 @@ public final class MenuText {
                 + "\u00A0" + formatter.format(amount);
     }
 
+    /** Format a validated range supplied by a service, without estimating from catalog preparation times. */
+    public static String waitRange(com.roseroots.customer.models.WaitEstimate range, Locale locale, Messages messages) {
+        var numbers = NumberFormat.getIntegerInstance(locale);
+        long from = roundedMinutes(range.earliest());
+        long to = roundedMinutes(range.latest());
+        return (from == to ? numbers.format(from) : numbers.format(from) + "–" + numbers.format(to))
+                + " " + messages.text("catalog.minutes");
+    }
+
+    private static long roundedMinutes(java.time.Duration duration) {
+        return duration.toMinutes() + (duration.toSecondsPart() != 0 || duration.getNano() != 0 ? 1 : 0);
+    }
+
     public static String allergyDisclosure(com.roseroots.customer.models.AllergyDeclaration declaration, Messages messages) {
         if (declaration.none()) return messages.text("custom.none");
         if (!declaration.disclosed()) return messages.text("custom.unreviewed");

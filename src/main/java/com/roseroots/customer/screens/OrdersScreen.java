@@ -368,7 +368,7 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
                     ? history.remaining(id, now) : java.util.Optional.<com.roseroots.customer.models.WaitEstimate>empty();
             visibility(label, estimate.isPresent());
             estimate.ifPresent(value -> label.setText(messages.text("orders.estimate") + " "
-                    + value.earliest().toMinutes() + "–" + value.latest().toMinutes() + " " + messages.text("catalog.minutes")));
+                    + MenuText.waitRange(value, customer.locale(), messages)));
         });
     }
 

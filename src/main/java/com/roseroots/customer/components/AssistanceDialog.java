@@ -53,6 +53,8 @@ public final class AssistanceDialog extends Dialog<Void> {
         var pane = getDialogPane();
         pane.getStylesheets().add(Objects.requireNonNull(getClass().getResource("/styles/theme.css")).toExternalForm());
         pane.getStyleClass().add("assistance-dialog");
+        messages.applyDirection(pane);
+        if ("am".equals(messages.language())) pane.getStyleClass().add("ethiopic");
         pane.setPrefWidth(Math.min(760, owner.getWidth() - 18));
         pane.getButtonTypes().add(ButtonType.CLOSE);
         pane.lookupButton(ButtonType.CLOSE).setId("assistance-close");

@@ -16,6 +16,11 @@ public final class Messages {
         return bundle.getString(key);
     }
 
+    public void applyDirection(javafx.scene.Node node) {
+        node.setNodeOrientation("ar".equals(language())
+                ? javafx.geometry.NodeOrientation.RIGHT_TO_LEFT : javafx.geometry.NodeOrientation.LEFT_TO_RIGHT);
+    }
+
     public String language() {
         return bundle.getLocale().equals(Locale.ROOT) ? "en" : bundle.getLocale().getLanguage();
     }
