@@ -505,13 +505,15 @@ public final class CartScreen extends StackPane {
         if (getScene() == null || session == null || !session.canSubmitOrders() || state.cart().lines().isEmpty()) return;
         var items = state.cart().lines().stream().map(line -> new WaitEstimate.Item(line.item().id(),
                 line.quantity(), line.dish().selections(), review(line).status() == AllergyReview.Status.PENDING_ALLERGY_REVIEW)).toList();
-        estimates.estimate(new WaitEstimate.Request(session.sessionId(), items)).whenComplete((result, error) ->
+        java.util.concurrent.CompletableFuture.completedFuture(new WaitEstimate.Request(session.sessionId(), items))
+                .thenCompose(estimates::estimate).whenComplete((result, error) ->
                 Platform.runLater(() -> {
-                    if (requested != estimateRevision || getScene() == null || error != null) return;
+                    if (requested != estimateRevision || getScene() == null || state.terminalSession() != session
+                            || error != null || result == null) return;
                     var now = Instant.now();
                     WaitEstimateService.current(result, now).ifPresent(value -> {
-                        waitTime.setText(value.earliest().toMinutes() + "–" + value.latest().toMinutes()
-                                + " " + messages.text("catalog.minutes") + " · " + messages.text("cart.waitNotGuaranteed"));
+                        waitTime.setText(MenuText.waitRange(value, state.locale(), messages)
+                                + " · " + messages.text("cart.waitNotGuaranteed"));
                         expiry.setDuration(javafx.util.Duration.millis(Math.max(1,
                                 java.time.Duration.between(now, value.validUntil()).toMillis())));
                         expiry.setOnFinished(event -> refreshEstimate());

@@ -135,6 +135,7 @@ public final class WelcomeScreen extends BorderPane {
 
     private void updateCopy(Locale locale) {
         var messages = new Messages(locale);
+        messages.applyDirection(this);
         getStyleClass().remove("ethiopic");
         if (messages.language().equals("am")) {
             getStyleClass().add("ethiopic");

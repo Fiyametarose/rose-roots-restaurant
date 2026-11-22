@@ -260,11 +260,16 @@ public final class CustomerApplication extends Application {
     }
 
     private static boolean confirmDiscard(Stage stage, Messages messages) {
-        var alert = new Alert(Alert.AlertType.CONFIRMATION, messages.text("session.discardPrompt"),
-                ButtonType.CANCEL, ButtonType.OK);
+        var cancel = new ButtonType(messages.text("catalog.cancelFilters"), javafx.scene.control.ButtonBar.ButtonData.CANCEL_CLOSE);
+        var ok = new ButtonType(messages.text("navigation.confirm"), javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        var alert = new Alert(Alert.AlertType.CONFIRMATION, messages.text("session.discardPrompt"), cancel, ok);
+        messages.applyDirection(alert.getDialogPane());
+        if ("am".equals(messages.language())) alert.getDialogPane().getStyleClass().add("ethiopic");
+        alert.getDialogPane().getStyleClass().add("assistance-dialog");
+        alert.getDialogPane().getStylesheets().add(CustomerApplication.class.getResource("/styles/theme.css").toExternalForm());
         alert.initOwner(stage);
         alert.setTitle(messages.text("session.switchTitle"));
         alert.setHeaderText(messages.text("session.switchTitle"));
-        return alert.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK;
+        return alert.showAndWait().orElse(cancel) == ok;
     }
 }

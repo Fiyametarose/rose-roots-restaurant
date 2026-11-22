@@ -46,6 +46,7 @@ public final class CustomerShell extends BorderPane {
                          Consumer<Locale> chooseLanguage, Runnable goHome, Runnable goCart) {
         this.state = state;
         this.messages = messages;
+        messages.applyDirection(this);
         cartSummary = new CartSummaryBar(state, settings, messages, goCart);
         getStyleClass().add("catalog-shell");
         if (messages.language().equals("am")) {
@@ -214,6 +215,7 @@ public final class CustomerShell extends BorderPane {
 
     public void displayCategories(MenuCatalog catalog, Locale locale, Consumer<String> onCategory) {
         categories.getChildren().clear();
+        if (catalog == null) return;
         for (var category : catalog.childrenOf(null)) {
             var button = new Button(category.name().in(locale));
             button.setId("category-" + category.id());
@@ -251,6 +253,7 @@ public final class CustomerShell extends BorderPane {
 
     public static Button action(String text, boolean primary, Runnable onAction) {
         var button = new Button(text);
+        button.setWrapText(true);
         button.getStyleClass().addAll("catalog-action", primary ? "action-primary" : "action-secondary");
         button.setOnAction(event -> onAction.run());
         return button;

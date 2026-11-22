@@ -27,6 +27,8 @@ public final class ReviewDialog extends Dialog<Void> {
         var pane = getDialogPane();
         pane.getStylesheets().add(getClass().getResource("/styles/theme.css").toExternalForm());
         pane.getStyleClass().add("assistance-dialog");
+        text.applyDirection(pane);
+        if ("am".equals(text.language())) pane.getStyleClass().add("ethiopic");
         pane.setPrefWidth(Math.min(680, owner.getWidth() - 18));
         pane.getButtonTypes().add(ButtonType.CLOSE);
         var close = (Button) pane.lookupButton(ButtonType.CLOSE);
@@ -42,7 +44,8 @@ public final class ReviewDialog extends Dialog<Void> {
             int value = i;
             var star = new Button("☆");
             star.setId("review-star-" + value);
-            star.setAccessibleText(value + " / 5");
+            var number = java.text.NumberFormat.getIntegerInstance(customer.locale());
+            star.setAccessibleText(text.text("review.rating") + " " + number.format(value) + " / " + number.format(5));
             star.getStyleClass().add("review-star");
             star.setOnAction(event -> {
                 var current = visit.draft();
