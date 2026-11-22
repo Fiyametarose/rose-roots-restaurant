@@ -2,10 +2,6 @@ package com.roseroots.customer.models;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 public record WaitEstimate(Duration earliest, Duration latest, Instant calculatedAt, Instant validUntil) {
     public WaitEstimate {
@@ -18,16 +14,4 @@ public record WaitEstimate(Duration earliest, Duration latest, Instant calculate
         return !now.isBefore(calculatedAt) && now.isBefore(validUntil);
     }
 
-    public record Request(String sessionId, List<Item> items) {
-        public Request {
-            items = List.copyOf(items);
-        }
-    }
-
-    public record Item(String itemId, int quantity, Map<String, Set<String>> options, boolean requiresAllergyReview) {
-        public Item {
-            options = options.entrySet().stream().collect(Collectors.toUnmodifiableMap(
-                    Map.Entry::getKey, entry -> Set.copyOf(entry.getValue())));
-        }
-    }
 }

@@ -85,7 +85,9 @@ class CartCompletionTest {
 
     @Test
     void defaultEstimateIsUnavailableAndExpiredMockResultIsDisregarded() {
-        var request = new WaitEstimate.Request("session-1", List.of());
+        var request = new com.roseroots.customer.models.Ordering.Draft(java.util.UUID.randomUUID(),
+                com.roseroots.customer.models.ServiceMode.DINE_IN,
+                com.roseroots.customer.models.AllergyDeclaration.unreviewed(), List.of());
         assertTrue(WaitEstimateService.unavailable().estimate(request).toCompletableFuture().join().isEmpty());
         var now = Instant.parse("2026-11-20T18:00:00Z");
         var estimate = new WaitEstimate(Duration.ofMinutes(10), Duration.ofMinutes(20), now, now.plusSeconds(30));

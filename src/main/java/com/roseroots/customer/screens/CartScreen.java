@@ -9,7 +9,6 @@ import com.roseroots.customer.models.AllergyReview;
 import com.roseroots.customer.models.CartPricing;
 import com.roseroots.customer.models.ConfiguredDish;
 import com.roseroots.customer.models.MenuItem;
-import com.roseroots.customer.models.WaitEstimate;
 import com.roseroots.customer.services.RestaurantSettings;
 import com.roseroots.customer.services.WaitEstimateService;
 import com.roseroots.customer.state.CartDraft;
@@ -497,28 +496,37 @@ public final class CartScreen extends StackPane {
         return MenuText.price(amount, settings.currency(), state.locale());
     }
 
+    private void refreshEstimateAfter(long milliseconds) {
+        expiry.setDuration(javafx.util.Duration.millis(milliseconds));
+        expiry.setOnFinished(event -> refreshEstimate());
+        expiry.playFromStart();
+    }
+
     private void refreshEstimate() {
         long requested = ++estimateRevision;
         expiry.stop();
         waitTime.setText(messages.text("cart.waitUnavailable"));
         var session = state.terminalSession();
         if (getScene() == null || session == null || !session.canSubmitOrders() || state.cart().lines().isEmpty()) return;
-        var items = state.cart().lines().stream().map(line -> new WaitEstimate.Item(line.item().id(),
-                line.quantity(), line.dish().selections(), review(line).status() == AllergyReview.Status.PENDING_ALLERGY_REVIEW)).toList();
-        java.util.concurrent.CompletableFuture.completedFuture(new WaitEstimate.Request(session.sessionId(), items))
-                .thenCompose(estimates::estimate).whenComplete((result, error) ->
+        var items = state.cart().lines().stream().map(line -> new Ordering.Line(line.id(), line.item().id(),
+                line.quantity(), line.dish().selections(), line.dish().allergy(), line.dish().instructions())).toList();
+        var visit = state.sessionAllergy();
+        java.util.concurrent.CompletableFuture.completedFuture(session)
+                .thenCompose(active -> estimates.estimate(new Ordering.Draft(
+                        Ordering.canonicalId(active.sessionId()), active.mode(), visit, items))).whenComplete((result, error) ->
                 Platform.runLater(() -> {
                     if (requested != estimateRevision || getScene() == null || state.terminalSession() != session
-                            || error != null || result == null) return;
+                            || !state.sessionAllergy().equals(visit)) return;
+                    if (error != null || result == null) {
+                        refreshEstimateAfter(30_000);
+                        return;
+                    }
                     var now = Instant.now();
-                    WaitEstimateService.current(result, now).ifPresent(value -> {
+                    WaitEstimateService.current(result, now).ifPresentOrElse(value -> {
                         waitTime.setText(MenuText.waitRange(value, state.locale(), messages)
                                 + " · " + messages.text("cart.waitNotGuaranteed"));
-                        expiry.setDuration(javafx.util.Duration.millis(Math.max(1,
-                                java.time.Duration.between(now, value.validUntil()).toMillis())));
-                        expiry.setOnFinished(event -> refreshEstimate());
-                        expiry.playFromStart();
-                    });
+                        refreshEstimateAfter(Math.max(1, java.time.Duration.between(now, value.validUntil()).toMillis()));
+                    }, () -> refreshEstimateAfter(30_000));
                 }));
     }
 

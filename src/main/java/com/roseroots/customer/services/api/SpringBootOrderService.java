@@ -8,6 +8,9 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.roseroots.customer.models.AllergyDeclaration;
 import com.roseroots.customer.models.Ordering;
+import com.roseroots.customer.models.WaitEstimate;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import com.roseroots.customer.models.OrderHistory;
 import com.roseroots.customer.models.ServiceMode;
 import com.roseroots.customer.services.OrderService;
@@ -122,6 +125,30 @@ public final class SpringBootOrderService implements OrderService {
     }
 
     @Override public boolean available() { return compatible.getAsBoolean(); }
+
+    public CompletionStage<Optional<WaitEstimate>> estimate(Ordering.Draft draft) {
+        // draft.3 does not represent visit-level allergy on this operation.
+        if (draft.visitAllergy().disclosed()) return CompletableFuture.completedFuture(Optional.empty());
+        var body = draftBody(draft);
+        body.remove("visitAllergy");
+        return call("wait-estimates", body, null, SpringBootOrderService::readEstimate);
+    }
+
+    static Optional<WaitEstimate> readEstimate(JsonObject body) {
+        if ("UNAVAILABLE".equals(string(body, "state"))) return Optional.empty();
+        if (!"AVAILABLE".equals(string(body, "state"))) throw new Problem("INVALID_RESPONSE", false);
+        return Optional.of(new WaitEstimate(
+                estimateMinutes(body, "minimumMinutes"), estimateMinutes(body, "maximumMinutes"),
+                Instant.parse(string(body, "calculatedAt")), Instant.parse(string(body, "validUntil"))));
+    }
+
+    private static Duration estimateMinutes(JsonObject body, String key) {
+        var value = body.getAsJsonPrimitive(key);
+        if (!value.isNumber()) throw new Problem("INVALID_RESPONSE", false);
+        int minutes = value.getAsBigDecimal().intValueExact();
+        if (minutes < 0 || minutes > 1440) throw new Problem("INVALID_RESPONSE", false);
+        return Duration.ofMinutes(minutes);
+    }
 
     @Override public CompletionStage<Ordering.Quote> quote(Ordering.Draft draft) {
         return call("order-quotes", draftBody(draft), null, SpringBootOrderService::readQuote);
