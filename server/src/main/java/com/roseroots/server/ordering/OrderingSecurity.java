@@ -88,6 +88,8 @@ class OrderingSecurity {
                                 FROM ordering_credential c LEFT JOIN staff_account s ON s.credential_id = c.id
                                 WHERE c.token_sha256 = :hash AND c.revoked_at IS NULL AND c.expires_at > now()
                                     AND COALESCE(s.enabled, true)
+                                    AND (c.scope <> 'TERMINAL' OR EXISTS(SELECT 1 FROM ordering_terminal t
+                                        WHERE t.id=c.terminal_id AND t.enabled))
                                 """).param("hash", OrderingJson.digest(token))
                                 .query((row, index) -> new Actor(row.getObject("id", UUID.class),
                                         row.getObject("restaurant_id", UUID.class),

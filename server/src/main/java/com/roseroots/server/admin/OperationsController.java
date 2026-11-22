@@ -44,7 +44,11 @@ class OperationsController {
 
         var query = new Query(search.strip().toLowerCase(Locale.ROOT), from, to, orderStatus,
                 paymentStatus, serviceType, paymentMethod, sort, cursor, limit);
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(operations().orders(query));
+        try {
+            return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(operations().orders(query));
+        } catch (IllegalArgumentException invalidCursor) {
+            throw problem(HttpStatus.BAD_REQUEST, "INVALID_ORDERS_FILTER", "Check the filters or return to the first page.");
+        }
     }
 
     @GetMapping(AdminSecurity.PREFIX + "/orders/{id}")

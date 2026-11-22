@@ -1191,6 +1191,43 @@ class OrderingPostgresTest {
                     .path("status").asText());
             assertTrue(get(terminal, prefix + "/review", 200).path("eligible").asBoolean());
             assertEquals(document, get(terminal, prefix + "/receipts/" + receipt, 200));
+            var detail = json(manager.send(request("/admin/orders/" + order, null).GET().build(),
+                    HttpResponse.BodyHandlers.ofString()), 200);
+            assertEquals("SUCCESSFUL", detail.at("/order/paymentStatus").asText());
+            assertEquals(receipt, detail.at("/payments/0/receipt/number").asText());
+            assertEquals(0, detail.at("/sessionBill/outstandingMinor").asLong());
+            var page = json(manager.send(request("/admin/orders?q=" + order, null).GET().build(),
+                    HttpResponse.BodyHandlers.ofString()), 200);
+            assertEquals(21025, page.at("/summary/confirmedSalesMinor").asLong());
+            assertEquals(0, page.at("/summary/outstandingMinor").asLong());
+        }
+    }
+
+    @Test
+    void managerRegistersAndSafelyDisablesTerminalsWithAuthoritativeVisitMonitoring() throws Exception {
+        try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
+            managerLogin(manager);
+            String csrf = manager.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
+            var table = json(manager.send(managerPost("/admin/tables", csrf, object().put("displayNumber", "Managed 19")),
+                    HttpResponse.BodyHandlers.ofString()), 201);
+            String tableId = table.path("id").asText();
+            var registered = json(manager.send(managerPost("/admin/terminals", csrf,
+                    object().put("label", "Managed terminal").put("tableId", tableId)), HttpResponse.BodyHandlers.ofString()), 201);
+            String bearer = registered.path("bearerToken").asText();
+            String terminalId = registered.path("id").asText();
+            assertEquals(tableId, get(bearer, "/device", 200).at("/table/id").asText());
+            String session = session(bearer, "DINE_IN", 201);
+            var sessions = json(manager.send(request("/admin/sessions", null).GET().build(), HttpResponse.BodyHandlers.ofString()), 200);
+            assertTrue(sessions.toString().contains(session));
+            var disable = object().put("label", "Managed terminal").put("tableId", tableId).put("enabled", false).put("expectedVersion", 1);
+            configWrite(manager, csrf, "/terminals/" + terminalId, disable, 409);
+            json(manager.send(managerPost("/admin/sessions/" + session + "/close", csrf, object().put("expectedBillVersion", 1)),
+                    HttpResponse.BodyHandlers.ofString()), 200);
+            configWrite(manager, csrf, "/terminals/" + terminalId, disable, 200);
+            problem(send(bearer, "GET", "/device", null, null), 401, "UNAUTHENTICATED");
+            var dashboard = json(manager.send(request("/admin/dashboard", null).GET().build(), HttpResponse.BodyHandlers.ofString()), 200);
+            assertTrue(dashboard.path("activeDiningSessions").isIntegralNumber());
+            assertTrue(dashboard.path("salesToday").asText().startsWith("KSh "));
         }
     }
 

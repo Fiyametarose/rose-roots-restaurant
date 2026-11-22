@@ -84,7 +84,8 @@ class OrderingService {
         }
         UUID id = UUID.randomUUID();
         boolean dineIn = mode.equals("DINE_IN");
-        if (dineIn && device.tableId() == null) {
+        if (dineIn && (device.tableId() == null || !jdbc.sql("SELECT enabled FROM ordering_table WHERE id=:id FOR SHARE")
+                .param("id", device.tableId()).query(Boolean.class).optional().orElse(false))) {
             throw conflict("DEVICE_UNASSIGNED", "This terminal has no authorized table assignment.");
         }
         var session = new Session(id, mode, dineIn ? device.tableId() : null, dineIn ? device.tableNumber() : null,
@@ -567,9 +568,9 @@ class OrderingService {
 
     private Device device(Actor actor, boolean lock) {
         return jdbc.sql("""
-                SELECT t.id, t.table_id, d.display_number, t.version FROM ordering_terminal t
-                LEFT JOIN ordering_table d ON d.id = t.table_id
-                WHERE t.id = :terminal AND t.restaurant_id = :restaurant
+                SELECT t.id, d.id AS table_id, d.display_number, t.version FROM ordering_terminal t
+                LEFT JOIN ordering_table d ON d.id = t.table_id AND d.enabled
+                WHERE t.id = :terminal AND t.restaurant_id = :restaurant AND t.enabled
                 """ + (lock ? " FOR UPDATE OF t" : "")).param("terminal", actor.terminalId())
                 .param("restaurant", actor.restaurantId()).query((row, index) -> new Device(row.getObject(1, UUID.class),
                         row.getObject(2, UUID.class), row.getString(3), row.getLong(4))).optional()

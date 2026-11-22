@@ -139,8 +139,14 @@ final class AdminApi {
         return JsonParser.parseString(send(call, 200)).getAsJsonObject();
     }
 
-    com.google.gson.JsonArray kitchenConfiguration(String resource) throws IOException, InterruptedException {
+    com.google.gson.JsonArray adminRows(String resource) throws IOException, InterruptedException {
         return JsonParser.parseString(send(endpoint(resource).GET(), 200)).getAsJsonArray();
+    }
+
+    JsonObject adminWrite(String resource, String method, JsonObject body, int expected) throws IOException, InterruptedException {
+        var call = endpoint(resource).header("X-CSRF-TOKEN", csrf()).header("Content-Type", "application/json")
+                .method(method, HttpRequest.BodyPublishers.ofString(body.toString()));
+        return JsonParser.parseString(send(call, expected)).getAsJsonObject();
     }
 
     JsonObject orders(OperationsPresentation.Filters filters, String cursor) throws IOException, InterruptedException {

@@ -4094,7 +4094,17 @@
               "SERVICE_UNAVAILABLE",
               "ALLERGEN_CONFLICT",
               "REVIEW_NOT_ELIGIBLE",
-              "REVIEW_ALREADY_EXISTS"
+              "REVIEW_ALREADY_EXISTS",
+              "BILL_VERSION_CONFLICT",
+              "CHEF_DECISION_PENDING",
+              "PAYMENT_PENDING",
+              "ALREADY_SETTLED",
+              "NOTHING_DUE",
+              "PAYMENT_METHOD_UNAVAILABLE",
+              "OUTSTANDING_BALANCE",
+              "HANDOFF_REQUIRED",
+              "DUPLICATE_TABLE",
+              "ACTIVE_SESSION"
             ]
           },
           "detail": {

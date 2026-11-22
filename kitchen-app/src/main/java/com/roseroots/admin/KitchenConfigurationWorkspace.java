@@ -43,10 +43,10 @@ final class KitchenConfigurationWorkspace extends VBox {
     }
 
     private void load() {
-        run(() -> new Data(choices(api.kitchenConfiguration("stations"), "name"),
-                choices(api.kitchenConfiguration("chef-availability"), "username"),
+        run(() -> new Data(choices(api.adminRows("stations"), "name"),
+                choices(api.adminRows("chef-availability"), "username"),
                 choices(api.catalog().getAsJsonArray("items"), "name"),
-                objects(api.kitchenConfiguration("prep-times"))), data -> {
+                objects(api.adminRows("prep-times"))), data -> {
             var stationRows = new VBox(8);
             data.stations().forEach(station -> stationRows.getChildren().add(station(station, data.chefs())));
             var chefRows = new VBox(8);
