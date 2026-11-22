@@ -1515,6 +1515,79 @@ class OrderingPostgresTest {
     }
 
     @Test
+    void showcaseRegistrationIsRepeatSafeAndReassignmentKeepsVisitAndReceiptOwnership() throws Exception {
+        try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
+            managerLogin(manager);
+            String csrf = manager.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
+            var tables = new java.util.ArrayList<String>();
+            for (int seat = 1; seat <= 5; seat++) {
+                var input = object().put("displayNumber", "Showcase " + seat);
+                var create = managerPost("/admin/tables", csrf, input);
+                tables.add(json(manager.send(create, HttpResponse.BodyHandlers.ofString()), 201).path("id").asText());
+                problem(manager.send(create, HttpResponse.BodyHandlers.ofString()), 409, "DUPLICATE_TABLE");
+            }
+            var devices = new java.util.ArrayList<JsonNode>();
+            for (int index = 0; index < 3; index++) {
+                var input = object().put("label", "Showcase device " + index).put("tableId", tables.get(index));
+                var create = managerPost("/admin/terminals", csrf, input);
+                devices.add(json(manager.send(create, HttpResponse.BodyHandlers.ofString()), 201));
+                input.put("label", "showcase DEVICE " + index);
+                problem(manager.send(managerPost("/admin/terminals", csrf, input), HttpResponse.BodyHandlers.ofString()),
+                        409, "DUPLICATE_TERMINAL");
+            }
+            String workstation = issueWorkstation(manager, csrf, "Showcase pass").path("bearerToken").asText();
+            var repeat = managerPost("/admin/kitchen-workstations", csrf, object().put("label", "showcase PASS"));
+            assertEquals(409, manager.send(repeat, HttpResponse.BodyHandlers.discarding()).statusCode());
+            get(workstation, "/kitchen/orders", 200);
+            String first = devices.get(0).path("bearerToken").asText();
+            String second = devices.get(1).path("bearerToken").asText();
+            String third = devices.get(2).path("bearerToken").asText();
+            var dineIn = object().put("mode", "DINE_IN");
+            var firstVisit = client.sendAsync(http(first, "POST", "/sessions", dineIn, null), HttpResponse.BodyHandlers.ofString());
+            var secondVisit = client.sendAsync(http(second, "POST", "/sessions", dineIn, null), HttpResponse.BodyHandlers.ofString());
+            var visitA = json(firstVisit.get(10, TimeUnit.SECONDS), 201);
+            var visitB = json(secondVisit.get(10, TimeUnit.SECONDS), 201);
+            assertEquals(tables.get(0), visitA.at("/table/id").asText());
+            assertEquals(tables.get(1), visitB.at("/table/id").asText());
+            String session = visitA.path("id").asText();
+            String prefix = "/sessions/" + session;
+            problem(send(second, "GET", prefix, null, null), 404, "NOT_FOUND");
+            String devicePath = "/terminals/" + devices.getFirst().path("id").asText();
+            var move = object().put("label", "Showcase device 0").put("tableId", tables.get(3))
+                    .put("enabled", true).put("expectedVersion", 1);
+            assertEquals("ACTIVE_SESSION", configWrite(manager, csrf, devicePath, move, 409).path("code").asText());
+            String order = submitNew(first, session, dish());
+            String item = ticket(order).at("/order/lines/0/id").asText();
+            patch(item, "PREPARING", 1, 200);
+            patch(item, "READY", 2, 200);
+            json(send(HANDOFF_TOKEN, "POST", "/kitchen/orders/" + order + "/handoff", transition("SERVED", 3), null), 200);
+            long version = get(first, prefix + "/payable-balance", 200).path("billVersion").asLong();
+            String payment = json(send(first, "POST", prefix + "/payments",
+                    object().put("method", "CASH").put("expectedBillVersion", version), UUID.randomUUID()), 201)
+                    .path("id").asText();
+            assertEquals("ACTIVE_SESSION", configWrite(manager, csrf, devicePath, move, 409).path("code").asText());
+            var confirmed = json(manager.send(managerPost("/staff/payments/" + payment + "/confirm-cash", csrf,
+                    object().put("expectedVersion", 1).put("expectedBillVersion", version)), HttpResponse.BodyHandlers.ofString()), 200);
+            String receipt = confirmed.path("receiptId").asText();
+            json(manager.send(managerPost("/admin/sessions/" + session + "/close", csrf,
+                    object().put("expectedBillVersion", version + 1)), HttpResponse.BodyHandlers.ofString()), 200);
+            configWrite(manager, csrf, devicePath, move, 200);
+            assertEquals(tables.get(3), get(first, "/device", 200).at("/table/id").asText());
+            assertEquals(tables.get(3), json(send(first, "POST", "/sessions", dineIn, null), 201).at("/table/id").asText());
+            configWrite(manager, csrf, "/terminals/" + devices.get(2).path("id").asText(), object().put("label", "Showcase device 2")
+                    .put("tableId", tables.getFirst()).put("enabled", true).put("expectedVersion", 1), 200);
+            assertEquals(tables.getFirst(), get(third, "/device", 200).at("/table/id").asText());
+            get(first, prefix + "/receipts/" + receipt, 200);
+            for (String privateResource : java.util.List.of(prefix, prefix + "/payments/" + payment, prefix + "/receipts/" + receipt)) {
+                problem(send(third, "GET", privateResource, null, null), 404, "NOT_FOUND");
+            }
+            db.sql("UPDATE ordering_credential SET expires_at=now()-interval '1 minute' WHERE token_sha256=:hash")
+                    .param("hash", digest(third)).update();
+            problem(send(third, "GET", "/device", null, null), 401, "UNAUTHENTICATED");
+        }
+    }
+
+    @Test
     void managerRegistersAndSafelyDisablesTerminalsWithAuthoritativeVisitMonitoring() throws Exception {
         try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
             managerLogin(manager);

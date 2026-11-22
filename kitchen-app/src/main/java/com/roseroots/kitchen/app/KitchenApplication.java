@@ -44,9 +44,10 @@ public final class KitchenApplication extends Application {
         }
         if (config.mode() == KitchenBackendConfig.Mode.CONNECTED) {
             String credentialPath = environment.get("ROSE_KITCHEN_WORKSTATION_TOKEN_FILE");
-            boolean workstation = credentialPath != null;
+            String installedCredential = environment.get("ROSE_KITCHEN_INSTALLED_WORKSTATION_TOKEN");
+            boolean workstation = credentialPath != null || installedCredential != null;
             var remote = new SpringBootKitchenService(config,
-                    workstation ? new WorkstationCredential(credentialPath)
+                    workstation ? new WorkstationCredential(credentialPath, installedCredential)
                             : () -> Optional.ofNullable(environment.get("ROSE_KITCHEN_STAFF_TOKEN")),
                     Platform::runLater);
             board = new KitchenShell(remote, disconnectedAssistance(), List::of, remote,

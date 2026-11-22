@@ -199,6 +199,11 @@ public final class CustomerApplication extends Application {
 
     private static SpringBootOrderService orderBackend(BackendAddress address) {
         try {
+            String installed = System.getenv("ROSE_ROOTS_INSTALLED_TERMINAL_TOKEN");
+            if (installed != null) {
+                return address != null && installed.matches("[A-Za-z0-9_-]{43,128}")
+                        ? new SpringBootOrderService(address, () -> installed, () -> true) : null;
+            }
             String file = System.getenv("ROSE_ROOTS_TERMINAL_TOKEN_FILE");
             if (address != null && file != null && !file.isBlank()) {
                 var token = java.nio.file.Files.readString(java.nio.file.Path.of(file)).strip();

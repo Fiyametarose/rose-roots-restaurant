@@ -3,7 +3,7 @@ name: rose-roots
 services:
   db:
     image: postgres:17
-    container_name: rose-roots-db
+    container_name: ${ROSE_DB_CONTAINER:-rose-roots-db}
     environment:
       POSTGRES_DB: rose_roots
       POSTGRES_USER: rose_roots
@@ -30,4 +30,4 @@ volumes:
 
 secrets:
   database_password:
-    file: ./.env.rose-roots-db-password
+    file: ${ROSE_DB_PASSWORD_FILE:-./.env.rose-roots-db-password}

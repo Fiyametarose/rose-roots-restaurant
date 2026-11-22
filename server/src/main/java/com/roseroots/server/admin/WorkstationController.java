@@ -59,6 +59,14 @@ class WorkstationController {
         }
         UUID restaurant = jdbc.sql("SELECT id FROM ordering_restaurant").query(UUID.class).optional()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Provision the restaurant first."));
+        jdbc.sql("SELECT 1 FROM (SELECT pg_advisory_xact_lock(182041, 23)) gate").query(Integer.class).single();
+        if (jdbc.sql("""
+                SELECT EXISTS(SELECT 1 FROM kitchen_workstation w JOIN ordering_credential c ON c.id=w.credential_id
+                    WHERE c.restaurant_id=:restaurant AND lower(w.label)=lower(:label)
+                        AND c.revoked_at IS NULL AND c.expires_at > now())
+                """).param("restaurant", restaurant).param("label", label).query(Boolean.class).single()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "An active workstation already uses that label.");
+        }
         byte[] material = new byte[32];
         random.nextBytes(material);
         String token = "ws_" + Base64.getUrlEncoder().withoutPadding().encodeToString(material);

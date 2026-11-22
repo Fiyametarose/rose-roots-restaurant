@@ -1,5 +1,7 @@
 # Two-PC Windows demonstration
 
+For the integrated showcase use the [Windows showcase setup and startup guide](showcase-windows.md). The plan below predates the integrated REST polling workflows.
+
 | Computer | Processes | Network access |
 | --- | --- | --- |
 | PC 1 | Customer JavaFX | Outbound HTTPS and WSS to PC 2 |

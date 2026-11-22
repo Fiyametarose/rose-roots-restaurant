@@ -96,11 +96,13 @@ class VisitManagement {
     @PostMapping("/terminals")
     @Transactional
     public ResponseEntity<String> createTerminal(HttpServletRequest request, Principal manager) {
+        if (!request.isSecure()) throw new OrderingProblem(403, "FORBIDDEN", "Terminal issuance requires HTTPS.");
         var input = body(request);
         UUID restaurant = restaurant();
         UUID table = assignment(input, restaurant, false, null);
         UUID terminal = UUID.randomUUID();
         String name = value(input, "label", 80);
+        requireUniqueTerminalLabel(name, terminal);
         jdbc.sql("INSERT INTO ordering_terminal(id,restaurant_id,label,table_id) VALUES (:id,:restaurant,:label,:table)")
                 .param("id", terminal).param("restaurant", restaurant).param("label", name).param("table", table).update();
         byte[] material = new byte[32];
@@ -133,12 +135,21 @@ class VisitManagement {
             throw conflict("ACTIVE_SESSION", "Close this terminal's active or unsettled visits before changing its assignment or disabling it.");
         }
         String name = value(input, "label", 80);
+        requireUniqueTerminalLabel(name, terminal);
         jdbc.sql("UPDATE ordering_terminal SET label=:label,table_id=:table,enabled=:enabled,version=version+1 WHERE id=:id")
                 .param("label", name).param("table", table).param("enabled", enabled).param("id", terminal).update();
         return audit(200, "TERMINAL", terminal, expected + 1, manager, terminalData(name, table, enabled));
     }
 
     private record Existing(UUID table, boolean enabled, long version) {}
+
+    private void requireUniqueTerminalLabel(String name, UUID id) {
+        jdbc.sql("SELECT 1 FROM (SELECT pg_advisory_xact_lock(182041, 22)) gate").query(Integer.class).single();
+        if (jdbc.sql("SELECT EXISTS(SELECT 1 FROM ordering_terminal WHERE id<>:id AND lower(label)=lower(:label))")
+                .param("id", id).param("label", name).query(Boolean.class).single()) {
+            throw conflict("DUPLICATE_TERMINAL", "A terminal with that label already exists.");
+        }
+    }
 
     private boolean currentVisits(UUID terminal) {
         return jdbc.sql("""

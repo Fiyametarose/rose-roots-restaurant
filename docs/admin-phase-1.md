@@ -1,5 +1,7 @@
 # Admin Phase 1
 
+For the integrated showcase use the [Windows showcase setup and startup guide](showcase-windows.md). Current staff roles use personal sign-in and bootstrap configuration is needed only for initial provisioning and recovery.
+
 The Customer application remains at the Gradle root. The Kitchen application is
 `:kitchen-app`, with Admin as a manager-only workspace within the same executable.
 The `:server` module is the Spring Boot server entry point specified by Project Plan
