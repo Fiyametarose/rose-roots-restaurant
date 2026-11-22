@@ -8,6 +8,7 @@ import java.util.concurrent.CompletionStage;
 
 @FunctionalInterface
 public interface WaitEstimateService {
+    default boolean live() { return false; }
     /** Spring Boot supplies a range from current staffing, station workload, and preparation priorities. */
     CompletionStage<Optional<WaitEstimate>> estimate(WaitEstimate.Request request);
 

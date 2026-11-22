@@ -119,6 +119,18 @@ public final class MenuScreen extends StackPane {
         } else {
             showCatalog(true);
         }
+        if (menuService instanceof com.roseroots.customer.services.api.ConnectedCatalog) {
+            var poll = new javafx.animation.Timeline(new javafx.animation.KeyFrame(javafx.util.Duration.seconds(15),
+                    event -> loadCatalog(true)));
+            poll.setCycleCount(javafx.animation.Timeline.INDEFINITE);
+            sceneProperty().addListener((property, previous, current) -> {
+                if (current == null) poll.stop();
+                else {
+                    if (browse.catalog() != null) loadCatalog(true);
+                    poll.playFromStart();
+                }
+            });
+        }
     }
 
     private void buildFilters() {
@@ -149,9 +161,16 @@ public final class MenuScreen extends StackPane {
     }
 
     private void loadCatalog() {
+        loadCatalog(false);
+    }
+
+    private void loadCatalog(boolean automatic) {
+        if (refresh.isDisabled()) return;
         refresh.setDisable(true);
-        loadStatus.setText(messages.text("catalog.loading"));
-        loadStatus.setVisible(true);
+        if (!automatic) {
+            loadStatus.setText(messages.text("catalog.loading"));
+            loadStatus.setVisible(true);
+        }
         menuService.loadCatalog().whenComplete((catalog, error) -> Platform.runLater(() -> {
             if (getScene() == null) {
                 return;
@@ -163,9 +182,11 @@ public final class MenuScreen extends StackPane {
                 return;
             }
             loadStatus.setVisible(false);
+            if (catalog.equals(browse.catalog())) return;
+            if (automatic) browse.rememberScroll(scroll.getVvalue());
             MenuPhoto.clearCache();
             browse.setCatalog(catalog);
-            showCatalog(false);
+            showCatalog(automatic);
         }));
     }
 

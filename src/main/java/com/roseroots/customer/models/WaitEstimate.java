@@ -18,7 +18,8 @@ public record WaitEstimate(Duration earliest, Duration latest, Instant calculate
         return !now.isBefore(calculatedAt) && now.isBefore(validUntil);
     }
 
-    public record Request(String sessionId, List<Item> items) {
+    public record Request(String sessionId, List<Item> items, Ordering.Draft wireDraft) {
+        public Request(String sessionId, List<Item> items) { this(sessionId, items, null); }
         public Request {
             items = List.copyOf(items);
         }

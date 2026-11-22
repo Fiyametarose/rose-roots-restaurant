@@ -99,6 +99,14 @@ public final class SpringBootOrderService implements OrderService {
         return call("sessions/" + session + "/reviews", body, key, Function.identity());
     }
 
+    CompletionStage<java.util.Optional<com.roseroots.customer.models.WaitEstimate>> estimateDraft(Ordering.Draft draft) {
+        return call("wait-estimates", draftBody(draft), null, RestWaitEstimates::read);
+    }
+
+    CompletionStage<java.util.Optional<com.roseroots.customer.models.WaitEstimate>> estimateOrder(UUID order) {
+        return get("orders/" + order + "/wait-estimate").thenApply(RestWaitEstimates::read);
+    }
+
     CompletionStage<JsonObject> postAssistance(JsonObject body, UUID key) {
         return call("assistance", body, key, Function.identity());
     }
@@ -189,7 +197,8 @@ public final class SpringBootOrderService implements OrderService {
         }
         boolean definite = switch (status) {
             case 409 -> List.of("PRICE_CHANGED", "QUOTE_EXPIRED", "ITEM_UNAVAILABLE",
-                    "SESSION_CLOSED", "SESSION_EXPIRED", "INVALID_SELECTION", "IDEMPOTENCY_CONFLICT").contains(code);
+                    "SESSION_CLOSED", "SESSION_EXPIRED", "INVALID_SELECTION", "IDEMPOTENCY_CONFLICT", "PAYMENT_PENDING",
+                    "ALREADY_SETTLED").contains(code);
             case 422 -> List.of("ITEM_UNAVAILABLE", "INVALID_SELECTION", "REVIEW_REQUIRED", "ALLERGEN_CONFLICT").contains(code);
             default -> false;
         };

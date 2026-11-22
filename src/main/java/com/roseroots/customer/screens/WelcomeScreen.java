@@ -97,10 +97,11 @@ public final class WelcomeScreen extends BorderPane {
                 languageLabel, rightRule);
         languageHeading.setAlignment(Pos.CENTER);
         languageHeading.getStyleClass().add("welcome-language-heading");
-        var form = new VBox(new BrandHeader(settings.brand()), heading, divider, tagline,
+        var form = new VBox(new BrandHeader(settings), heading, divider, tagline,
                 serviceOptions, languageHeading, languages, fallback);
         form.setAlignment(Pos.CENTER);
         form.getStyleClass().add("welcome-content");
+        settings.observeWhileAttached(this, () -> tagline.setText(settings.tagline(state.locale())));
 
         var upper = image("botanical-upper");
         var lower = image("botanical-lower");

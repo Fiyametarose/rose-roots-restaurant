@@ -223,7 +223,15 @@ public final class OrderConfirmation {
         return !quote || prices.stream().mapToLong(Ordering.Price::extendedMinor).sum() == totals.subtotalMinor();
     }
 
+    public static Ordering.Draft draftForEstimate(CustomerState customer) {
+        return snapshot(customer).draft();
+    }
+
     private Snapshot snapshot() {
+        return snapshot(customer);
+    }
+
+    private static Snapshot snapshot(CustomerState customer) {
         var session = customer.terminalSession();
         var lines = customer.cart().lines();
         if (lines.size() > 100) throw new IllegalArgumentException("Too many order lines");
@@ -243,10 +251,10 @@ public final class OrderConfirmation {
                     line.dish().allergy(), line.dish().instructions());
         }).toList();
         return new Snapshot(new Ordering.Draft(canonicalId(session.sessionId()), session.mode(),
-                visitForWire(), items), lines);
+                visitForWire(customer), items), lines);
     }
 
-    private com.roseroots.customer.models.AllergyDeclaration visitForWire() {
+    private static com.roseroots.customer.models.AllergyDeclaration visitForWire(CustomerState customer) {
         var declaration = customer.sessionAllergy();
         return declaration.disclosed() || declaration.none() ? declaration
                 : new com.roseroots.customer.models.AllergyDeclaration(true, java.util.Set.of(), "");
@@ -260,7 +268,7 @@ public final class OrderConfirmation {
 
     private boolean matches(Snapshot snapshot) {
         if (snapshot == null || !sameSession(snapshot.draft().sessionId(), snapshot.draft().mode())
-                || !Objects.equals(snapshot.draft().visitAllergy(), visitForWire())) return false;
+                || !Objects.equals(snapshot.draft().visitAllergy(), visitForWire(customer))) return false;
         var current = customer.cart().lines();
         if (current.size() != snapshot.lines().size()) return false;
         for (int i = 0; i < current.size(); i++) {

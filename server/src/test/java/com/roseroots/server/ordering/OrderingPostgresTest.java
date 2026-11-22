@@ -1113,6 +1113,12 @@ class OrderingPostgresTest {
             String item = accepted.at("/lines/0/id").asText();
             assertEquals(6, get(terminalToken, path, 200).path("maximumMinutes").asInt());
             problem(send(terminal(true), "GET", path, null, null), 404, "NOT_FOUND");
+            String later = submitNew(terminalToken, session, menu);
+            String laterEstimate = "/orders/" + later + "/wait-estimate";
+            assertEquals(9, get(terminalToken, laterEstimate, 200).path("maximumMinutes").asInt());
+            var rush = object().put("priority", "RUSH").put("reason", "Timing fixture").put("expectedVersion", 1);
+            json(manager.send(managerPost("/admin/orders/" + later + "/rush", csrf, rush), HttpResponse.BodyHandlers.ofString()), 200);
+            assertEquals(3, get(terminalToken, laterEstimate, 200).path("maximumMinutes").asInt());
             patch(item, "PREPARING", 1, 200);
             db.sql("UPDATE accepted_order_item SET preparation_started_at=now() - interval '2 minutes' WHERE id=CAST(:id AS uuid)")
                     .param("id", item).update();
