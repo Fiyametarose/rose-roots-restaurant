@@ -122,10 +122,13 @@ public final class CustomerApplication extends Application {
         var tracking = backend == null ? OrderTrackingService.unavailable() : new RestOrderTracking(backend, orderExecutor);
         var confirmation = new OrderConfirmation(state, orders, Clock.systemUTC(), Platform::runLater);
         Runnable goOrders = () -> navigator.show(Route.ORDERS);
+        var payments = backend == null ? null : new com.roseroots.customer.services.api.RestPaymentClient(backend);
+        var paymentJournal = backend == null ? null : com.roseroots.customer.state.PaymentCheckout.persistent(
+                address.base().toString());
         navigator.register(Route.ORDERS, () -> new OrdersScreen(settings, state, tracking, locale -> {
             state.setLocale(locale);
             goOrders.run();
-        }, goHome, goMenu, goCart, chooseCategory, false));
+        }, goHome, goMenu, goCart, chooseCategory, false).withPayments(payments, paymentJournal));
         Runnable goAccepted = () -> navigator.show(Route.ORDER_ACCEPTED);
         navigator.register(Route.ORDER_ACCEPTED, () -> new OrderAcceptedScreen(settings, state, confirmation.accepted(),
                 locale -> { state.setLocale(locale); goAccepted.run(); }, goHome, goMenu, goCart, goOrders, chooseCategory));
