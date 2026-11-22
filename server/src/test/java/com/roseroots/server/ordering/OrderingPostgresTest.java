@@ -370,6 +370,16 @@ class OrderingPostgresTest {
         assertEquals("SERVED", get(terminal, "/orders/" + order, 200).path("status").asText());
         assertEquals(21025L, get(terminal, "/sessions/" + session + "/bill", 200).at("/totals/totalMinor").asLong());
         assertFalse(get(STAFF_TOKEN, "/kitchen/orders", 200).toString().contains(order));
+        problem(send(terminal, "GET", "/kitchen/history", null, null), 403, "FORBIDDEN");
+        var historyClient = LoopbackKitchenClient.create(server.getWebServer().getPort(), STAFF_TOKEN, tls.trust());
+        try {
+            var served = historyClient.loadHistory().get(5, java.util.concurrent.TimeUnit.SECONDS).stream()
+                    .filter(ticket -> ticket.reference().equals(order)).findFirst().orElseThrow();
+            assertEquals("SERVED", served.completion().status().name());
+            assertNotNull(served.completion().at());
+        } finally {
+            historyClient.stop();
+        }
         problem(send(STAFF_TOKEN, "POST", path, transition("SERVED", 3), null), 409, "VERSION_CONFLICT");
         assertEquals(1L, db.sql("SELECT count(*) FROM order_handoff WHERE order_id = CAST(:id AS uuid)")
                 .param("id", order).query(Long.class).single());

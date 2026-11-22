@@ -176,6 +176,7 @@ final class KitchenShell extends BorderPane {
         });
         ToggleButton historyButton = destination("History & Sync", group, () -> {
             history.refresh();
+            history.loadHistory();
             show(workspace, history, "History & Sync");
         });
         Region spring = new Region();

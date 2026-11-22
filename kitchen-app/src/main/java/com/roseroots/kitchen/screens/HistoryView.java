@@ -6,9 +6,13 @@ import com.roseroots.kitchen.model.Ticket;
 import com.roseroots.kitchen.model.Ticket.Type;
 import com.roseroots.kitchen.service.KitchenService;
 import com.roseroots.kitchen.service.KitchenSync;
+import com.roseroots.kitchen.service.http.SpringBootKitchenService;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Locale;
 import java.util.stream.Collectors;
+import javafx.application.Platform;
+import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
@@ -30,6 +34,9 @@ public final class HistoryView extends VBox {
     private final Label connectionDetails = label("", "item-note");
     private final Label count = label("", "lane-caption");
     private final VBox cards = new VBox(7);
+    private final Label historyStatus = label("", "item-note");
+    private final Button reload = new Button("Refresh history");
+    private List<Ticket> connectedTickets = List.of();
 
     public HistoryView(KitchenService service, KitchenSync sync) {
         this.service = service;
@@ -60,8 +67,14 @@ public final class HistoryView extends VBox {
         scroll.setFitToWidth(true);
         scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         VBox.setVgrow(scroll, Priority.ALWAYS);
-        VBox history = service.local() ? new VBox(heading("Order history", count), filters, scroll)
+        boolean connected = service instanceof SpringBootKitchenService;
+        VBox history = service.local() || connected ? new VBox(heading("Order history", count), filters, scroll)
                 : new VBox(heading("Order history", null), label("Terminal history is unavailable in connected mode.", "empty"));
+        if (connected) {
+            filters.getChildren().add(reload);
+            history.getChildren().add(2, historyStatus);
+            reload.setOnAction(event -> loadHistory());
+        }
         history.getStyleClass().add("lane");
         history.setMinWidth(0);
         history.setPrefWidth(680);
@@ -82,20 +95,39 @@ public final class HistoryView extends VBox {
 
     public void refresh() {
         refreshConnection();
-        if (!service.local()) {
+        if (!service.local() && !(service instanceof SpringBootKitchenService)) {
             return;
         }
         int statusIndex = status.getSelectionModel().getSelectedIndex();
         int typeIndex = type.getSelectionModel().getSelectedIndex();
-        var result = HistoryQuery.filter(service.historyTickets(), search.getText(),
+        var result = HistoryQuery.filter(service.local() ? service.historyTickets() : connectedTickets, search.getText(),
                 statusIndex > 0 ? Status.values()[statusIndex - 1] : null,
                 typeIndex > 0 ? Type.values()[typeIndex - 1] : null);
-        count.setText(result.size() + (result.size() == 1 ? " matching order" : " matching orders"));
+        count.setText(result.isEmpty() && !historyStatus.getText().isEmpty() ? ""
+                : result.size() + (result.size() == 1 ? " matching order" : " matching orders"));
         cards.getChildren().clear();
         result.forEach(ticket -> cards.getChildren().add(card(ticket)));
-        if (result.isEmpty()) {
+        if (result.isEmpty() && historyStatus.getText().isEmpty()) {
             cards.getChildren().add(label("No orders match these filters", "empty"));
         }
+    }
+
+    public void loadHistory() {
+        if (!(service instanceof SpringBootKitchenService rest) || reload.isDisabled()) return;
+        reload.setDisable(true);
+        historyStatus.setText("Reading order history from the server…");
+        refresh();
+        rest.loadHistory().whenComplete((tickets, error) -> Platform.runLater(() -> {
+            reload.setDisable(false);
+            if (error == null) {
+                connectedTickets = tickets;
+                historyStatus.setText("");
+            } else {
+                connectedTickets = List.of();
+                historyStatus.setText("Order history could not be read from the server. Check the connection and staff credential.");
+            }
+            refresh();
+        }));
     }
 
     public void refreshConnection() {
@@ -115,7 +147,7 @@ public final class HistoryView extends VBox {
         String orderType = ticket.type() == Type.DINE_IN ? "Dine-in" : "Takeaway";
         String items = ticket.items().stream().map(item -> item.quantity() + " × " + item.name())
                 .collect(Collectors.joining(" · "));
-        String reached = completion.at() == null ? "Ready time unavailable"
+        String reached = completion.at() == null ? text(completion.status()) + " time unavailable"
                 : text(completion.status()) + " " + TIME.format(completion.at());
         String badge = switch (completion.status()) {
             case READY -> "delayed";

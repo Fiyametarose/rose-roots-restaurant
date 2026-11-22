@@ -1443,6 +1443,43 @@
         }
       }
     },
+    "/kitchen/history": {
+      "get": {
+        "operationId": "listKitchenHistory",
+        "summary": "Read persisted ready, served, collected, and cancelled orders for the authenticated staff restaurant",
+        "security": [{ "staffBearer": [] }],
+        "parameters": [
+          { "name": "cursor", "in": "query", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 200 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of Kitchen tickets with completedAt set to the recorded handoff timestamp when available",
+            "content": { "application/json": { "schema": {
+              "type": "object",
+              "required": ["tickets", "nextCursor"],
+              "properties": {
+                "tickets": { "type": "array", "items": {
+                  "type": "object",
+                  "required": ["serviceDestination", "priority", "delayed", "order", "completedAt"],
+                  "properties": {
+                    "serviceDestination": { "type": "string" },
+                    "priority": { "type": "string", "enum": ["NORMAL", "RUSH"] },
+                    "delayed": { "type": "boolean" },
+                    "order": { "$ref": "#/components/schemas/Order" },
+                    "completedAt": { "type": ["string", "null"], "format": "date-time" }
+                  }
+                } },
+                "nextCursor": { "type": ["string", "null"] }
+              }
+            } } }
+          },
+          "400": { "$ref": "#/components/responses/Problem400" },
+          "401": { "$ref": "#/components/responses/Problem401" },
+          "403": { "$ref": "#/components/responses/Problem403" }
+        }
+      }
+    },
     "/wait-estimates": {
       "post": {
         "operationId": "estimateWait",

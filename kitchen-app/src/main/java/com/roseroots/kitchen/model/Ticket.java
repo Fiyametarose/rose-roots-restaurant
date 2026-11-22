@@ -39,15 +39,15 @@ public record Ticket(long id, Type type, String destination, OffsetDateTime orde
         }
         if (completion != null) {
             switch (completion.status()) {
-                case READY -> requirePrepared(items);
+                case READY -> requirePrepared(items, server);
                 case SERVED -> {
-                    requirePrepared(items);
+                    requirePrepared(items, server);
                     if (type != Type.DINE_IN) {
                         throw new IllegalArgumentException("Only dine-in orders can be served.");
                     }
                 }
                 case COLLECTED -> {
-                    requirePrepared(items);
+                    requirePrepared(items, server);
                     if (type != Type.TAKEAWAY) {
                         throw new IllegalArgumentException("Only takeaway orders can be collected.");
                     }
@@ -57,8 +57,11 @@ public record Ticket(long id, Type type, String destination, OffsetDateTime orde
         }
     }
 
-    private static void requirePrepared(List<Item> items) {
-        if (statusOf(items) != Status.READY) {
+    private static void requirePrepared(List<Item> items, ServerOrder server) {
+        Status required = server == null ? Status.READY : server.status();
+        if (items.stream().noneMatch(item -> item.status() == required)
+                || items.stream().anyMatch(item -> item.status() != required
+                        && (server == null || item.status() != Status.CANCELLED))) {
             throw new IllegalArgumentException("Every order item must be ready.");
         }
     }

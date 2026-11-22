@@ -90,6 +90,13 @@ class OrderingController {
         return response(200, ordering.kitchen(actor, cursor, limit(limit)));
     }
 
+    @GetMapping("/kitchen/history")
+    ResponseEntity<String> kitchenHistory(@AuthenticationPrincipal Actor actor,
+                                          @RequestParam(name = "cursor", required = false) String cursor,
+                                          @RequestParam(name = "limit", required = false) String limit) {
+        return response(200, ordering.kitchenHistory(actor, cursor, limit(limit)));
+    }
+
     @PatchMapping(path = "/kitchen/items/{id}/status", consumes = JSON_MEDIA)
     ResponseEntity<String> transition(@AuthenticationPrincipal Actor actor, @PathVariable("id") String item,
                                       HttpServletRequest request) {

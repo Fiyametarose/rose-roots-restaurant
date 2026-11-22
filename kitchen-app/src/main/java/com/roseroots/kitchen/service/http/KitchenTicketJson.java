@@ -3,6 +3,7 @@ package com.roseroots.kitchen.service.http;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.roseroots.kitchen.model.OrderCompletion;
 import com.roseroots.kitchen.model.Ticket;
 import com.roseroots.kitchen.model.Ticket.Item;
 import com.roseroots.kitchen.model.Ticket.ServerItem;
@@ -57,9 +58,12 @@ final class KitchenTicketJson {
         };
         var server = new ServerOrder(id, id(order, "sessionId"), version(order), status,
                 rush, bool(wrapper, "delayed"), declaration(order.getAsJsonObject("visitAllergy")));
+        var completed = wrapper.get("completedAt");
+        var completion = completed == null ? null : new OrderCompletion(OrderCompletion.Status.valueOf(status.name()),
+                completed.isJsonNull() ? null : OffsetDateTime.parse(completed.getAsString()));
         return new Ticket(handle.applyAsLong(id), Type.valueOf(text(order, "mode")),
                 text(wrapper, "serviceDestination"), OffsetDateTime.parse(text(order, "acceptedAt")),
-                null, List.of(), items, null, server);
+                null, List.of(), items, completion, server);
     }
 
     private Item item(JsonObject line) {

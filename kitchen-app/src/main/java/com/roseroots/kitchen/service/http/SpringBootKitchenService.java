@@ -104,6 +104,10 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
         return List.of();
     }
 
+    public CompletableFuture<List<Ticket>> loadHistory() {
+        return fetchPage("/api/v1/kitchen/history?limit=50", null, new ArrayList<>(), new HashSet<>(), new HashSet<>());
+    }
+
     @Override
     public Runnable onOrdersChanged(Runnable listener) {
         listeners.add(listener);
@@ -520,11 +524,17 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
 
     private CompletableFuture<List<Ticket>> fetchPage(String cursor, List<Ticket> complete,
                                                       HashSet<String> cursors, HashSet<UUID> ids) {
+        return fetchPage(ORDERS, cursor, complete, cursors, ids);
+    }
+
+    private CompletableFuture<List<Ticket>> fetchPage(String endpoint, String cursor, List<Ticket> complete,
+                                                      HashSet<String> cursors, HashSet<UUID> ids) {
         String suffix = cursor == null ? "" : "&cursor=" + URLEncoder.encode(cursor, StandardCharsets.UTF_8);
-        return send(ORDERS + suffix, null).thenCompose(raw -> {
+        return send(endpoint + suffix, null).thenCompose(raw -> {
             KitchenTicketJson.Page page = parse(() -> json.readPage(raw));
             for (Ticket ticket : page.tickets()) {
-                if (!ids.add(ticket.server().id()) || !Ticket.Status.LANES.contains(ticket.status())) {
+                if (!ids.add(ticket.server().id()) || (endpoint.equals(ORDERS)
+                        ? !Ticket.Status.LANES.contains(ticket.status()) : ticket.completion() == null)) {
                     throw unreadable();
                 }
                 complete.add(ticket);
@@ -536,7 +546,7 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
             if (next.isBlank() || next.length() > 500 || !cursors.add(next) || cursors.size() > 2000) {
                 throw unreadable();
             }
-            return fetchPage(next, complete, cursors, ids);
+            return fetchPage(endpoint, next, complete, cursors, ids);
         });
     }
 

@@ -227,12 +227,17 @@ class OrderingService {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ObjectNode history(Actor actor, UUID sessionId, String cursor, int limit) {
         ownedSession(actor, sessionId, false);
-        return page(actor, sessionId, cursor, limit);
+        return page(actor, sessionId, cursor, limit, false);
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ObjectNode kitchen(Actor actor, String cursor, int limit) {
-        return page(actor, null, cursor, limit);
+        return page(actor, null, cursor, limit, false);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public ObjectNode kitchenHistory(Actor actor, String cursor, int limit) {
+        return page(actor, null, cursor, limit, true);
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -391,10 +396,11 @@ class OrderingService {
 
     private record ItemState(String preparation, String review, long version, boolean knownIngredientConflict) {}
 
-    private record OrderView(ObjectNode order, String destination, Instant delayAt, long sequence) {
+    private record OrderView(ObjectNode order, String destination, Instant delayAt, long sequence, String completedAt) {
         ObjectNode ticket(Instant now) {
+            String status = order.path("status").asText();
             ObjectNode ticket = object().put("serviceDestination", destination).put("priority", "NORMAL")
-                    .put("delayed", !order.path("status").asText().equals("READY") && !delayAt.isAfter(now));
+                    .put("delayed", (status.equals("RECEIVED") || status.equals("PREPARING")) && !delayAt.isAfter(now));
             return ticket.set("order", order);
         }
     }
@@ -405,12 +411,13 @@ class OrderingService {
                 .stream().findFirst().orElseThrow(OrderingProblem::missing);
     }
 
-    private ObjectNode page(Actor actor, UUID sessionId, String rawCursor, int limit) {
+    private ObjectNode page(Actor actor, UUID sessionId, String rawCursor, int limit, boolean history) {
         boolean kitchen = sessionId == null;
         UUID scope = kitchen ? actor.restaurantId() : sessionId;
-        String cursorScope = (kitchen ? "k:" : "s:") + scope;
-        String clause = kitchen ? "s.restaurant_id = :scope AND o.status IN ('RECEIVED', 'PREPARING', 'READY')"
-                : "o.session_id = :scope";
+        String cursorScope = (history ? "h:" : kitchen ? "k:" : "s:") + scope;
+        String clause = !kitchen ? "o.session_id = :scope" : "s.restaurant_id = :scope AND "
+                + (history ? "o.status IN ('READY', 'SERVED', 'COLLECTED', 'CANCELLED')"
+                           : "o.status IN ('RECEIVED', 'PREPARING', 'READY')");
         Cursor cursor = rawCursor == null
                 ? new Cursor(0, jdbc.sql("""
                         SELECT COALESCE(max(o.sequence), 0) FROM accepted_order o
@@ -422,7 +429,11 @@ class OrderingService {
                 """, Map.of("scope", scope, "after", cursor.after(), "through", cursor.through(), "limit", limit + 1));
         Instant now = now();
         ArrayNode list = array();
-        rows.stream().limit(limit).forEach(row -> list.add(kitchen ? row.ticket(now) : row.order()));
+        rows.stream().limit(limit).forEach(row -> {
+            ObjectNode entry = kitchen ? row.ticket(now) : row.order();
+            if (history) entry.put("completedAt", row.completedAt());
+            list.add(entry);
+        });
         ObjectNode result = object();
         result.set(kitchen ? "tickets" : "orders", list);
         return result.put("nextCursor", rows.size() > limit
@@ -456,7 +467,7 @@ class OrderingService {
     private List<OrderView> readOrders(String clause, Map<String, ?> parameters) {
         return jdbc.sql("""
                 SELECT o.id, o.session_id, o.accepted_at, o.status, o.version, o.visit_allergy,
-                    o.payable_minor, o.delay_at, o.sequence, s.mode, s.table_number, s.pickup_reference,
+                    o.payable_minor, o.delay_at, o.sequence, s.mode, s.table_number, s.pickup_reference, h.completed_at,
                     (SELECT jsonb_agg(jsonb_build_object(
                         'id', i.id, 'pricing', i.pricing, 'allergy', i.allergy,
                         'preparationInstructions', i.instructions, 'preparationStatus', i.preparation_status,
@@ -470,6 +481,7 @@ class OrderingService {
                         'activeSubstitution', NULL
                     ) ORDER BY i.position) FROM accepted_order_item i WHERE i.order_id = o.id) AS lines
                 FROM accepted_order o JOIN dining_session s ON s.id = o.session_id
+                LEFT JOIN order_handoff h ON h.order_id = o.id
                 """ + clause).params(parameters).query((row, index) -> {
             ObjectNode order = object().put("id", row.getString("id")).put("sessionId", row.getString("session_id"))
                     .put("mode", row.getString("mode")).put("status", row.getString("status"))
@@ -479,7 +491,9 @@ class OrderingService {
             order.set("totals", OrderingPricing.totals(row.getLong("payable_minor")));
             String destination = row.getString("mode").equals("DINE_IN")
                     ? "Table " + row.getString("table_number") : row.getString("pickup_reference");
-            return new OrderView(order, destination, instant(row, "delay_at"), row.getLong("sequence"));
+            var completed = row.getObject("completed_at", OffsetDateTime.class);
+            return new OrderView(order, destination, instant(row, "delay_at"), row.getLong("sequence"),
+                    completed == null ? null : completed.toInstant().toString());
         }).list();
     }
 
