@@ -2,13 +2,13 @@
 
 Deploy Flyway V19 and the paired Kitchen distribution together. Customer ordering and Assistance payloads are unchanged. The ordering contract amendment is version 1.0.0-draft.5.
 
-In Manager **Staff & Security**, create or select a Chef or Supervisor account and use **Set Kitchen password** over HTTPS. Setting or resetting a password retires its previous individual bearer token and closes its active personal sessions. Keep the shared workstation credential configured separately. In **Kitchen Configuration**, assign each Chef to the appropriate active stations, set their availability, and configure menu-item prep profiles so accepted items have a station.
+In Manager **Staff & Security**, create a Chef or Supervisor account with a password over HTTPS. Use **Set staff password** for an existing account. Setting or resetting a password retires its previous individual bearer token and closes its active personal sessions. Keep the shared workstation credential configured separately. In **Kitchen Configuration**, assign each Chef to the appropriate active stations, set their availability, and configure menu-item prep profiles so accepted items have a station.
 
 On the shared board, select **Staff sign-in** and enter the personal username and password. The session is in memory and expires after 30 minutes. **Lock / switch staff** immediately removes personal access locally and requests server sign-out. If the network is unavailable during lock, the server session still expires at its original deadline. The board and Assistance continue using the workstation credential.
 
 Open an order in **Details** and select **Claim Item**. Claiming changes responsibility for one item only. Release is available to its Chef before prep begins. A Supervisor can reassign a queued or preparing item by choosing an eligible Chef and entering a reason. If a Chef's availability or station assignment ends during preparation, a Supervisor can reassign the item to an eligible Chef.
 
-Only the current Chef may mark their item PREPARING and READY. An allergy hold blocks preparation even after a claim or Rush. Qualified individual allergy review still follows the existing review workflow. **Preparation history** in order details and **History & Sync** shows the actor, owner and status changes, version, timestamp and reassignment reason. Items accepted before V19 have no inferred owner or fabricated history.
+Only the current Chef may mark their item PREPARING and READY. An allergy hold blocks preparation even after a claim or Rush. An active Chef can review allergies after personal sign-in. **Preparation history** in order details and **History & Sync** shows the actor, owner and status changes, version, timestamp and reassignment reason. Items accepted before V19 have no inferred owner or fabricated history.
 
 ## Ordering API changes
 

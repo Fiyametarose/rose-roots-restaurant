@@ -1,6 +1,6 @@
 # Waiter accounts and service handoff
 
-In Manager **Staff & Security**, create a **WAITER** account and use **Set Kitchen password**. Waiters enter their own username and password under **Staff sign-in** in the Kitchen app. The existing personal session expires after 30 minutes and can be locked or switched at any time. Disabling the account or resetting its password revokes its existing sessions.
+In Manager **Staff & Security**, create a **WAITER** account with a password. Use **Set staff password** for an existing account. Waiters enter their own username and password under **Staff sign-in** in the Kitchen app. The existing personal session expires after 30 minutes and can be locked or switched at any time. Disabling the account or resetting its password revokes its existing sessions.
 
 Everyone at a provisioned Kitchen workstation can view **Handoff** without signing in. Only a Waiter session can confirm service. Check the table number for dine-in or the pickup reference for takeaway, then explicitly confirm **Served** or **Collected**. Chef preparation ends at READY. Managers and Supervisors retain their existing operational oversight and can review completed handoffs through the authorized order views.
 

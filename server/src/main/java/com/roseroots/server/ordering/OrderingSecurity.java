@@ -105,25 +105,27 @@ class OrderingSecurity {
                     try {
                         boolean personal = token.matches("ks_[A-Za-z0-9_-]{43}");
                         var query = personal ? jdbc.sql("""
-                                SELECT c.id, c.restaurant_id, c.terminal_id, c.scope, s.allergy_reviewer,
+                                SELECT c.id, c.restaurant_id, c.terminal_id, c.scope, s.staff_role = 'CHEF' AS allergy_reviewer,
                                     s.staff_role = 'SUPERVISOR' AS priority_supervisor, s.id AS staff_id, s.staff_role
                                 FROM kitchen_staff_session k JOIN staff_account s ON s.id = k.staff_id
                                 JOIN ordering_credential c ON c.id = s.credential_id
                                 JOIN ordering_credential entry ON entry.id = k.entry_credential_id
                                 WHERE k.token_sha256 = :hash AND :secure AND k.expires_at > now()
-                                    AND s.enabled AND c.scope = 'KITCHEN' AND c.revoked_at IS NULL AND c.expires_at > now()
+                                    AND s.enabled AND NOT s.password_reset_required
+                                    AND c.scope = 'KITCHEN' AND c.revoked_at IS NULL AND c.expires_at > now()
                                     AND entry.restaurant_id = c.restaurant_id AND entry.revoked_at IS NULL
                                     AND entry.expires_at > now()
                                     AND NOT EXISTS (SELECT 1 FROM staff_account disabled
                                         WHERE disabled.credential_id = entry.id AND NOT disabled.enabled)
                                 """) : jdbc.sql("""
                                 SELECT c.id, c.restaurant_id, c.terminal_id, c.scope,
-                                    COALESCE(s.allergy_reviewer, c.allergy_reviewer) AS allergy_reviewer,
+                                    false AS allergy_reviewer,
                                     COALESCE(s.staff_role = 'SUPERVISOR', false) AS priority_supervisor,
                                     s.id AS staff_id, s.staff_role
                                 FROM ordering_credential c LEFT JOIN staff_account s ON s.credential_id = c.id
                                 WHERE c.token_sha256 = :hash AND c.revoked_at IS NULL AND c.expires_at > now()
                                     AND COALESCE(s.enabled, true)
+                                    AND NOT COALESCE(s.password_reset_required, false)
                                     AND s.staff_role IS DISTINCT FROM 'WAITER'
                                     AND (c.scope = 'KITCHEN_WORKSTATION') = :workstationToken
                                     AND (c.scope <> 'KITCHEN_WORKSTATION' OR (:secure AND EXISTS(

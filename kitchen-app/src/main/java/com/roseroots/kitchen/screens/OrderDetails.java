@@ -139,7 +139,7 @@ public final class OrderDetails extends VBox {
                     && item.server().allergyReviewStatus().equals("PENDING_ALLERGY_REVIEW")) {
                 Button approve = new Button("Approve preparation");
                 Button decline = new Button("Decline item");
-                boolean canReview = service.writesAvailable() && (staff == null || staff.allergyReviewer());
+                boolean canReview = service.writesAvailable() && staff != null && staff.allergyReviewer();
                 approve.setDisable(!canReview);
                 decline.setDisable(!canReview);
                 approve.setOnAction(event -> promptReview(ticketId, item, true));

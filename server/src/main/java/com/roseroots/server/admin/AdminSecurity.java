@@ -40,8 +40,13 @@ class AdminSecurity {
                             boolean manager = principal != null && principal.getAuthorities().stream()
                                     .anyMatch(role -> role.getAuthority().equals("ROLE_" + MANAGER));
                             var staff = accounts.getIfAvailable();
-                            return new AuthorizationDecision(manager && (staff == null || staff.manager(principal.getName())
-                                    .map(org.springframework.security.core.userdetails.UserDetails::isEnabled).orElse(true)));
+                            if (!manager || staff == null) return new AuthorizationDecision(manager);
+                            var current = staff.manager(principal.getName());
+                            if (principal.getPrincipal() instanceof StaffAccounts.ManagedManager session) {
+                                return new AuthorizationDecision(current.filter(account -> account.isEnabled()
+                                        && account.securityVersion() == session.securityVersion()).isPresent());
+                            }
+                            return new AuthorizationDecision(current.isEmpty());
                         }))
                 .requestCache(cache -> cache.disable())
                 .exceptionHandling(errors -> errors

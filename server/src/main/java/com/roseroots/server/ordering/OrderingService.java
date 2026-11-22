@@ -408,8 +408,8 @@ class OrderingService {
 
     @Transactional
     public ObjectNode review(Actor actor, UUID itemId, String decision, String reason, long expectedVersion) {
-        if (!actor.allergyReviewer()) {
-            throw new OrderingProblem(403, "FORBIDDEN", "An authorized Chef credential is required.");
+        if (!actor.personalSession() || actor.staffId() == null || !actor.allergyReviewer()) {
+            throw new OrderingProblem(403, "FORBIDDEN", "A personal Chef session is required.");
         }
         UUID sessionId = jdbc.sql("""
                 SELECT s.id FROM accepted_order_item i JOIN accepted_order o ON o.id=i.order_id

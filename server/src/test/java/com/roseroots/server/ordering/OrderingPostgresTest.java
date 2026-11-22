@@ -70,7 +70,9 @@ class OrderingPostgresTest {
     private static final UUID TABLE = UUID.randomUUID();
     private static final String MANAGER_PASSWORD = token();
     private static final String STAFF_TOKEN = token();
-    private static final String CHEF_TOKEN = token();
+    private static final String CHEF_RAW = token();
+    private static final String CHEF_PASSWORD = token();
+    private static final String CHEF_TOKEN = "ks_" + token();
     private static final String PREP_TOKEN = "ks_" + token();
     private static final String HANDOFF_TOKEN = "ks_" + token();
     private static final UUID PREP_CHEF = UUID.randomUUID();
@@ -126,9 +128,17 @@ class OrderingPostgresTest {
                 INSERT INTO kitchen_staff_session (token_sha256,staff_id,entry_credential_id,expires_at)
                 SELECT :session,:id,id,now()+interval '10 minutes' FROM ordering_credential WHERE token_sha256=:entry
                 """).param("id", waiter).param("entry", digest(STAFF_TOKEN)).param("session", digest(HANDOFF_TOKEN)).update();
-        credential(CHEF_TOKEN, null, "KITCHEN");
-        db.sql("UPDATE ordering_credential SET allergy_reviewer = true WHERE token_sha256 = :hash")
-                .param("hash", digest(CHEF_TOKEN)).update();
+        credential(CHEF_RAW, null, "KITCHEN");
+        db.sql("""
+                INSERT INTO staff_account (id, username, staff_role, credential_id, kitchen_password_hash)
+                SELECT :id,'regression-allergy-chef','CHEF',id,:password FROM ordering_credential WHERE token_sha256=:hash
+                """).param("id", UUID.randomUUID()).param("hash", digest(CHEF_RAW))
+                .param("password", new BCryptPasswordEncoder(4).encode(CHEF_PASSWORD)).update();
+        db.sql("""
+                INSERT INTO kitchen_staff_session (token_sha256,staff_id,entry_credential_id,expires_at)
+                SELECT :session,s.id,s.credential_id,now()+interval '20 minutes' FROM staff_account s
+                WHERE s.username='regression-allergy-chef'
+                """).param("session", digest(CHEF_TOKEN)).update();
         client = HttpClient.newBuilder().sslContext(tls.trust()).connectTimeout(Duration.ofSeconds(5)).build();
     }
 
@@ -384,34 +394,83 @@ class OrderingPostgresTest {
              var individual = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
             managerLogin(bootstrap);
             var csrf = bootstrap.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
-            var chef = staffWrite(bootstrap, csrf, "POST", "", object().put("username", "integration-chef")
-                    .put("role", "CHEF").put("allergyReviewer", true), 201);
-            String token = chef.path("bearerToken").asText();
-            assertEquals(43, token.length());
-            get(token, "/kitchen/orders", 200);
-            problem(send(token, "POST", "/kitchen/items/" + UUID.randomUUID() + "/allergy-review",
-                    object().put("decision", "APPROVE").put("reason", "Verified").put("expectedVersion", 1), null),
-                    404, "NOT_FOUND");
-            String chefPath = "/" + chef.at("/account/id").asText();
-            var off = object().put("enabled", false).put("allergyReviewer", false).put("expectedVersion", 1);
+            String chefPassword = token();
+            String chef = kitchenAccount(bootstrap, csrf, "integration-chef", "CHEF", chefPassword);
+            String chefPath = "/" + chef;
+            String workstation = issueWorkstation(bootstrap, csrf, "Lifecycle workstation").path("bearerToken").asText();
+            String legacy = token();
+            db.sql("UPDATE ordering_credential SET token_sha256=:hash WHERE id=(SELECT credential_id FROM staff_account WHERE id=CAST(:id AS uuid))")
+                    .param("hash", digest(legacy)).param("id", chef).update();
+            get(legacy, "/kitchen/orders", 200);
+            var signIn = json(send(workstation, "POST", "/kitchen/staff-session",
+                    object().put("username", "integration-chef").put("password", chefPassword), null), 201);
+            assertTrue(signIn.path("allergyReviewer").asBoolean());
+            String personal = signIn.path("sessionToken").asText();
+            String terminal = terminal(true);
+            String orderSession = session(terminal, "DINE_IN", 201);
+            var held = draft(orderSession, dish());
+            held.withObject("/visitAllergy").put("kind", "DISCLOSED").putArray("allergens").add("SOY");
+            var quote = json(send(terminal, "POST", "/order-quotes", held, null), 200);
+            String item = json(send(terminal, "POST", "/orders", submitBody(held, quote), UUID.randomUUID()), 201)
+                    .at("/lines/0/id").asText();
+            problem(review(legacy, item, "APPROVE", 1), 403, "FORBIDDEN");
+            problem(review(workstation, item, "APPROVE", 1), 403, "FORBIDDEN");
+            json(review(personal, item, "APPROVE", 1), 200);
+
+            var off = object().put("state", "DEACTIVATED").put("expectedVersion", 1);
             assertEquals(2, staffWrite(bootstrap, csrf, "PATCH", chefPath, off, 200).path("version").asInt());
             staffWrite(bootstrap, csrf, "PATCH", chefPath, off, 409);
-            problem(send(token, "GET", "/kitchen/orders", null, null), 401, "UNAUTHENTICATED");
+            problem(review(personal, item, "APPROVE", 2), 401, "UNAUTHENTICATED");
+            problem(send(legacy, "GET", "/kitchen/orders", null, null), 401, "UNAUTHENTICATED");
+            assertEquals("ARCHIVED", staffWrite(bootstrap, csrf, "PATCH", chefPath,
+                    object().put("state", "ARCHIVED").put("expectedVersion", 2), 200).path("state").asText());
+            assertEquals("integration-chef", db.sql("""
+                    SELECT s.username FROM order_item_allergy_review r JOIN staff_account s ON s.credential_id=r.reviewer_id
+                    WHERE r.item_id=CAST(:item AS uuid) AND s.archived_at IS NOT NULL
+                    """).param("item", item).query(String.class).single());
+            staffWrite(bootstrap, csrf, "PATCH", chefPath, object().put("state", "ACTIVE").put("expectedVersion", 3)
+                    .put("password", token()), 409);
+            assertTrue(staffWrite(bootstrap, csrf, "PATCH", chefPath, object().put("state", "DEACTIVATED")
+                    .put("expectedVersion", 3), 200).path("needsPasswordSetup").asBoolean());
+            staffWrite(bootstrap, csrf, "PATCH", chefPath, object().put("state", "ACTIVE").put("expectedVersion", 4), 409);
+            staffWrite(bootstrap, csrf, "PATCH", chefPath, object().put("state", "ACTIVE")
+                    .put("expectedVersion", 4).put("password", chefPassword), 400);
+            String newPassword = token();
+            staffWrite(bootstrap, csrf, "PATCH", chefPath, object().put("state", "ACTIVE")
+                    .put("expectedVersion", 4).put("password", newPassword), 200);
+            problem(send(legacy, "GET", "/kitchen/orders", null, null), 401, "UNAUTHENTICATED");
+            problem(send(personal, "GET", "/kitchen/orders", null, null), 401, "UNAUTHENTICATED");
+            problem(send(workstation, "POST", "/kitchen/staff-session",
+                    object().put("username", "integration-chef").put("password", chefPassword), null), 401, "UNAUTHENTICATED");
+            get(kitchenSignIn(workstation, "integration-chef", newPassword), "/kitchen/orders", 200);
+            assertEquals(java.util.List.of("ACTIVE>DEACTIVATED", "DEACTIVATED>ARCHIVED",
+                            "ARCHIVED>DEACTIVATED", "DEACTIVATED>ACTIVE"),
+                    db.sql("""
+                            SELECT previous_state || '>' || new_state FROM staff_account_audit
+                            WHERE account_id=CAST(:id AS uuid) AND previous_state IS NOT NULL
+                                AND manager_username='ordering-manager-test' AND recorded_at IS NOT NULL ORDER BY version
+                            """).param("id", chef).query(String.class).list());
 
-            String password = UUID.randomUUID().toString();
-            var manager = staffWrite(bootstrap, csrf, "POST", "", object().put("username", "integration-manager")
-                    .put("role", "MANAGER").put("password", password), 201);
+            String password = token();
+            String manager = kitchenAccount(bootstrap, csrf, "integration-manager", "MANAGER", password);
             managerLogin(individual, "integration-manager", password);
+            String ownCsrf = individual.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
+            staffWrite(individual, ownCsrf, "PATCH", "/" + manager, off, 409);
             assertEquals(200, individual.send(request("/admin/staff", null).GET().build(),
                     HttpResponse.BodyHandlers.discarding()).statusCode());
-            staffWrite(bootstrap, csrf, "PATCH", "/" + manager.at("/account/id").asText(), off, 200);
+            staffWrite(bootstrap, csrf, "PATCH", "/" + manager, off, 200);
             assertEquals(403, individual.send(request("/admin/staff", null).GET().build(),
                     HttpResponse.BodyHandlers.discarding()).statusCode());
-            assertEquals(4L, db.sql("""
-                    SELECT count(*) FROM staff_account_audit a JOIN staff_account s ON s.id = a.account_id
-                    WHERE a.manager_username = 'ordering-manager-test' AND s.username IN ('integration-chef', 'integration-manager')
-                    """)
-                    .query(Long.class).single());
+            String replacement = token();
+            staffWrite(bootstrap, csrf, "PATCH", "/" + manager, object().put("state", "ACTIVE")
+                    .put("expectedVersion", 2).put("password", replacement), 200);
+            assertEquals(403, individual.send(request("/admin/staff", null).GET().build(),
+                    HttpResponse.BodyHandlers.discarding()).statusCode());
+            try (var fresh = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
+                managerLogin(fresh, "integration-manager", replacement);
+                assertEquals(200, fresh.send(request("/admin/staff", null).GET().build(),
+                        HttpResponse.BodyHandlers.discarding()).statusCode());
+            }
         }
     }
 
@@ -438,8 +497,9 @@ class OrderingPostgresTest {
         try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
             managerLogin(manager);
             var csrf = manager.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
-            var supervisor = staffWrite(manager, csrf, "POST", "", object().put("username", "priority-supervisor")
-                    .put("role", "SUPERVISOR"), 201).path("bearerToken").asText();
+            String password = token();
+            kitchenAccount(manager, csrf, "priority-supervisor", "SUPERVISOR", password);
+            String supervisor = kitchenSignIn(STAFF_TOKEN, "priority-supervisor", password);
             assertEquals("RUSH", json(send(supervisor, "POST", path + "/rush", rush, null), 200).path("priority").asText());
             problem(send(supervisor, "POST", path + "/rush", rush, null), 409, "VERSION_CONFLICT");
             problem(send(supervisor, "PATCH", "/kitchen/items/" + item + "/status", transition("PREPARING", 1), null),
@@ -466,7 +526,7 @@ class OrderingPostgresTest {
             managerLogin(manager);
             var csrf = manager.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
             var chef = staffWrite(manager, csrf, "POST", "", object().put("username", "station-chef")
-                    .put("role", "CHEF"), 201).at("/account/id").asText();
+                    .put("role", "CHEF").put("password", token()), 201).at("/account/id").asText();
             var stations = json(manager.send(request("/admin/stations", null).GET().build(),
                     HttpResponse.BodyHandlers.ofString()), 200);
             assertEquals(3, stations.size());
@@ -511,13 +571,8 @@ class OrderingPostgresTest {
         try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
             managerLogin(manager);
             String csrf = manager.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
-            var created = staffWrite(manager, csrf, "POST", "", object().put("username", "service-waiter")
-                    .put("role", "WAITER"), 201);
-            assertTrue(created.path("bearerToken").isNull());
-            String waiter = created.at("/account/id").asText();
             String password = token();
-            staffWrite(manager, csrf, "PATCH", "/" + waiter, object().put("expectedVersion", 1)
-                    .put("enabled", true).put("allergyReviewer", false).put("kitchenPassword", password), 200);
+            String waiter = kitchenAccount(manager, csrf, "service-waiter", "WAITER", password);
             String workstation = issueWorkstation(manager, csrf, "Service pass").path("bearerToken").asText();
             String personal = kitchenSignIn(workstation, "service-waiter", password);
             String customer = terminal(true);
@@ -557,8 +612,7 @@ class OrderingPostgresTest {
             assertFalse(get(customer, "/orders/" + order, 200).has("handoff"));
             assertTrue(get(personal, "/kitchen/history", 200).path("tickets").toString().contains("service-waiter"));
             problem(send(personal, "POST", path, transition("SERVED", 4), null), 409, "INVALID_TRANSITION");
-            staffWrite(manager, csrf, "PATCH", "/" + waiter, object().put("expectedVersion", 2)
-                    .put("enabled", false).put("allergyReviewer", false), 200);
+            staffWrite(manager, csrf, "PATCH", "/" + waiter, object().put("expectedVersion", 1).put("state", "ARCHIVED"), 200);
             problem(send(personal, "POST", path, transition("SERVED", 4), null), 401, "UNAUTHENTICATED");
             assertEquals(waiter, db.sql("SELECT actor_staff_id FROM order_handoff WHERE order_id=CAST(:id AS uuid)")
                     .param("id", order).query(UUID.class).single().toString());
@@ -736,12 +790,10 @@ class OrderingPostgresTest {
 
     private static String kitchenAccount(HttpClient manager, String csrf, String username, String role, String password)
             throws Exception {
-        var created = staffWrite(manager, csrf, "POST", "", object().put("username", username).put("role", role), 201);
-        String id = created.at("/account/id").asText();
-        staffWrite(manager, csrf, "PATCH", "/" + id, object().put("expectedVersion", 1).put("enabled", true)
-                .put("allergyReviewer", false).put("kitchenPassword", password), 200);
-        problem(send(created.path("bearerToken").asText(), "GET", "/kitchen/orders", null, null), 401, "UNAUTHENTICATED");
-        return id;
+        var created = staffWrite(manager, csrf, "POST", "", object().put("username", username)
+                .put("role", role).put("password", password), 201);
+        assertFalse(created.has("bearerToken"));
+        return created.at("/account/id").asText();
     }
 
     private static String kitchenSignIn(String workstation, String username, String password) throws Exception {
@@ -868,7 +920,8 @@ class OrderingPostgresTest {
         var quote = json(send(terminal, "POST", "/order-quotes", draft, null), 200);
         var persisted = json(send(terminal, "POST", "/orders", submitBody(draft, quote), UUID.randomUUID()), 201);
         String order = persisted.path("id").asText();
-        var chef = LoopbackKitchenClient.create(server.getWebServer().getPort(), CHEF_TOKEN, tls.trust());
+        var chef = LoopbackKitchenClient.create(server.getWebServer().getPort(), STAFF_TOKEN, tls.trust());
+        chef.signIn("regression-allergy-chef", CHEF_PASSWORD).get(10, TimeUnit.SECONDS);
         chef.startAutomaticRefresh();
         Stage stage = null;
         Runnable remove = () -> {};
@@ -1199,7 +1252,7 @@ class OrderingPostgresTest {
         assertEquals(2L, db.sql("""
                 SELECT count(*) FROM order_item_allergy_review r JOIN ordering_credential c ON c.id = r.reviewer_id
                 WHERE c.token_sha256 = :hash AND r.reason = 'Private fixture reason'
-                """).param("hash", digest(CHEF_TOKEN)).query(Long.class).single());
+                """).param("hash", digest(CHEF_RAW)).query(Long.class).single());
     }
 
     private static HttpResponse<String> review(String token, String item, String decision, int version) throws Exception {
@@ -1329,7 +1382,7 @@ class OrderingPostgresTest {
         try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
             managerLogin(manager);
             var csrf = manager.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
-            String chef = staffWrite(manager, csrf, "POST", "", object().put("username", "estimate-chef").put("role", "CHEF"), 201)
+            String chef = staffWrite(manager, csrf, "POST", "", object().put("username", "estimate-chef").put("role", "CHEF").put("password", token()), 201)
                     .at("/account/id").asText();
             db.sql("UPDATE kitchen_station SET parallel_slots=2 WHERE id=:id").param("id", station).update();
             db.sql("INSERT INTO kitchen_station_chef(station_id,chef_id) VALUES (:station,CAST(:chef AS uuid))")
@@ -1354,7 +1407,7 @@ class OrderingPostgresTest {
             both.withArray("lines").add(draft(session, secondMenu).at("/lines/0"));
             assertEquals(9, json(send(terminalToken, "POST", "/wait-estimates", both, null), 200).path("maximumMinutes").asInt());
             String secondChef = staffWrite(manager, csrf, "POST", "", object().put("username", "estimate-specialist")
-                    .put("role", "CHEF"), 201).at("/account/id").asText();
+                    .put("role", "CHEF").put("password", token()), 201).at("/account/id").asText();
             db.sql("INSERT INTO kitchen_station_chef(station_id,chef_id) VALUES (:station,CAST(:chef AS uuid))")
                     .param("station", secondStation).param("chef", secondChef).update();
             configWrite(manager, csrf, "/chef-availability/" + secondChef, object().put("minutes", 60).put("expectedVersion", 1), 200);

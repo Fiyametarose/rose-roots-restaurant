@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Rose & Roots shared ordering API",
-    "version": "1.0.0-draft.6",
+    "version": "1.0.0-draft.7",
     "description": "Review draft for Customer, Staff and Spring Boot. No endpoint in this document is declared implemented."
   },
   "servers": [
@@ -1108,6 +1108,7 @@
                       ]
                     },
                     "allergyReviewer": {
+                      "description": "True for an active Chef with a personal session.",
                       "type": "boolean"
                     },
                     "expiresAt": {
@@ -1717,9 +1718,6 @@
         "operationId": "reviewAllergy",
         "summary": "Record a permitted allergy-review decision",
         "security": [
-          {
-            "staffBearer": []
-          },
           {
             "kitchenStaffSession": []
           }
