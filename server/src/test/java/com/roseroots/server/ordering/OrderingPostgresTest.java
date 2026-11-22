@@ -1236,6 +1236,63 @@ class OrderingPostgresTest {
                 .POST(HttpRequest.BodyPublishers.ofString(value.toString())).build();
     }
 
+    @Test
+    void publishesVersionedCatalogTranslationsWithoutChangingAcceptedCatalogFields() throws Exception {
+        UUID menu = dish();
+        try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
+            managerLogin(manager);
+            String csrf = manager.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
+            var body = object().put("targetType", "DISH").put("targetId", menu.toString()).put("locale", "ar")
+                    .put("name", "شاي").put("description", "مشروب ساخن").put("expectedVersion", 0);
+            assertEquals(1, configWrite(manager, csrf, "/translations", body, 200).path("version").asInt());
+            configWrite(manager, csrf, "/translations", body, 409);
+            var visible = json(send(null, "GET", "/menu-translations", null, null), 200).path("translations");
+            assertTrue(visible.valueStream().anyMatch(row -> row.path("targetId").asText().equals(menu.toString())
+                    && row.path("name").asText().equals("شاي")));
+            assertEquals("Test tea", db.sql("SELECT name FROM catalog_item WHERE id=:id").param("id", menu).query(String.class).single());
+            assertEquals(1L, db.sql("SELECT count(*) FROM catalog_translation_audit WHERE target_id=:id")
+                    .param("id", menu).query(Long.class).single());
+            assertEquals(401, send(STAFF_TOKEN, "GET", "/admin/translations", null, null).statusCode());
+        }
+    }
+
+    @Test
+    void blocksSettlementOnChefReviewAndRecordsAuthoritativeCashCancellationAndFailure() throws Exception {
+        String terminal = terminal(true);
+        String session = session(terminal, "DINE_IN", 201);
+        String prefix = "/sessions/" + session;
+        UUID menu = dish();
+        var held = draft(session, menu);
+        held.withObject("/visitAllergy").put("kind", "DISCLOSED").putArray("allergens").add("SOY");
+        var quote = json(send(terminal, "POST", "/order-quotes", held, null), 200);
+        var order = json(send(terminal, "POST", "/orders", submitBody(held, quote), UUID.randomUUID()), 201);
+        var request = object().put("method", "CASH").put("expectedBillVersion", 2);
+        problem(send(terminal, "POST", prefix + "/payments", request, UUID.randomUUID()), 409, "CHEF_DECISION_PENDING");
+        String item = order.at("/lines/0/id").asText();
+        json(send(CHEF_TOKEN, "POST", "/kitchen/items/" + item + "/allergy-review",
+                object().put("decision", "APPROVE").put("reason", "Fixture verified controls").put("expectedVersion", 1), null), 200);
+        var attempt = json(send(terminal, "POST", prefix + "/payments", request, UUID.randomUUID()), 201);
+        String id = attempt.path("id").asText();
+        var cancel = json(send(terminal, "POST", prefix + "/payments/" + id + "/cancel",
+                object().put("expectedVersion", 1), null), 200);
+        assertTrue(cancel.path("cancellationRequested").asBoolean());
+        assertEquals("PENDING", cancel.path("status").asText());
+        try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
+            managerLogin(manager);
+            String csrf = manager.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
+            var resolution = object().put("expectedVersion", 2).put("status", "CANCELLED").put("reason", "No cash received");
+            var cancelled = json(manager.send(managerPost("/admin/payments/" + id + "/resolve-cash", csrf, resolution),
+                    HttpResponse.BodyHandlers.ofString()), 200);
+            assertEquals("CANCELLED", cancelled.path("status").asText());
+            var next = json(send(terminal, "POST", prefix + "/payments", request, UUID.randomUUID()), 201);
+            var failed = json(manager.send(managerPost("/admin/payments/" + next.path("id").asText() + "/resolve-cash", csrf,
+                    resolution.put("expectedVersion", 1).put("status", "FAILED")), HttpResponse.BodyHandlers.ofString()), 200);
+            assertEquals("FAILED", failed.path("status").asText());
+            assertTrue(failed.path("receiptId").isNull());
+            assertEquals(21025, get(terminal, prefix + "/payable-balance", 200).path("outstandingMinor").asLong());
+        }
+    }
+
     private static JsonNode ticket(String order) throws Exception {
         for (JsonNode ticket : get(STAFF_TOKEN, "/kitchen/orders", 200).path("tickets")) {
             if (ticket.at("/order/id").asText().equals(order)) {

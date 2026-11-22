@@ -1,0 +1,9 @@
+# Connected catalog and branding publication
+
+Admin changes are committed in the existing PostgreSQL database. Clients read the resulting catalog price, availability, and branding through the existing `GET /api/v1/menu` and `GET /api/v1/settings/public` resources. A fresh catalog read never rewrites accepted order price or preparation snapshots. Checkout continues to use its authoritative quote and revalidates when a price or selection changes.
+
+`GET /api/v1/menu-translations` is additive and returns `{ "translations": [...] }`. Each record includes `targetType` (`CATEGORY` or `DISH`), `targetId` (the existing catalog ID), `locale` (`am` or `ar`), `name`, `description`, and `version`. The response covers items and categories visible in the public menu. Empty translated values fall back to base text. UI labels, currency, dietary tags, ingredients, and allergy rules retain their existing authority. Read translations and catalog independently so an older backend can continue supplying the base menu.
+
+The Manager's Translations screen lists or saves entries through `GET` and `PATCH /api/v1/admin/translations`. PATCH uses the existing Manager cookie and CSRF token. Send `targetType`, `targetId`, `locale`, `name`, `description`, and `expectedVersion`. Use version `0` for an initial entry. Empty strings allow Manager fallback to base text. Category description must be empty. A stale version returns HTTP 409. Audit retains the saved text, version, Manager identity, and timestamp.
+
+Connected Customer integration can refresh menu and translations while the menu is visible and can refresh public branding throughout a connected visit. Apply the settings without resetting navigation, the cart, order tracking, or any pending payment. Discard a callback for a detached screen. Preserve last known data during transient failures and retain existing server quote protections.

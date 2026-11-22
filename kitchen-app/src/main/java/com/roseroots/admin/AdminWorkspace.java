@@ -231,6 +231,9 @@ public final class AdminWorkspace {
         } else if (destination == AdminSection.TABLES) {
             AdminApi active = session;
             page.getChildren().setAll(new VisitsWorkspace(active, () -> expired(active)));
+        } else if (destination == AdminSection.TRANSLATIONS) {
+            AdminApi active = session;
+            page.getChildren().setAll(new TranslationsWorkspace(active, () -> expired(active)));
         } else if (destination == AdminSection.BRANDING) {
             AdminApi active = session;
             page.getChildren().setAll(new BrandingWorkspace(active, () -> expired(active)));
