@@ -140,12 +140,15 @@ public final class PaymentDialog extends Dialog<Void> {
         current = view;
         needsRefresh = false;
         var value = view.balance();
-        if (prior == null || prior.balance().billVersion() != value.billVersion() || !value.canStart()) cash.setSelected(false);
+        var attempt = view.attempt();
+        if (prior == null || prior.balance().billVersion() != value.billVersion() || !value.canStart()
+                || !java.util.Objects.equals(prior.attempt(), attempt)) {
+            cash.setSelected(false);
+        }
         var numbers = java.text.NumberFormat.getIntegerInstance(locale);
         balance.setText(messages.text("pay.payable") + " " + money(value.payable()) + "\n"
                 + messages.text("pay.outstanding") + " " + money(value.outstanding()) + "\n"
                 + messages.text("pay.version") + " " + numbers.format(value.billVersion()));
-        var attempt = view.attempt();
         status.setText(attempt == null ? "" : messages.text(switch (attempt.status()) {
             case PENDING -> attempt.cancellationRequested() ? "pay.cancelRequested" : "pay.pending";
             case SUCCEEDED -> "pay.succeeded";
