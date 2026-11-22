@@ -11,6 +11,7 @@ import com.roseroots.customer.services.MenuService;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
@@ -19,6 +20,8 @@ import java.util.stream.Collectors;
 public final class ConnectedCatalog implements MenuService {
     private final SpringBootOrderService rest;
     private final BackendAddress address;
+    private final java.util.concurrent.atomic.AtomicLong refreshGeneration = new java.util.concurrent.atomic.AtomicLong();
+    private volatile Map<String, Translation> published = Map.of();
 
     public ConnectedCatalog(SpringBootOrderService rest, BackendAddress address) {
         this.rest = rest;
@@ -28,24 +31,31 @@ public final class ConnectedCatalog implements MenuService {
     @Override public boolean refreshWhileVisible() { return true; }
 
     @Override public CompletionStage<MenuCatalog> loadCatalog() {
-        return rest.get("menu").thenApply(this::read);
+        long generation = refreshGeneration.incrementAndGet();
+        var translations = rest.get("menu-translations").thenApply(ConnectedCatalog::translations).handle((next, error) -> {
+            if (error != null) return published;
+            if (generation == refreshGeneration.get()) published = next;
+            return next;
+        });
+        return rest.get("menu").thenCombine(translations, this::read);
     }
 
-    private MenuCatalog read(JsonObject json) {
+    private MenuCatalog read(JsonObject json, Map<String, Translation> translations) {
         if (!"KES".equals(string(json, "currency"))) throw new IllegalArgumentException("Unexpected catalog currency");
         var categories = list(json, "categories", node -> {
             var category = node.getAsJsonObject();
-            return new MenuCategory(id(category, "id"), category.get("parentId").isJsonNull() ? null : id(category, "parentId"),
-                    new LocalizedText(string(category, "name")));
+            String categoryId = id(category, "id");
+            return new MenuCategory(categoryId, category.get("parentId").isJsonNull() ? null : id(category, "parentId"),
+                    localized(category, "name", "CATEGORY/" + categoryId, translations));
         });
-        var items = list(json, "items", node -> item(node.getAsJsonObject()));
+        var items = list(json, "items", node -> item(node.getAsJsonObject(), translations));
         return new MenuCatalog(categories, items, false);
     }
 
-    private MenuItem item(JsonObject item) {
+    private MenuItem item(JsonObject item, Map<String, Translation> translations) {
         var dishId = id(item, "id");
-        var description = new LocalizedText(string(item, "description"));
-        var name = new LocalizedText(string(item, "name"));
+        var description = localized(item, "description", "DISH/" + dishId, translations);
+        var name = localized(item, "name", "DISH/" + dishId, translations);
         var safety = new MenuItem.FoodSafety(
                 enums(item, "dietaryTags", MenuItem.Diet::valueOf),
                 enums(item, "allergens", MenuItem.Allergen::valueOf), Set.of(), false);
@@ -58,6 +68,29 @@ public final class ConnectedCatalog implements MenuService {
                 safety, null, MenuItem.Availability.valueOf(string(item, "availability")), Set.of(),
                 prep == null || prep.isJsonNull() ? null : Duration.ofMinutes(prep.getAsLong()),
                 list(item, "customizationGroups", node -> group(dishId, node.getAsJsonObject())));
+    }
+
+    private record Translation(Map<String, String> names, Map<String, String> descriptions) {}
+
+    private static Map<String, Translation> translations(JsonObject response) {
+        var result = new java.util.HashMap<String, Translation>();
+        for (var element : response.getAsJsonArray("translations")) {
+            var row = element.getAsJsonObject();
+            String locale = string(row, "locale");
+            if (!(locale.equals("am") || locale.equals("ar"))) continue;
+            String key = string(row, "targetType") + "/" + id(row, "targetId");
+            var entry = result.computeIfAbsent(key, ignored -> new Translation(new java.util.HashMap<>(), new java.util.HashMap<>()));
+            String name = string(row, "name");
+            String description = string(row, "description");
+            if (!name.isBlank()) entry.names().put(locale, name);
+            if (!description.isBlank()) entry.descriptions().put(locale, description);
+        }
+        return Map.copyOf(result);
+    }
+
+    private static LocalizedText localized(JsonObject row, String field, String key, Map<String, Translation> translations) {
+        var entry = translations.get(key);
+        return new LocalizedText(string(row, field), entry == null ? Map.of() : field.equals("name") ? entry.names() : entry.descriptions());
     }
 
     private static MenuItem.CustomizationGroup group(String dishId, JsonObject group) {

@@ -13,5 +13,4 @@ public record WaitEstimate(Duration earliest, Duration latest, Instant calculate
     public boolean isCurrent(Instant now) {
         return !now.isBefore(calculatedAt) && now.isBefore(validUntil);
     }
-
 }

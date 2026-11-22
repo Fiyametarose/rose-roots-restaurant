@@ -53,7 +53,7 @@ public final class CustomerShell extends BorderPane {
             getStyleClass().add("ethiopic");
         }
 
-        var brand = new BrandHeader(settings.brand());
+        var brand = new BrandHeader(settings);
         var home = new Button(messages.text("catalog.backToWelcome"));
         home.setId("back-to-welcome");
         home.setWrapText(true);

@@ -74,6 +74,9 @@ class ConnectedRestTest {
             var estimate = get(rest.estimate(draft)).orElseThrow();
             assertEquals(Duration.ofMinutes(12), estimate.earliest());
             assertEquals(Duration.ofMinutes(20), estimate.latest());
+            var disclosed = new Ordering.Draft(draft.sessionId(), draft.mode(),
+                    new AllergyDeclaration(false, Set.of(), "Sesame"), draft.lines());
+            assertTrue(get(rest.estimate(disclosed)).isEmpty());
             var quote = get(rest.quote(draft));
             assertEquals(314000, quote.totals().totalMinor());
             var key = UUID.randomUUID();
@@ -272,7 +275,7 @@ class ConnectedRestTest {
                     case "wait-estimates" -> {
                         var payload = body(http);
                         var item = payload.getAsJsonArray("lines").get(0).getAsJsonObject();
-                        if (!"POST".equals(http.getRequestMethod()) || payload.size() != 2
+                        if (!"POST".equals(http.getRequestMethod()) || payload.size() != 3
                                 || !session.equals(payload.get("sessionId").getAsString())
                                 || !dish.equals(item.get("menuItemId").getAsString())
                                 || !line.equals(item.get("clientLineId").getAsString())
@@ -283,8 +286,21 @@ class ConnectedRestTest {
                         }
                         var value = new JsonObject();
                         var now = Instant.now();
-                        value.addProperty("state", "AVAILABLE");
                         value.addProperty("calculatedAt", now.toString());
+                        var visit = payload.getAsJsonObject("visitAllergy");
+                        String kind = visit == null ? "" : visit.get("kind").getAsString();
+                        boolean disclosed = "DISCLOSED".equals(kind) && "Sesame".equals(visit.get("other").getAsString());
+                        if (!"NONE".equals(kind) && !disclosed) {
+                            problem(http, 422, "INVALID_SELECTION");
+                            return;
+                        }
+                        if (disclosed) {
+                            value.addProperty("state", "UNAVAILABLE");
+                            value.addProperty("reason", "ALLERGY_REVIEW");
+                            send(http, 200, value.toString(), "application/json");
+                            return;
+                        }
+                        value.addProperty("state", "AVAILABLE");
                         value.addProperty("minimumMinutes", 12);
                         value.addProperty("maximumMinutes", 20);
                         value.addProperty("validUntil", now.plusSeconds(30).toString());

@@ -9,6 +9,7 @@ import com.roseroots.customer.models.AllergyReview;
 import com.roseroots.customer.models.CartPricing;
 import com.roseroots.customer.models.ConfiguredDish;
 import com.roseroots.customer.models.MenuItem;
+import com.roseroots.customer.models.WaitEstimate;
 import com.roseroots.customer.services.RestaurantSettings;
 import com.roseroots.customer.services.WaitEstimateService;
 import com.roseroots.customer.state.CartDraft;
@@ -508,25 +509,22 @@ public final class CartScreen extends StackPane {
         waitTime.setText(messages.text("cart.waitUnavailable"));
         var session = state.terminalSession();
         if (getScene() == null || session == null || !session.canSubmitOrders() || state.cart().lines().isEmpty()) return;
-        var items = state.cart().lines().stream().map(line -> new Ordering.Line(line.id(), line.item().id(),
-                line.quantity(), line.dish().selections(), line.dish().allergy(), line.dish().instructions())).toList();
         var visit = state.sessionAllergy();
-        java.util.concurrent.CompletableFuture.completedFuture(session)
-                .thenCompose(active -> estimates.estimate(new Ordering.Draft(
-                        Ordering.canonicalId(active.sessionId()), active.mode(), visit, items))).whenComplete((result, error) ->
-                Platform.runLater(() -> {
+        java.util.concurrent.CompletableFuture.completedFuture(state)
+                .thenApply(OrderConfirmation::draftForEstimate).thenCompose(estimates::estimate)
+                .whenComplete((result, error) -> Platform.runLater(() -> {
                     if (requested != estimateRevision || getScene() == null || state.terminalSession() != session
                             || !state.sessionAllergy().equals(visit)) return;
-                    if (error != null || result == null) {
-                        refreshEstimateAfter(30_000);
-                        return;
-                    }
                     var now = Instant.now();
-                    WaitEstimateService.current(result, now).ifPresentOrElse(value -> {
+                    var current = error == null && result != null
+                            ? WaitEstimateService.current(result, now) : java.util.Optional.<WaitEstimate>empty();
+                    current.ifPresentOrElse(value -> {
                         waitTime.setText(MenuText.waitRange(value, state.locale(), messages)
                                 + " · " + messages.text("cart.waitNotGuaranteed"));
                         refreshEstimateAfter(Math.max(1, java.time.Duration.between(now, value.validUntil()).toMillis()));
-                    }, () -> refreshEstimateAfter(30_000));
+                    }, () -> {
+                        if (estimates.live()) refreshEstimateAfter(15_000);
+                    });
                 }));
     }
 

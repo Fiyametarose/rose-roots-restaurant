@@ -54,7 +54,7 @@ public final class MenuScreen extends StackPane {
     private final StackPane filterOverlay = new StackPane();
     private final ScrollPane scroll;
     private final Button refresh;
-    private final PauseTransition catalogRefresh = new PauseTransition(Duration.seconds(30));
+    private final PauseTransition catalogRefresh = new PauseTransition(Duration.seconds(15));
     private final PauseTransition delay = new PauseTransition(Duration.millis(120));
     private List<MenuItem> results = List.of();
     private int columns;

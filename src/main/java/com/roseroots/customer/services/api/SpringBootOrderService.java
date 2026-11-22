@@ -7,13 +7,12 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.roseroots.customer.models.AllergyDeclaration;
-import com.roseroots.customer.models.Ordering;
-import com.roseroots.customer.models.WaitEstimate;
-import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import com.roseroots.customer.models.OrderHistory;
+import com.roseroots.customer.models.Ordering;
 import com.roseroots.customer.models.ServiceMode;
+import com.roseroots.customer.models.WaitEstimate;
 import com.roseroots.customer.services.OrderService;
+import com.roseroots.customer.services.WaitEstimateService;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -22,13 +21,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public final class SpringBootOrderService implements OrderService {
+public final class SpringBootOrderService implements OrderService, WaitEstimateService {
     private final HttpClient client;
     private final URI api;
     private final Supplier<String> credential;
@@ -102,6 +102,10 @@ public final class SpringBootOrderService implements OrderService {
         return call("sessions/" + session + "/reviews", body, key, Function.identity());
     }
 
+    CompletionStage<Optional<WaitEstimate>> estimateOrder(UUID order) {
+        return get("orders/" + order + "/wait-estimate").thenApply(SpringBootOrderService::readEstimate);
+    }
+
     CompletionStage<JsonObject> postAssistance(JsonObject body, UUID key) {
         return call("assistance", body, key, Function.identity());
     }
@@ -126,12 +130,10 @@ public final class SpringBootOrderService implements OrderService {
 
     @Override public boolean available() { return compatible.getAsBoolean(); }
 
-    public CompletionStage<Optional<WaitEstimate>> estimate(Ordering.Draft draft) {
-        // draft.3 does not represent visit-level allergy on this operation.
-        if (draft.visitAllergy().disclosed()) return CompletableFuture.completedFuture(Optional.empty());
-        var body = draftBody(draft);
-        body.remove("visitAllergy");
-        return call("wait-estimates", body, null, SpringBootOrderService::readEstimate);
+    @Override public boolean live() { return true; }
+
+    @Override public CompletionStage<Optional<WaitEstimate>> estimate(Ordering.Draft draft) {
+        return call("wait-estimates", draftBody(draft), null, SpringBootOrderService::readEstimate);
     }
 
     static Optional<WaitEstimate> readEstimate(JsonObject body) {
@@ -216,7 +218,8 @@ public final class SpringBootOrderService implements OrderService {
         }
         boolean definite = switch (status) {
             case 409 -> List.of("PRICE_CHANGED", "QUOTE_EXPIRED", "ITEM_UNAVAILABLE",
-                    "SESSION_CLOSED", "SESSION_EXPIRED", "INVALID_SELECTION", "IDEMPOTENCY_CONFLICT").contains(code);
+                    "SESSION_CLOSED", "SESSION_EXPIRED", "INVALID_SELECTION", "IDEMPOTENCY_CONFLICT", "PAYMENT_PENDING",
+                    "ALREADY_SETTLED").contains(code);
             case 422 -> List.of("ITEM_UNAVAILABLE", "INVALID_SELECTION", "REVIEW_REQUIRED", "ALLERGEN_CONFLICT").contains(code);
             default -> false;
         };

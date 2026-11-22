@@ -27,6 +27,8 @@ import com.roseroots.customer.services.api.BackendAddress;
 import com.roseroots.customer.services.api.SpringBootOrderService;
 import com.roseroots.customer.services.api.ConnectedTerminal;
 import com.roseroots.customer.services.api.ConnectedCatalog;
+import com.roseroots.customer.services.api.ConnectedRestaurantSettings;
+import com.roseroots.customer.services.RestaurantSettings;
 import com.roseroots.customer.services.api.RestOrderTracking;
 import com.roseroots.customer.services.WaitEstimateService;
 import java.time.Clock;
@@ -46,6 +48,8 @@ import javafx.stage.Stage;
 public final class CustomerApplication extends Application {
     private static final double DESIGN_WIDTH = 1280;
     private static final double DESIGN_HEIGHT = 800;
+    private javafx.animation.Timeline brandingPoll;
+    private ConnectedRestaurantSettings branding;
     private final java.util.concurrent.ScheduledExecutorService orderExecutor =
             java.util.concurrent.Executors.newSingleThreadScheduledExecutor(task -> {
                 var thread = new Thread(task, "customer-order-tracking");
@@ -54,6 +58,8 @@ public final class CustomerApplication extends Application {
             });
 
     @Override public void stop() {
+        if (brandingPoll != null) brandingPoll.stop();
+        if (branding != null) branding.close();
         orderExecutor.shutdown();
     }
 
@@ -62,7 +68,7 @@ public final class CustomerApplication extends Application {
         Font.loadFont(Objects.requireNonNull(getClass().getResource(
                 "/fonts/NotoSansEthiopic-Regular.ttf")).toExternalForm(), 16);
 
-        var settings = new LocalRestaurantSettings();
+        var defaults = new LocalRestaurantSettings();
         var args = getParameters().getRaw();
         boolean demoTable = args.contains("--demo-table");
         boolean demoTakeaway = demoTable || args.contains("--demo-takeaway");
@@ -70,6 +76,8 @@ public final class CustomerApplication extends Application {
         boolean connected = !demoTakeaway && (args.contains("--connected") || (origin != null && !origin.isBlank()));
         var address = connected ? backendAddress(origin) : null;
         var backend = connected ? orderBackend(address) : null;
+        branding = backend == null ? null : new ConnectedRestaurantSettings(defaults, backend, address);
+        RestaurantSettings settings = branding == null ? defaults : branding;
         var state = backend == null ? new CustomerState() : new CustomerState(new com.roseroots.customer.state.AssistanceState(
                 new com.roseroots.customer.services.api.SpringBootAssistanceService(
                         new com.roseroots.customer.services.api.RestAssistanceClient(backend, orderExecutor)),
@@ -109,7 +117,7 @@ public final class CustomerApplication extends Application {
             state.menu().rememberScroll(0);
             goMenu.run();
         };
-        WaitEstimateService estimates = backend == null ? WaitEstimateService.unavailable() : backend::estimate;
+        WaitEstimateService estimates = backend == null ? WaitEstimateService.unavailable() : backend;
         var orders = backend == null ? OrderService.unavailable() : backend;
         var tracking = backend == null ? OrderTrackingService.unavailable() : new RestOrderTracking(backend, orderExecutor);
         var confirmation = new OrderConfirmation(state, orders, Clock.systemUTC(), Platform::runLater);
@@ -165,6 +173,17 @@ public final class CustomerApplication extends Application {
         stage.setFullScreen(getParameters().getRaw().contains("--fullscreen"));
         stage.show();
         stage.centerOnScreen();
+        if (branding != null) {
+            branding.changes().addListener(ignored -> {
+                stage.setTitle(branding.brand().windowTitle());
+                content.setStyle(branding.themeCss());
+            });
+            branding.refresh();
+            brandingPoll = new javafx.animation.Timeline(new javafx.animation.KeyFrame(javafx.util.Duration.seconds(15),
+                    event -> branding.refresh()));
+            brandingPoll.setCycleCount(javafx.animation.Timeline.INDEFINITE);
+            brandingPoll.play();
+        }
     }
 
     private static BackendAddress backendAddress(String origin) {
