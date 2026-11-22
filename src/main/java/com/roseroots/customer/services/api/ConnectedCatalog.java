@@ -25,6 +25,8 @@ public final class ConnectedCatalog implements MenuService {
         this.address = address;
     }
 
+    @Override public boolean refreshWhileVisible() { return true; }
+
     @Override public CompletionStage<MenuCatalog> loadCatalog() {
         return rest.get("menu").thenApply(this::read);
     }

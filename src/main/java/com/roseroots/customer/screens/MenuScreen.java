@@ -54,6 +54,7 @@ public final class MenuScreen extends StackPane {
     private final StackPane filterOverlay = new StackPane();
     private final ScrollPane scroll;
     private final Button refresh;
+    private final PauseTransition catalogRefresh = new PauseTransition(Duration.seconds(30));
     private final PauseTransition delay = new PauseTransition(Duration.millis(120));
     private List<MenuItem> results = List.of();
     private int columns;
@@ -114,11 +115,12 @@ public final class MenuScreen extends StackPane {
         delay.setOnFinished(event -> search());
         buildFilters();
         refreshCategories();
-        if (browse.catalog() == null) {
-            loadCatalog();
-        } else {
-            showCatalog(true);
-        }
+        if (browse.catalog() != null) showCatalog(true);
+        catalogRefresh.setOnFinished(event -> loadCatalog(false));
+        sceneProperty().addListener((property, previous, next) -> {
+            if (next == null) catalogRefresh.stop();
+            else if (browse.catalog() == null || menuService.refreshWhileVisible()) loadCatalog(browse.catalog() == null);
+        });
     }
 
     private void buildFilters() {
@@ -149,24 +151,34 @@ public final class MenuScreen extends StackPane {
     }
 
     private void loadCatalog() {
+        loadCatalog(true);
+    }
+
+    private void loadCatalog(boolean interactive) {
+        if (refresh.isDisable()) return;
+        catalogRefresh.stop();
         refresh.setDisable(true);
-        loadStatus.setText(messages.text("catalog.loading"));
-        loadStatus.setVisible(true);
-        menuService.loadCatalog().whenComplete((catalog, error) -> Platform.runLater(() -> {
-            if (getScene() == null) {
-                return;
-            }
-            refresh.setDisable(false);
-            if (error != null) {
-                loadStatus.setText(messages.text(browse.catalog() == null
-                        ? "menu.unavailable" : "catalog.refreshFailed"));
-                return;
-            }
-            loadStatus.setVisible(false);
-            MenuPhoto.clearCache();
-            browse.setCatalog(catalog);
-            showCatalog(false);
-        }));
+        if (interactive) {
+            loadStatus.setText(messages.text("catalog.loading"));
+            loadStatus.setVisible(true);
+        }
+        CompletableFuture.completedFuture(menuService).thenCompose(MenuService::loadCatalog)
+                .whenComplete((catalog, error) -> Platform.runLater(() -> {
+                    refresh.setDisable(false);
+                    if (getScene() == null) return;
+                    if (menuService.refreshWhileVisible()) catalogRefresh.playFromStart();
+                    if (error != null) {
+                        if (interactive) loadStatus.setText(messages.text(browse.catalog() == null
+                                ? "menu.unavailable" : "catalog.refreshFailed"));
+                        return;
+                    }
+                    loadStatus.setVisible(false);
+                    if (!interactive && catalog.equals(browse.catalog())) return;
+                    if (!interactive) browse.rememberScroll(scroll.getVvalue());
+                    MenuPhoto.clearCache();
+                    browse.setCatalog(catalog);
+                    showCatalog(!interactive);
+                }));
     }
 
     private void showCatalog(boolean restorePosition) {
