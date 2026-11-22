@@ -1,5 +1,7 @@
 # Ordering draft 2 handoff
 
+> Historical draft.2 handoff. Provision current Chef accounts with personal passwords in Staff & Security. Active Chefs sign in on the shared Kitchen workstation to review allergies. See the [current Windows showcase guide](showcase-windows.md).
+
 [OpenAPI 1.0.0-draft.2](ordering-api-v1.openapi.json) is the shared contract for the Chef decision and Assistance slices. This revision records the interfaces ahead of rollout.
 
 ## Chef decisions

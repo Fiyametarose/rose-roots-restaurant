@@ -10,7 +10,7 @@
     -fx-focus-color: #a77c24;
     -fx-faint-focus-color: #a77c2444;
 }
-.label { -fx-text-fill: ink; }
+.label { -fx-text-fill: #172c22; }
 .header { -fx-padding: 8 0 7; -fx-border-width: 0 0 1; -fx-border-color: #d8cba9; }
 .botanical { -fx-text-fill: #8c692e; -fx-font-size: 24px; }
 .brand-name, .title, .lane-title { -fx-font-family: Georgia; -fx-font-weight: bold; }

@@ -1,5 +1,7 @@
 # Rose & Roots database operations
 
+For the three-PC showcase, use the [Windows showcase installer](showcase-windows.md). Its Compose project and loopback port are separate from the development instance described here.
+
 The [Compose file](../compose.yaml) runs PostgreSQL 17 in project
 `rose-roots`, service `db`, container `rose-roots-db`. The database
 and its dedicated role are named `rose_roots`. The named volume
@@ -50,8 +52,8 @@ $env:ROSE_DB_PASSWORD = (Get-Content -LiteralPath .env.rose-roots-db-password -R
 .\gradlew.bat :server:bootRun
 ```
 
-For HTTPS use `catalog,lan` and the certificate settings in the
-[Windows demonstration guide](two-pc-demonstration.md). To stop only
+For the integrated HTTPS deployment, use the
+[Windows showcase LAN and HTTPS preflight](showcase-windows.md#lan-and-https-preflight). To stop only
 the database service while retaining its named volume, use
 `docker --context desktop-linux compose -f compose.yaml -p rose-roots stop db`.
 

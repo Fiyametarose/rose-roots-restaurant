@@ -29,6 +29,7 @@ public final class ReceiptRecoveryDialog extends Dialog<Void> {
         initOwner(owner);
         setTitle(messages.text("recovery.title"));
         var pane = getDialogPane();
+        pane.getStyleClass().add("assistance-dialog");
         pane.getStylesheets().addAll(owner.getScene().getStylesheets());
         if ("am".equals(messages.language())) pane.getStyleClass().add("ethiopic");
         messages.applyDirection(pane);

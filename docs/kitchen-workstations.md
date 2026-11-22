@@ -15,9 +15,8 @@ A workstation credential never has individual Kitchen, allergy review, Superviso
 ## Provision and rotate
 
 1. Connect to the trusted HTTPS server. In Manager sign-in, open **Staff & Security** and issue a credential under **Shared Kitchen workstations**.
-2. Copy the new credential once. Use a protected secret delivery channel, disable clipboard history and cross-device sync during transfer, and clear the clipboard afterward. Store the credential as the only line of a file **outside the repository**, readable only by the workstation OS account and authorized administrators. Keep the file out of synced folders and backups that are shared with other users.
-3. Launch Kitchen with `ROSE_KITCHEN_MODE=connected`, the trusted `ROSE_BACKEND_URL`, and `ROSE_KITCHEN_WORKSTATION_TOKEN_FILE` set to the absolute path of the protected file. The workstation skips personal sign-in and retains its polling and reconnect behavior. An unavailable or invalid file leaves it disconnected. The configured file takes precedence over `ROSE_KITCHEN_STAFF_TOKEN`, with no fallback. Individual deployments can continue to use the existing staff configuration without the workstation file setting.
-4. Credentials expire after 90 days. To rotate a working credential, issue a replacement with a distinct label, install it, and revoke the previous record. For a lost or compromised workstation, revoke immediately in **Staff & Security**. Each subsequent request checks revocation. Revoking the credential preserves its audit identity.
+2. Transfer the issued credential through a protected channel. On the Windows workstation, enter it at the masked prompt of the [showcase Kitchen installer](showcase-windows.md). The Start shortcut uses the DPAPI-protected installation. Personal actions require staff sign-in on the shared workstation.
+3. Credentials expire after 90 days. To rotate, issue a replacement with a distinct label, use the installer action `ReplaceDeviceCredential`, verify that the replacement works, then revoke the previous record. For a lost or compromised workstation, revoke immediately in **Staff & Security**. Each subsequent request checks revocation, and the audit retains the workstation identity.
 
 ## Manager provisioning API v1
 

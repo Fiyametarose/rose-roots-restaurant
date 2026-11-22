@@ -1,5 +1,7 @@
 # Phase 4C.2A ordering backend
 
+> Historical Phase 4C.2A record. Its manual tokens and startup commands describe the original rollout. See the [current Windows showcase guide](showcase-windows.md).
+
 The shared Spring Boot server enables the ordering endpoints when the `catalog` profile is active. Flyway V6 upgrades the existing PostgreSQL schema. Use `catalog,lan` for the two-client HTTPS test. Plain HTTP ordering is limited to loopback for backend tests. [Windows database setup](database-environment.md) · [LAN and TLS setup](two-pc-demonstration.md)
 
 ## Provisioning for the first REST test
