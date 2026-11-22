@@ -103,6 +103,7 @@ class ConnectedRestTest {
             }
             verifyAssistance(rest, fixture, session, polls);
             verifyReview(rest, fixture);
+            verifyPayment(rest, fixture);
             server.stop(0);
             assertProblem("CONNECTION_INTERRUPTED", () -> get(rest.order(draft.sessionId(), accepted.id())));
         } finally {
@@ -110,6 +111,29 @@ class ConnectedRestTest {
             polls.shutdownNow();
             workers.shutdownNow();
         }
+    }
+
+    private static void verifyPayment(SpringBootOrderService rest, Fixture fixture) throws Exception {
+        var client = new RestPaymentClient(rest);
+        var id = UUID.fromString(fixture.session);
+        var payable = get(client.balance(id));
+        assertTrue(payable.canStart());
+        assertEquals(314000, payable.outstanding());
+        assertProblem("NOT_FOUND", () -> get(client.balance(UUID.randomUUID())));
+        var pending = get(client.start(id, payable.billVersion(), fixture.cashKey));
+        assertEquals(Payment.Status.PENDING, pending.status());
+        assertEquals(pending.id(), get(client.balance(id)).openAttempt());
+        assertEquals(pending, get(client.attempt(id, pending.id())));
+        var requested = get(client.cancel(id, pending.id(), pending.version()));
+        assertTrue(requested.cancellationRequested());
+        assertEquals(Payment.Status.PENDING, requested.status());
+        fixture.cashStatus = "SUCCEEDED";
+        var confirmed = get(client.attempt(id, pending.id()));
+        var receipt = get(client.receipt(id, confirmed.receiptId()));
+        assertEquals(confirmed.id(), receipt.paymentId());
+        assertEquals(314000, receipt.amount());
+        assertEquals(fixture.line, receipt.lines().getFirst().price().clientLineId().toString());
+        assertEquals(0, get(client.balance(id)).outstanding());
     }
 
     private static void verifyReview(SpringBootOrderService rest, Fixture fixture) throws Exception {
@@ -240,6 +264,91 @@ class ConnectedRestTest {
                     .getAsJsonObject("content").getAsJsonObject("application/json").getAsJsonObject("example").deepCopy();
         }
 
+        final UUID cashKey = UUID.randomUUID();
+        final UUID cashId = UUID.randomUUID();
+        final UUID cashReceipt = UUID.randomUUID();
+        volatile String cashStatus;
+        volatile boolean cashCancel;
+
+        private boolean payment(HttpExchange http, String path) throws IOException {
+            if (!path.contains("/payable-balance") && !path.contains("/payments") && !path.contains("/receipts")) return false;
+            if (!path.startsWith("sessions/" + session + "/")) {
+                problem(http, 404, "NOT_FOUND");
+                return true;
+            }
+            var resource = path.substring(("sessions/" + session + "/").length());
+            var data = new JsonObject();
+            data.addProperty("sessionId", session);
+            data.addProperty("currency", "KES");
+            boolean paid = "SUCCEEDED".equals(cashStatus);
+            if (resource.equals("payable-balance")) {
+                data.addProperty("billVersion", 4);
+                data.addProperty("payableMinor", 314000);
+                data.addProperty("settledMinor", paid ? 314000 : 0);
+                data.addProperty("outstandingMinor", paid ? 0 : 314000);
+                data.add("orders", new com.google.gson.JsonArray());
+                var reasons = new com.google.gson.JsonArray();
+                boolean pending = "PENDING".equals(cashStatus);
+                if (pending) reasons.add("PAYMENT_PENDING");
+                if (paid) reasons.add("ALREADY_SETTLED");
+                data.add("blockedReasons", reasons);
+                data.addProperty("openAttemptId", pending ? cashId.toString() : null);
+                var methods = new com.google.gson.JsonArray();
+                methods.add("CASH");
+                data.add("availableMethods", methods);
+                send(http, 200, data.toString(), "application/json");
+                return true;
+            }
+            data.addProperty("method", "CASH");
+            data.addProperty("amountMinor", 314000);
+            if (resource.equals("receipts/" + cashReceipt) && paid) {
+                data.addProperty("id", cashReceipt.toString());
+                data.addProperty("paymentId", cashId.toString());
+                data.addProperty("verifiedAt", Instant.now().toString());
+                data.add("orders", new com.google.gson.JsonArray());
+                var lines = new com.google.gson.JsonArray();
+                var entry = new JsonObject();
+                entry.addProperty("orderId", accepted.get("id").getAsString());
+                entry.addProperty("itemId", UUID.randomUUID().toString());
+                entry.add("pricing", quote.getAsJsonArray("lines").get(0));
+                lines.add(entry);
+                data.add("lines", lines);
+                send(http, 200, data.toString(), "application/json");
+                return true;
+            }
+            int status = 200;
+            if (resource.equals("payments") && "POST".equals(http.getRequestMethod())) {
+                var start = body(http);
+                if (!cashKey.toString().equals(http.getRequestHeaders().getFirst("Idempotency-Key"))
+                        || !"CASH".equals(start.get("method").getAsString())
+                        || start.get("expectedBillVersion").getAsLong() != 4) {
+                    problem(http, 422, "INVALID_SELECTION");
+                    return true;
+                }
+                cashStatus = "PENDING";
+                status = 201;
+            } else if (resource.equals("payments/" + cashId + "/cancel") && "POST".equals(http.getRequestMethod())) {
+                if (body(http).get("expectedVersion").getAsLong() != 1) {
+                    problem(http, 409, "PAYMENT_VERSION_CONFLICT");
+                    return true;
+                }
+                cashCancel = true;
+            } else if (!resource.equals("payments/" + cashId) || cashStatus == null) {
+                problem(http, 404, "NOT_FOUND");
+                return true;
+            }
+            data.addProperty("id", cashId.toString());
+            data.addProperty("billVersion", 4);
+            data.addProperty("status", cashStatus);
+            data.addProperty("version", cashCancel ? 2 : 1);
+            data.addProperty("cancellationRequested", cashCancel);
+            data.addProperty("receiptId", paid ? cashReceipt.toString() : null);
+            data.addProperty("createdAt", Instant.now().toString());
+            data.addProperty("updatedAt", Instant.now().toString());
+            send(http, status, data.toString(), "application/json");
+            return true;
+        }
+
         void respond(HttpExchange http) throws IOException {
             try (http) {
                 if (!"Bearer test-provisioned-token".equals(http.getRequestHeaders().getFirst("Authorization"))) {
@@ -247,6 +356,7 @@ class ConnectedRestTest {
                     return;
                 }
                 var path = http.getRequestURI().getPath().substring("/api/v1/".length());
+                if (payment(http, path)) return;
                 switch (path) {
                     case "device" -> send(http, 200, device.toString(), "application/json");
                     case "sessions" -> {

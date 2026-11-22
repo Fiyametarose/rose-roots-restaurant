@@ -163,7 +163,7 @@ public final class SpringBootOrderService implements OrderService, WaitEstimateS
         return call("orders", body, key, SpringBootOrderService::readAccepted);
     }
 
-    private <T> CompletionStage<T> call(String path, JsonObject body, UUID key, Function<JsonObject, T> read) {
+    <T> CompletionStage<T> call(String path, JsonObject body, UUID key, Function<JsonObject, T> read) {
         var request = request(path).header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString()));
         if (key != null) request.header("Idempotency-Key", key.toString());
@@ -299,7 +299,7 @@ public final class SpringBootOrderService implements OrderService, WaitEstimateS
         return declaration;
     }
 
-    private static Ordering.Price price(JsonObject value) {
+    static Ordering.Price price(JsonObject value) {
         return new Ordering.Price(id(value, "clientLineId"), id(value, "menuItemId"), string(value, "name"),
                 Math.toIntExact(integer(value, "quantity")), integer(value, "baseUnitMinor"),
                 list(value, "options", option -> new Ordering.Option(id(option, "groupId"), id(option, "optionId"),

@@ -56,6 +56,7 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
     private final Button bill;
     private final Button backToOrders;
     private final Timeline freshness;
+    private final VBox billPanel;
     private final java.util.Map<UUID, Label> estimates = new java.util.HashMap<>();
     private OrderTrackingService.Watch watch;
     private OrderHistory history;
@@ -113,7 +114,7 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
                 new com.roseroots.customer.components.ReviewDialog(getScene().getWindow(), customer).show());
         review.setId("open-review");
         review.setMaxWidth(Double.MAX_VALUE);
-        var billPanel = new VBox(11, billHeader, summary, more, bill, backToOrders, review);
+        billPanel = new VBox(11, billHeader, summary, more, bill, backToOrders, review);
         billPanel.getStyleClass().addAll("dish-information", "orders-bill-panel");
         var listScroll = scroll(cards);
         var billScroll = scroll(billPanel);
@@ -201,6 +202,25 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
             renderSummary();
         }
         refreshEstimates();
+    }
+
+    public OrdersScreen withPayments(com.roseroots.customer.services.PaymentService service,
+                                     com.roseroots.customer.state.PaymentCheckout.Journal journal) {
+        var payment = CustomerShell.action(messages.text("pay.action"), true, () -> {
+            var checkout = new com.roseroots.customer.state.PaymentCheckout(service, journal,
+                    Ordering.canonicalId(session.sessionId()));
+            new com.roseroots.customer.components.PaymentDialog(getScene().getWindow(), customer.locale(),
+                    CustomerShell.sessionContext(customer, messages), checkout).show();
+        });
+        payment.setId("open-payments");
+        payment.setMaxWidth(Double.MAX_VALUE);
+        payment.visibleProperty().bind(backToOrders.visibleProperty());
+        payment.managedProperty().bind(payment.visibleProperty());
+        boolean available = service != null && session != null && session.sessionId() != null && !session.device().demo();
+        payment.setDisable(!available);
+        if (!available) payment.setTooltip(new Tooltip(messages.text("pay.unavailable")));
+        billPanel.getChildren().add(2, payment);
+        return this;
     }
 
     private void showBill(boolean value) {

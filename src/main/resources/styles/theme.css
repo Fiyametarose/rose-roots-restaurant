@@ -920,3 +920,8 @@
 .catalog-shell.ethiopic .text-field, .catalog-shell.ethiopic .text-area {
     -fx-font-family: "Noto Sans Ethiopic";
 }
+
+.payment-dialog .payment-scroll, .payment-dialog .payment-scroll > .viewport {
+    -fx-background-color: -rr-cream;
+    -fx-background-insets: 0;
+}
