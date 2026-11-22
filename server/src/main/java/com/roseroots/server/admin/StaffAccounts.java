@@ -24,7 +24,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 @Profile("catalog")
 class StaffAccounts {
-    enum Role { CHEF, SUPERVISOR, MANAGER }
+    enum Role { CHEF, SUPERVISOR, MANAGER, WAITER }
     record Account(UUID id, String username, Role role, boolean enabled, boolean allergyReviewer, long version) {}
     record Create(String username, Role role, Boolean allergyReviewer, String password) {}
     record Update(Boolean enabled, Boolean allergyReviewer, long expectedVersion, String kitchenPassword) {}
@@ -100,7 +100,7 @@ class StaffAccounts {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That staff username is already registered.");
         }
         audit(account, actor);
-        return new Created(account, token);
+        return new Created(account, role == Role.WAITER ? null : token);
     }
 
     @Transactional

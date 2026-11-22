@@ -58,8 +58,12 @@ final class KitchenTicketJson {
             case "NORMAL" -> false;
             default -> throw new IllegalArgumentException("Unknown priority");
         };
+        var handoff = wrapper.getAsJsonObject("handoff");
+        var audit = handoff == null ? null : new Ticket.HandoffAudit(
+                handoff.get("actor").isJsonNull() ? null : text(handoff, "actor"),
+                Status.valueOf(text(handoff, "status")), OffsetDateTime.parse(text(handoff, "completedAt")));
         var server = new ServerOrder(id, id(order, "sessionId"), version(order), status,
-                rush, bool(wrapper, "delayed"), declaration(order.getAsJsonObject("visitAllergy")));
+                rush, bool(wrapper, "delayed"), declaration(order.getAsJsonObject("visitAllergy")), audit);
         var completed = wrapper.get("completedAt");
         var completion = completed == null ? null : new OrderCompletion(OrderCompletion.Status.valueOf(status.name()),
                 completed.isJsonNull() ? null : OffsetDateTime.parse(completed.getAsString()));

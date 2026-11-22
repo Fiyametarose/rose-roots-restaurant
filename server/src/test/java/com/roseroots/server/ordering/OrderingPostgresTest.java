@@ -72,6 +72,7 @@ class OrderingPostgresTest {
     private static final String STAFF_TOKEN = token();
     private static final String CHEF_TOKEN = token();
     private static final String PREP_TOKEN = "ks_" + token();
+    private static final String HANDOFF_TOKEN = "ks_" + token();
     private static final UUID PREP_CHEF = UUID.randomUUID();
     private static ServletWebServerApplicationContext server;
     private static JdbcClient db;
@@ -114,6 +115,17 @@ class OrderingPostgresTest {
                 INSERT INTO kitchen_staff_session (token_sha256,staff_id,entry_credential_id,expires_at)
                 SELECT :session,:id,id,now()+interval '10 minutes' FROM ordering_credential WHERE token_sha256=:hash
                 """).param("id", PREP_CHEF).param("hash", digest(STAFF_TOKEN)).param("session", digest(PREP_TOKEN)).update();
+        String waiterCredential = token();
+        credential(waiterCredential, null, "KITCHEN");
+        UUID waiter = UUID.randomUUID();
+        db.sql("""
+                INSERT INTO staff_account (id,username,staff_role,credential_id)
+                SELECT :id,'regression-waiter','WAITER',id FROM ordering_credential WHERE token_sha256=:hash
+                """).param("id", waiter).param("hash", digest(waiterCredential)).update();
+        db.sql("""
+                INSERT INTO kitchen_staff_session (token_sha256,staff_id,entry_credential_id,expires_at)
+                SELECT :session,:id,id,now()+interval '10 minutes' FROM ordering_credential WHERE token_sha256=:entry
+                """).param("id", waiter).param("entry", digest(STAFF_TOKEN)).param("session", digest(HANDOFF_TOKEN)).update();
         credential(CHEF_TOKEN, null, "KITCHEN");
         db.sql("UPDATE ordering_credential SET allergy_reviewer = true WHERE token_sha256 = :hash")
                 .param("hash", digest(CHEF_TOKEN)).update();
@@ -222,7 +234,7 @@ class OrderingPostgresTest {
         input.putArray("topics").add("TEMPERATURE").add("AMBIENCE");
         UUID key = UUID.randomUUID();
         problem(send(terminal, "POST", path + "/reviews", input, key), 422, "REVIEW_NOT_ELIGIBLE");
-        json(send(STAFF_TOKEN, "POST", "/kitchen/orders/" + order + "/handoff", transition("SERVED", 3), null), 200);
+        json(send(HANDOFF_TOKEN, "POST", "/kitchen/orders/" + order + "/handoff", transition("SERVED", 3), null), 200);
         var eligible = get(terminal, path + "/review", 200);
         assertTrue(eligible.path("eligible").asBoolean());
         assertTrue(eligible.path("review").isNull(), "Skipping must not create a review or rating");
@@ -275,7 +287,7 @@ class OrderingPostgresTest {
             String item = get(terminal, "/orders/" + order, 200).at("/lines/0/id").asText();
             patch(item, "PREPARING", 1, 200);
             patch(item, "READY", 2, 200);
-            json(send(STAFF_TOKEN, "POST", "/kitchen/orders/" + order + "/handoff", transition("SERVED", 3), null), 200);
+            json(send(HANDOFF_TOKEN, "POST", "/kitchen/orders/" + order + "/handoff", transition("SERVED", 3), null), 200);
             var draft = object().put("comment", index == 0 ? "Food was cold in the JavaFX test." : "Please review the preparation time.");
             draft.putArray("topics").add("PREPARATION_SPEED");
             if (index == 0) draft.put("rating", 1);
@@ -313,7 +325,7 @@ class OrderingPostgresTest {
         String item = get(terminal, "/orders/" + order, 200).at("/lines/0/id").asText();
         patch(item, "PREPARING", 1, 200);
         patch(item, "READY", 2, 200);
-        json(send(STAFF_TOKEN, "POST", "/kitchen/orders/" + order + "/handoff", transition("COLLECTED", 3), null), 200);
+        json(send(HANDOFF_TOKEN, "POST", "/kitchen/orders/" + order + "/handoff", transition("COLLECTED", 3), null), 200);
         var input = object().put("rating", 2).put("comment", "Follow-up fixture feedback");
         String id = json(send(terminal, "POST", "/sessions/" + session + "/reviews", input, UUID.randomUUID()), 201)
                 .path("id").asText();
@@ -495,19 +507,78 @@ class OrderingPostgresTest {
     }
 
     @Test
+    void managerProvisionsAndDisablesWaiterWithNarrowPersonalHandoffPermission() throws Exception {
+        try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
+            managerLogin(manager);
+            String csrf = manager.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
+            var created = staffWrite(manager, csrf, "POST", "", object().put("username", "service-waiter")
+                    .put("role", "WAITER"), 201);
+            assertTrue(created.path("bearerToken").isNull());
+            String waiter = created.at("/account/id").asText();
+            String password = token();
+            staffWrite(manager, csrf, "PATCH", "/" + waiter, object().put("expectedVersion", 1)
+                    .put("enabled", true).put("allergyReviewer", false).put("kitchenPassword", password), 200);
+            String workstation = issueWorkstation(manager, csrf, "Service pass").path("bearerToken").asText();
+            String personal = kitchenSignIn(workstation, "service-waiter", password);
+            String customer = terminal(true);
+            String session = session(customer, "DINE_IN", 201);
+            String order = submitNew(customer, session, dish());
+            String path = "/kitchen/orders/" + order + "/handoff";
+            String item = ticket(order).at("/order/lines/0/id").asText();
+            problem(send(personal, "POST", path, transition("SERVED", 1), null), 409, "INVALID_TRANSITION");
+            problem(send(personal, "PATCH", itemPath(item), transition("PREPARING", 1), null), 403, "FORBIDDEN");
+            problem(send(personal, "POST", "/kitchen/items/" + item + "/ownership", object(), null), 403, "FORBIDDEN");
+            problem(send(personal, "POST", "/kitchen/items/" + item + "/allergy-review", object(), null), 403, "FORBIDDEN");
+            problem(send(personal, "POST", "/kitchen/orders/" + order + "/rush", object(), null), 403, "FORBIDDEN");
+            patch(item, "PREPARING", 1, 200);
+            patch(item, "READY", 2, 200);
+            assertEquals("READY", get(customer, "/orders/" + order, 200).path("status").asText());
+            assertFalse(get(customer, "/sessions/" + session + "/review", 200).path("eligible").asBoolean());
+            assertTrue(get(workstation, "/kitchen/orders", 200).path("tickets").toString().contains(order));
+            problem(send(workstation, "POST", path, transition("SERVED", 3), null), 403, "FORBIDDEN");
+            problem(send(PREP_TOKEN, "POST", path, transition("SERVED", 3), null), 403, "FORBIDDEN");
+            problem(send(STAFF_TOKEN, "POST", path, transition("SERVED", 3), null), 403, "FORBIDDEN");
+            problem(send(personal, "POST", path, transition("SERVED", 2), null), 409, "VERSION_CONFLICT");
+            db.sql("UPDATE accepted_order_item SET allergy_review_status='PENDING_ALLERGY_REVIEW' WHERE id=CAST(:id AS uuid)")
+                    .param("id", item).update();
+            problem(send(personal, "POST", path, transition("SERVED", 3), null), 409, "REVIEW_REQUIRED");
+            db.sql("UPDATE accepted_order_item SET allergy_review_status='NOT_REQUIRED' WHERE id=CAST(:id AS uuid)")
+                    .param("id", item).update();
+            var result = json(send(personal, "POST", path, transition("SERVED", 3), null), 200);
+            assertEquals(waiter, result.at("/handoff/actorStaffId").asText());
+            assertEquals("service-waiter", result.at("/handoff/actor").asText());
+            assertEquals("WAITER", result.at("/handoff/actorRole").asText());
+            assertEquals("READY", result.at("/handoff/previousStatus").asText());
+            assertEquals("SERVED", result.at("/handoff/status").asText());
+            assertEquals(3, result.at("/handoff/previousVersion").asInt());
+            assertEquals(4, result.at("/handoff/version").asInt());
+            assertEquals(PREP_CHEF.toString(), result.path("itemChefs").path(item).path("id").asText());
+            assertTrue(get(customer, "/sessions/" + session + "/review", 200).path("eligible").asBoolean());
+            assertFalse(get(customer, "/orders/" + order, 200).has("handoff"));
+            assertTrue(get(personal, "/kitchen/history", 200).path("tickets").toString().contains("service-waiter"));
+            problem(send(personal, "POST", path, transition("SERVED", 4), null), 409, "INVALID_TRANSITION");
+            staffWrite(manager, csrf, "PATCH", "/" + waiter, object().put("expectedVersion", 2)
+                    .put("enabled", false).put("allergyReviewer", false), 200);
+            problem(send(personal, "POST", path, transition("SERVED", 4), null), 401, "UNAUTHENTICATED");
+            assertEquals(waiter, db.sql("SELECT actor_staff_id FROM order_handoff WHERE order_id=CAST(:id AS uuid)")
+                    .param("id", order).query(UUID.class).single().toString());
+        }
+    }
+
+    @Test
     void explicitHandoffEnforcesScopeServiceModeReadinessAndOrderVersion() throws Exception {
         String terminal = terminal(true);
         String session = session(terminal, "DINE_IN", 201);
         String order = submitNew(terminal, session, dish());
         String path = "/kitchen/orders/" + order + "/handoff";
         problem(send(terminal, "POST", path, transition("SERVED", 1), null), 403, "FORBIDDEN");
-        problem(send(STAFF_TOKEN, "POST", path, transition("SERVED", 1), null), 409, "INVALID_TRANSITION");
+        problem(send(HANDOFF_TOKEN, "POST", path, transition("SERVED", 1), null), 409, "INVALID_TRANSITION");
         String item = get(terminal, "/orders/" + order, 200).at("/lines/0/id").asText();
         patch(item, "PREPARING", 1, 200);
         patch(item, "READY", 2, 200);
-        problem(send(STAFF_TOKEN, "POST", path, transition("COLLECTED", 3), null), 409, "INVALID_TRANSITION");
-        problem(send(STAFF_TOKEN, "POST", path, transition("SERVED", 2), null), 409, "VERSION_CONFLICT");
-        JsonNode response = json(send(STAFF_TOKEN, "POST", path, transition("SERVED", 3), null), 200);
+        problem(send(HANDOFF_TOKEN, "POST", path, transition("COLLECTED", 3), null), 409, "INVALID_TRANSITION");
+        problem(send(HANDOFF_TOKEN, "POST", path, transition("SERVED", 2), null), 409, "VERSION_CONFLICT");
+        JsonNode response = json(send(HANDOFF_TOKEN, "POST", path, transition("SERVED", 3), null), 200);
         assertEquals("SERVED", response.at("/order/lines/0/preparationStatus").asText());
         assertEquals("SERVED", get(terminal, "/orders/" + order, 200).path("status").asText());
         assertEquals(21025L, get(terminal, "/sessions/" + session + "/bill", 200).at("/totals/totalMinor").asLong());
@@ -522,7 +593,7 @@ class OrderingPostgresTest {
         } finally {
             historyClient.stop();
         }
-        problem(send(STAFF_TOKEN, "POST", path, transition("SERVED", 3), null), 409, "VERSION_CONFLICT");
+        problem(send(HANDOFF_TOKEN, "POST", path, transition("SERVED", 3), null), 409, "VERSION_CONFLICT");
         assertEquals(1L, db.sql("SELECT count(*) FROM order_handoff WHERE order_id = CAST(:id AS uuid)")
                 .param("id", order).query(Long.class).single());
 
@@ -532,7 +603,7 @@ class OrderingPostgresTest {
         String pickupItem = get(pickupTerminal, "/orders/" + pickup, 200).at("/lines/0/id").asText();
         patch(pickupItem, "PREPARING", 1, 200);
         patch(pickupItem, "READY", 2, 200);
-        assertEquals("COLLECTED", json(send(STAFF_TOKEN, "POST", "/kitchen/orders/" + pickup + "/handoff",
+        assertEquals("COLLECTED", json(send(HANDOFF_TOKEN, "POST", "/kitchen/orders/" + pickup + "/handoff",
                 transition("COLLECTED", 3), null), 200).at("/order/status").asText());
     }
 
@@ -1373,7 +1444,7 @@ class OrderingPostgresTest {
             String item = get(terminal, "/orders/" + order, 200).at("/lines/0/id").asText();
             patch(item, "PREPARING", 1, 200);
             patch(item, "READY", 2, 200);
-            json(send(STAFF_TOKEN, "POST", "/kitchen/orders/" + order + "/handoff", transition("SERVED", 3), null), 200);
+            json(send(HANDOFF_TOKEN, "POST", "/kitchen/orders/" + order + "/handoff", transition("SERVED", 3), null), 200);
             assertEquals("CLOSED", json(manager.send(managerPost(close, csrf, closeInput), HttpResponse.BodyHandlers.ofString()), 200)
                     .path("status").asText());
             assertTrue(get(terminal, prefix + "/review", 200).path("eligible").asBoolean());

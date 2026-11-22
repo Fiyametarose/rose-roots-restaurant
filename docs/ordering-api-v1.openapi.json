@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Rose & Roots shared ordering API",
-    "version": "1.0.0-draft.5",
+    "version": "1.0.0-draft.6",
     "description": "Review draft for Customer, Staff and Spring Boot. No endpoint in this document is declared implemented."
   },
   "servers": [
@@ -1103,7 +1103,8 @@
                     "role": {
                       "enum": [
                         "CHEF",
-                        "SUPERVISOR"
+                        "SUPERVISOR",
+                        "WAITER"
                       ]
                     },
                     "allergyReviewer": {
@@ -2740,9 +2741,6 @@
         "operationId": "completeOrderHandoff",
         "security": [
           {
-            "staffBearer": []
-          },
-          {
             "kitchenStaffSession": []
           }
         ],
@@ -4054,6 +4052,21 @@
         ],
         "properties": {
           "itemChefs": {"type": "object", "additionalProperties": {"type": "object", "required": ["id", "username"], "properties": {"id": {"type": "string", "format": "uuid"}, "username": {"type": "string"}}}},
+          "handoff": {
+            "type": "object",
+            "description": "Persisted service audit. Actor fields are null for legacy records.",
+            "required": ["actorStaffId", "actorRole", "actor", "previousStatus", "status", "previousVersion", "version", "completedAt"],
+            "properties": {
+              "actorStaffId": {"type": ["string", "null"], "format": "uuid"},
+              "actorRole": {"enum": ["WAITER", null]},
+              "actor": {"type": ["string", "null"]},
+              "previousStatus": {"enum": ["READY", null]},
+              "status": {"enum": ["SERVED", "COLLECTED"]},
+              "previousVersion": {"type": "integer", "minimum": 1},
+              "version": {"type": "integer", "minimum": 2},
+              "completedAt": {"type": "string", "format": "date-time"}
+            }
+          },
           "stationCodes": { "$ref": "#/components/schemas/KitchenStationCodes" },
           "order": {
             "$ref": "#/components/schemas/Order"
@@ -5218,7 +5231,7 @@
       "kitchenStaffSession": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Thirty-minute personal Chef or Supervisor session issued over HTTPS from a provisioned Kitchen launch."
+        "description": "Thirty-minute personal Chef, Supervisor or Waiter session issued over HTTPS from a provisioned Kitchen launch."
       },
       "workstationBearer": {
         "type": "http",

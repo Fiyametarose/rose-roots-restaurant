@@ -52,6 +52,7 @@ final class KitchenShell extends BorderPane {
     private final List<ToggleButton> individualDestinations = new java.util.ArrayList<>();
     private ToggleButton liveDestination;
     private ToggleButton priorityDestination;
+    private ToggleButton reviewsButtonForStaff;
     private final ReviewsView reviews;
     private final HistoryView history;
     private final KitchenSync sync;
@@ -76,7 +77,7 @@ final class KitchenShell extends BorderPane {
                 openDetails(workspace, ticketId, "Stations", () -> showStations(workspace)));
         assistance = new AssistanceView(assistanceService);
         reviews = new ReviewsView(reviewService);
-        history = new HistoryView(service, sync);
+        history = new HistoryView(service, sync, ticket -> openHistoricalDetails(workspace, ticket));
         handoff = new HandoffView(service);
         priority = new PriorityQueueView(service, staff, selectProfile, clock);
         workspace.getStyleClass().add("workspace");
@@ -186,7 +187,8 @@ final class KitchenShell extends BorderPane {
             history.loadHistory();
             show(workspace, history, "History & Sync");
         });
-        individualDestinations.addAll(List.of(priorityButton, reviewsButton, handoffButton, historyButton));
+        reviewsButtonForStaff = reviewsButton;
+        individualDestinations.addAll(List.of(priorityButton, reviewsButton, historyButton));
         Region spring = new Region();
         VBox.setVgrow(spring, Priority.ALWAYS);
         connection.setWrapText(true);
@@ -210,6 +212,12 @@ final class KitchenShell extends BorderPane {
     private void openDetails(VBox workspace, long ticketId, String origin, Runnable back) {
         backFromDetails = back;
         details.open(ticketId, origin);
+        show(workspace, details, "Kitchen Order Details");
+    }
+
+    private void openHistoricalDetails(VBox workspace, com.roseroots.kitchen.model.Ticket ticket) {
+        backFromDetails = () -> show(workspace, history, "History & Sync");
+        details.openHistorical(ticket);
         show(workspace, details, "Kitchen Order Details");
     }
 
@@ -253,7 +261,7 @@ final class KitchenShell extends BorderPane {
     }
 
     void connectStaffWorkspaces(SpringBootKitchenService service) {
-        var signIn = new Button("Chef / Supervisor sign-in");
+        var signIn = new Button("Staff sign-in");
         var lock = new Button("Lock / switch staff");
         staffControls.getChildren().setAll(signIn, lock);
         Runnable showStaff = () -> {
@@ -263,12 +271,12 @@ final class KitchenShell extends BorderPane {
             lock.setVisible(staff != null);
             lock.setManaged(staff != null);
             if (staff != null) lock.setText("Lock / switch · " + staff.username());
-            if (service.workstation()) {
-                for (var destination : individualDestinations) {
-                    boolean restricted = staff == null || destination == priorityDestination && !staff.role().equals("SUPERVISOR");
-                    if (restricted && destination.isSelected()) liveDestination.fire();
-                    destination.setDisable(restricted);
-                }
+            for (var destination : individualDestinations) {
+                boolean restricted = staff == null ? service.workstation()
+                        : destination == priorityDestination && !staff.role().equals("SUPERVISOR")
+                            || destination == reviewsButtonForStaff && staff.role().equals("WAITER");
+                if (restricted && destination.isSelected()) liveDestination.fire();
+                destination.setDisable(restricted);
             }
         };
         showStaff.run();

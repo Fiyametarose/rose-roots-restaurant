@@ -37,10 +37,12 @@ public final class HistoryView extends VBox {
     private final Label historyStatus = label("", "item-note");
     private final Button reload = new Button("Refresh history");
     private List<Ticket> connectedTickets = List.of();
+    private final java.util.function.Consumer<Ticket> inspectOrder;
 
-    public HistoryView(KitchenService service, KitchenSync sync) {
+    public HistoryView(KitchenService service, KitchenSync sync, java.util.function.Consumer<Ticket> inspectOrder) {
         this.service = service;
         this.sync = sync;
+        this.inspectOrder = inspectOrder;
         setSpacing(10);
         search.setId("history-search");
         search.setPromptText("Order ID, table, pickup or item");
@@ -159,8 +161,13 @@ public final class HistoryView extends VBox {
                 label(text(completion.status()), badge));
         VBox card = new VBox(4, headline, label(items, "item-name"),
                 label("Ordered " + TIME.format(ticket.orderedAt()) + " · " + reached, "metadata"));
+        if (ticket.server() != null && ticket.server().handoff() != null) {
+            var inspect = new Button("Order details");
+            inspect.setOnAction(event -> inspectOrder.accept(ticket));
+            card.getChildren().addAll(label(ticket.server().handoff().summary(), "metadata"), inspect);
+        }
         if (service instanceof com.roseroots.kitchen.service.http.SpringBootKitchenService remote
-                && remote.signedInStaff() != null) {
+                && remote.signedInStaff() != null && !remote.signedInStaff().role().equals("WAITER")) {
             for (var item : ticket.items()) {
                 var history = new Button("Preparation history · " + item.name());
                 history.setOnAction(event -> OrderDetails.showHistory(remote, item, this));

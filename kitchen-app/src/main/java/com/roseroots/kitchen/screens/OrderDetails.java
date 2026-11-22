@@ -29,6 +29,7 @@ public final class OrderDetails extends VBox {
     private final Label elapsed = label("", "elapsed");
     private final FlowPane badges = new FlowPane(6, 4);
     private Ticket ticket;
+    private Ticket historical;
     private long selectedTicketId;
     private boolean delayed;
 
@@ -46,13 +47,22 @@ public final class OrderDetails extends VBox {
     }
 
     public void open(long ticketId, String backDestination) {
+        historical = null;
         selectedTicketId = ticketId;
         backButton.setText("← " + backDestination);
         render(ticketId);
     }
 
+    public void openHistorical(Ticket archived) {
+        historical = archived;
+        backButton.setText("← History & Sync");
+        render(archived.id());
+    }
+
     private void render(long ticketId) {
-        ticket = service.activeTickets().stream().filter(order -> order.id() == ticketId).findFirst().orElse(null);
+        ticket = historical == null
+                ? service.activeTickets().stream().filter(order -> order.id() == ticketId).findFirst().orElse(null)
+                : historical;
         content.getChildren().clear();
         if (ticket == null) {
             content.getChildren().add(label("This order is no longer active.", "empty"));
@@ -83,6 +93,10 @@ public final class OrderDetails extends VBox {
         long active = ticket.items().stream().filter(item -> item.status() != Status.CANCELLED).count();
         Label heading = label("Order items  ·  " + ready + " of " + active + " ready", "detail-section");
         content.getChildren().add(overview);
+        if (ticket.server() != null && ticket.server().handoff() != null) {
+            var handoff = ticket.server().handoff();
+            content.getChildren().add(label(handoff.summary() + " · " + SUBMITTED.format(handoff.completedAt()), "metadata"));
+        }
         if (ticket.server() != null && !ticket.server().visitAllergy().isBlank()) {
             content.getChildren().add(label("Visit allergy: " + ticket.server().visitAllergy(), "allergen"));
         }
@@ -91,7 +105,7 @@ public final class OrderDetails extends VBox {
             var remote = service instanceof SpringBootKitchenService rest ? rest : null;
             var staff = remote == null ? null : remote.signedInStaff();
             boolean owner = staff != null && staff.id().equals(item.server().chefId());
-            var row = TicketCard.itemRow(item, service.writesAvailable() && (service.local() || owner) ? selected -> {
+            var row = TicketCard.itemRow(item, historical == null && service.writesAvailable() && (service.local() || owner) ? selected -> {
                 service.advanceItem(ticketId, selected);
                 if (service.local()) {
                     render(ticketId);
@@ -100,18 +114,19 @@ public final class OrderDetails extends VBox {
             if (remote != null && item.server() != null) {
                 String chef = item.server().chefName();
                 row.getChildren().add(label("Responsible Chef: " + (chef == null ? "Unassigned" : chef), "metadata"));
-                if (staff != null) {
+                if (staff != null && !staff.role().equals("WAITER")) {
                     var actions = new FlowPane(6, 5);
                     var history = new Button("Preparation history");
                     history.setOnAction(event -> showHistory(remote, item, this));
                     actions.getChildren().add(history);
-                    if (item.status() == Status.RECEIVED && staff.role().equals("CHEF") && (chef == null || owner)) {
+                    if (historical == null && item.status() == Status.RECEIVED && staff.role().equals("CHEF") && (chef == null || owner)) {
                         var claim = new Button(owner ? "Release item" : "Claim Item");
                         claim.setDisable(!remote.writesAvailable() || !owner && item.station() == null);
                         claim.setOnAction(event -> remote.ownership(item, owner ? "RELEASED" : "CLAIMED", null, null));
                         actions.getChildren().add(claim);
                     }
-                    if (staff.role().equals("SUPERVISOR") && (item.status() == Status.RECEIVED || item.status() == Status.PREPARING)) {
+                    if (historical == null && staff.role().equals("SUPERVISOR")
+                            && (item.status() == Status.RECEIVED || item.status() == Status.PREPARING)) {
                         var reassign = new Button("Reassign item");
                         reassign.setDisable(!remote.writesAvailable() || item.station() == null);
                         reassign.setOnAction(event -> reassign(remote, item));
@@ -120,7 +135,7 @@ public final class OrderDetails extends VBox {
                     row.getChildren().add(actions);
                 }
             }
-            if (item.server() != null && item.status() == Status.RECEIVED
+            if (historical == null && item.server() != null && item.status() == Status.RECEIVED
                     && item.server().allergyReviewStatus().equals("PENDING_ALLERGY_REVIEW")) {
                 Button approve = new Button("Approve preparation");
                 Button decline = new Button("Decline item");

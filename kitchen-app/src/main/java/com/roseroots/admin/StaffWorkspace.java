@@ -40,7 +40,7 @@ final class StaffWorkspace extends VBox {
         heading.getStyleClass().add("heading");
         username.setPromptText("Username");
         password.setPromptText("Manager password");
-        role.getItems().addAll("CHEF", "SUPERVISOR", "MANAGER");
+        role.getItems().addAll("CHEF", "SUPERVISOR", "WAITER", "MANAGER");
         role.getSelectionModel().selectFirst();
         role.setOnAction(event -> configureRole());
         create.setOnAction(event -> create());

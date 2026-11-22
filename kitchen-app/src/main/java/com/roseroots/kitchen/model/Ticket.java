@@ -22,7 +22,19 @@ public record Ticket(long id, Type type, String destination, OffsetDateTime orde
     }
 
     public record ServerOrder(UUID id, UUID sessionId, long version, Status status, boolean rush, boolean delayed,
-                              String visitAllergy) {}
+                              String visitAllergy, HandoffAudit handoff) {
+        public ServerOrder(UUID id, UUID sessionId, long version, Status status, boolean rush, boolean delayed,
+                           String visitAllergy) {
+            this(id, sessionId, version, status, rush, delayed, visitAllergy, null);
+        }
+    }
+
+    public record HandoffAudit(String actor, Status status, OffsetDateTime completedAt) {
+        public String summary() {
+            return (status == Status.SERVED ? "Served" : "Collected") + " by "
+                    + (actor == null ? "Unknown (legacy record)" : actor);
+        }
+    }
 
     public record ServerItem(UUID id, long version, String allergyReviewStatus, boolean unresolvedRisk, UUID chefId,
                              String chefName) {

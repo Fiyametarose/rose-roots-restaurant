@@ -61,7 +61,7 @@ class KitchenStaffSessions {
         var account = jdbc.sql("""
                 SELECT s.id,s.username,s.staff_role,s.allergy_reviewer,s.kitchen_password_hash
                 FROM staff_account s JOIN ordering_credential c ON c.id=s.credential_id
-                WHERE s.username=:name AND s.enabled AND s.staff_role IN ('CHEF','SUPERVISOR')
+                WHERE s.username=:name AND s.enabled AND s.staff_role IN ('CHEF','SUPERVISOR','WAITER')
                     AND s.kitchen_password_hash IS NOT NULL AND c.scope='KITCHEN' AND c.restaurant_id=:restaurant
                     AND c.revoked_at IS NULL AND c.expires_at > now() FOR UPDATE OF s
                 """).param("name", username).param("restaurant", entry.restaurantId())

@@ -475,6 +475,9 @@ class OrderingService {
 
     @Transactional
     public ObjectNode handoff(Actor actor, UUID orderId, String target, long expectedVersion) {
+        if (!actor.personalSession() || actor.staffId() == null || !"WAITER".equals(actor.staffRole())) {
+            throw new OrderingProblem(403, "FORBIDDEN", "Handoff requires a personal Waiter session.");
+        }
         var current = jdbc.sql("""
                 SELECT o.status, o.version, s.mode FROM accepted_order o JOIN dining_session s ON s.id = o.session_id
                 WHERE o.id = :id AND s.restaurant_id = :restaurant FOR UPDATE OF o
@@ -511,9 +514,11 @@ class OrderingService {
         jdbc.sql("UPDATE accepted_order SET status = :status, version = version + 1 WHERE id = :id")
                 .param("id", orderId).param("status", target).update();
         jdbc.sql("""
-                INSERT INTO order_handoff (order_id, staff_credential_id, status, previous_version, version, completed_at)
-                VALUES (:id, :actor, :status, :previous, :version, :now)
+                INSERT INTO order_handoff (order_id, staff_credential_id, status, previous_version, version, completed_at,
+                    actor_staff_id, actor_role, previous_status)
+                VALUES (:id, :actor, :status, :previous, :version, :now, :staff, :role, :priorStatus)
                 """).param("id", orderId).param("actor", actor.credentialId()).param("status", target)
+                .param("staff", actor.staffId()).param("role", actor.staffRole()).param("priorStatus", current.status())
                 .param("previous", current.version()).param("version", current.version() + 1).param("now", utc(now)).update();
         outbox(orderId, current.version() + 1, "ORDER_UPDATED", now);
         return readOrders("WHERE o.id = :id", Map.of("id", orderId)).getFirst().ticket(now);
@@ -580,7 +585,8 @@ class OrderingService {
     private record PriorityState(String status, long version) {}
 
     private record OrderView(ObjectNode order, String destination, Instant delayAt, long sequence, String completedAt,
-                             boolean rush, Boolean delayedOverride, JsonNode stationCodes, JsonNode itemChefs) {
+                             boolean rush, Boolean delayedOverride, JsonNode stationCodes, JsonNode itemChefs,
+                             JsonNode handoff) {
         ObjectNode ticket(Instant now) {
             String status = order.path("status").asText();
             boolean active = status.equals("RECEIVED") || status.equals("PREPARING");
@@ -588,6 +594,7 @@ class OrderingService {
                     .put("delayed", active && (delayedOverride == null ? !delayAt.isAfter(now) : delayedOverride));
             if (!stationCodes.isEmpty()) ticket.set("stationCodes", stationCodes);
             if (!itemChefs.isEmpty()) ticket.set("itemChefs", itemChefs);
+            if (handoff != null) ticket.set("handoff", handoff);
             return ticket.set("order", order);
         }
     }
@@ -655,7 +662,9 @@ class OrderingService {
         return jdbc.sql("""
                 SELECT o.id, o.session_id, o.accepted_at, o.status, o.version, o.visit_allergy,
                     o.payable_minor, o.delay_at, o.sequence, s.mode, s.table_number, s.pickup_reference, h.completed_at,
-                    o.rush, o.delayed_override,
+                    o.rush, o.delayed_override, h.actor_staff_id, h.actor_role, h.previous_status AS handoff_previous_status,
+                    h.status AS handoff_status, h.previous_version AS handoff_previous_version, h.version AS handoff_version,
+                    waiter.username AS handoff_actor,
                     (SELECT jsonb_object_agg(i.id, station.code) FROM accepted_order_item i
                      JOIN kitchen_station station ON station.id = i.station_id WHERE i.order_id = o.id) AS station_codes,
                     (SELECT jsonb_object_agg(i.id, jsonb_build_object('id', chef.id, 'username', chef.username))
@@ -675,6 +684,7 @@ class OrderingService {
                     ) ORDER BY i.position) FROM accepted_order_item i WHERE i.order_id = o.id) AS lines
                 FROM accepted_order o JOIN dining_session s ON s.id = o.session_id
                 LEFT JOIN order_handoff h ON h.order_id = o.id
+                LEFT JOIN staff_account waiter ON waiter.id = h.actor_staff_id
                 """ + clause).params(parameters).query((row, index) -> {
             ObjectNode order = object().put("id", row.getString("id")).put("sessionId", row.getString("session_id"))
                     .put("mode", row.getString("mode")).put("status", row.getString("status"))
@@ -685,12 +695,17 @@ class OrderingService {
             String destination = row.getString("mode").equals("DINE_IN")
                     ? "Table " + row.getString("table_number") : row.getString("pickup_reference");
             var completed = row.getObject("completed_at", OffsetDateTime.class);
+            var handoff = completed == null ? null : object().put("actorStaffId", row.getString("actor_staff_id"))
+                    .put("actorRole", row.getString("actor_role")).put("actor", row.getString("handoff_actor"))
+                    .put("previousStatus", row.getString("handoff_previous_status")).put("status", row.getString("handoff_status"))
+                    .put("previousVersion", row.getLong("handoff_previous_version")).put("version", row.getLong("handoff_version"))
+                    .put("completedAt", completed.toInstant().toString());
             String stationCodes = row.getString("station_codes");
             String itemChefs = row.getString("item_chefs");
             return new OrderView(order, destination, instant(row, "delay_at"), row.getLong("sequence"),
                     completed == null ? null : completed.toInstant().toString(), row.getBoolean("rush"),
                     row.getObject("delayed_override", Boolean.class), stationCodes == null ? object() : parse(stationCodes),
-                    itemChefs == null ? object() : parse(itemChefs));
+                    itemChefs == null ? object() : parse(itemChefs), handoff);
         }).list();
     }
 

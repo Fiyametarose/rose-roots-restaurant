@@ -47,6 +47,7 @@ class OrderingSecurity {
                         .requestMatchers(HttpMethod.POST, "/api/v1/kitchen/staff-session")
                         .hasAnyAuthority("KITCHEN", "KITCHEN_WORKSTATION")
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/kitchen/staff-session").hasAuthority("PERSONAL_SESSION")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/kitchen/orders/{id}/handoff").hasAuthority("PERSONAL_WAITER")
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/kitchen/items/{id}/status").hasAuthority("CHEF")
                         .requestMatchers(HttpMethod.POST, "/api/v1/kitchen/items/{id}/ownership")
                         .hasAnyAuthority("CHEF", "PERSONAL_SUPERVISOR")
@@ -54,7 +55,11 @@ class OrderingSecurity {
                         .requestMatchers("/api/v1/kitchen/items/{id}/allergy-review").hasAuthority("ALLERGY_REVIEW")
                         .requestMatchers("/api/v1/kitchen/orders/{id}/rush", "/api/v1/kitchen/orders/{id}/delayed")
                         .hasAuthority("MANAGE_PRIORITY")
-                        .requestMatchers(HttpMethod.GET, "/api/v1/kitchen/orders", "/api/v1/kitchen/assistance")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/kitchen/orders")
+                        .hasAnyAuthority("KITCHEN", "KITCHEN_WORKSTATION", "PERSONAL_WAITER")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/kitchen/history")
+                        .hasAnyAuthority("KITCHEN", "PERSONAL_WAITER")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/kitchen/assistance")
                         .hasAnyAuthority("KITCHEN", "KITCHEN_WORKSTATION")
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/kitchen/assistance/{id}")
                         .hasAnyAuthority("KITCHEN", "KITCHEN_WORKSTATION")
@@ -119,6 +124,7 @@ class OrderingSecurity {
                                 FROM ordering_credential c LEFT JOIN staff_account s ON s.credential_id = c.id
                                 WHERE c.token_sha256 = :hash AND c.revoked_at IS NULL AND c.expires_at > now()
                                     AND COALESCE(s.enabled, true)
+                                    AND s.staff_role IS DISTINCT FROM 'WAITER'
                                     AND (c.scope = 'KITCHEN_WORKSTATION') = :workstationToken
                                     AND (c.scope <> 'KITCHEN_WORKSTATION' OR (:secure AND EXISTS(
                                         SELECT 1 FROM kitchen_workstation w WHERE w.credential_id = c.id)))
@@ -134,8 +140,13 @@ class OrderingSecurity {
                                 .optional().ifPresent(actor -> {
                                     var context = SecurityContextHolder.createEmptyContext();
                                     var authorities = new ArrayList<SimpleGrantedAuthority>();
-                                    authorities.add(new SimpleGrantedAuthority(actor.scope()));
-                                    if ("KITCHEN".equals(actor.scope())) {
+                                    if ("WAITER".equals(actor.staffRole())) {
+                                        authorities.add(new SimpleGrantedAuthority("PERSONAL_SESSION"));
+                                        authorities.add(new SimpleGrantedAuthority("PERSONAL_WAITER"));
+                                    } else {
+                                        authorities.add(new SimpleGrantedAuthority(actor.scope()));
+                                    }
+                                    if ("KITCHEN".equals(actor.scope()) && !"WAITER".equals(actor.staffRole())) {
                                         if (actor.allergyReviewer()) authorities.add(new SimpleGrantedAuthority("ALLERGY_REVIEW"));
                                         if (actor.prioritySupervisor()) authorities.add(new SimpleGrantedAuthority("MANAGE_PRIORITY"));
                                         if (actor.personalSession()) {

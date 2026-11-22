@@ -102,6 +102,10 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
     @Override public boolean busy() { return busy && !quietRead; }
     public boolean workstation() { return credentials instanceof WorkstationCredential; }
     public StaffSession signedInStaff() { return staff; }
+    public boolean canConfirmHandoff() {
+        var session = staff;
+        return session != null && "WAITER".equals(session.role()) && writesAvailable();
+    }
     @Override public boolean writesAvailable() {
         return (!workstation() || staff != null) && !stopped && status == Status.CONNECTED
                 && (!busy || quietRead && pendingAdvance == null);
@@ -345,7 +349,7 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
 
     @Override
     public synchronized void handoff(Ticket displayed) {
-        if (stopped || status != Status.CONNECTED) return;
+        if (!canConfirmHandoff()) return;
         if (busy) {
             message = "Wait for the current synchronization before confirming handoff.";
             notifyListeners();

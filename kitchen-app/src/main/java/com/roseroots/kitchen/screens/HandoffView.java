@@ -5,6 +5,7 @@ import com.roseroots.kitchen.model.Ticket;
 import com.roseroots.kitchen.model.Ticket.Type;
 import com.roseroots.kitchen.model.Ticket.Status;
 import com.roseroots.kitchen.service.KitchenService;
+import com.roseroots.kitchen.service.http.SpringBootKitchenService;
 import java.util.List;
 import java.util.stream.Collectors;
 import javafx.geometry.Pos;
@@ -26,7 +27,8 @@ public final class HandoffView extends VBox {
     public HandoffView(KitchenService service) {
         this.service = service;
         setSpacing(10);
-        Label scope = label("All items prepared", "handoff-banner-text");
+        Label scope = label(service.local() ? "All items prepared"
+                : "Confirm the table or pickup reference. Waiter sign-in is required to record handoff.", "handoff-banner-text");
         HBox.setHgrow(scope, Priority.ALWAYS);
         scope.setMaxWidth(Double.MAX_VALUE);
         HBox banner = new HBox(8, scope, total);
@@ -84,10 +86,10 @@ public final class HandoffView extends VBox {
                     card.getChildren().add(label(item.name() + " · Allergen: " + item.allergens(), "allergen"));
                 }
             }
-            if (!service.local() && ticket.server() != null) {
+            if (service instanceof SpringBootKitchenService remote && ticket.server() != null) {
                 String action = ticket.type() == Type.DINE_IN ? "Confirm served" : "Confirm collected";
                 var confirm = new Button(action);
-                confirm.setDisable(!service.writesAvailable());
+                confirm.setDisable(!remote.canConfirmHandoff());
                 confirm.setOnAction(event -> {
                     var dialog = new Alert(Alert.AlertType.CONFIRMATION, action + " for " + ticket.destination() + "?",
                             ButtonType.OK, ButtonType.CANCEL);
