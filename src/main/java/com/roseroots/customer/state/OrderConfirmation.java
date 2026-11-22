@@ -80,8 +80,7 @@ public final class OrderConfirmation {
     }
 
     public boolean hasIngredientConflict() {
-        return customer.cart().lines().stream().anyMatch(line -> !com.roseroots.customer.models.AllergyReview
-                .forDish(line.dish(), customer.sessionAllergy()).ingredientConflicts().isEmpty());
+        return customer.cart().lines().stream().anyMatch(line -> !customer.ingredientConflicts(line.dish()).isEmpty());
     }
 
     public boolean canQuote() {

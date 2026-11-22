@@ -34,7 +34,7 @@ class CartCompletionTest {
         var active = new TerminalSession(session.sessionId(), session.device(), session.mode(),
                 session.status(), null, List.of(previousOrder));
         assertTrue(state.activateSession(active, false));
-        var allergy = new AllergyDeclaration(false, Set.of(AllergyDeclaration.Allergen.EGGS), "Sesame");
+        var allergy = new AllergyDeclaration(false, Set.of(AllergyDeclaration.Allergen.MILK), "Sesame");
         state.rememberAllergy(allergy);
         assertTrue(state.addToDraft(item()));
         assertFalse(state.clearDraft(false));
@@ -54,7 +54,7 @@ class CartCompletionTest {
                 .openOrResume(ServiceMode.DINE_IN).toCompletableFuture().join(), false);
         var dish = item();
         var options = ConfiguredDish.defaults(dish);
-        var allergy = new AllergyDeclaration(false, Set.of(AllergyDeclaration.Allergen.EGGS), "");
+        var allergy = new AllergyDeclaration(false, Set.of(AllergyDeclaration.Allergen.MILK), "");
         var first = new ConfiguredDish(dish, 1, options, "Less oil", allergy);
         assertTrue(state.saveDish(null, first));
         assertTrue(state.saveDish(null, first));

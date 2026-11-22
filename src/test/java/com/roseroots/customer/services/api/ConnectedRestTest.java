@@ -96,6 +96,7 @@ class ConnectedRestTest {
                 assertEquals(314000, ready.totals().totalMinor());
             }
             verifyAssistance(rest, fixture, session, polls);
+            verifyReview(rest, fixture);
             server.stop(0);
             assertProblem("CONNECTION_INTERRUPTED", () -> get(rest.order(draft.sessionId(), accepted.id())));
         } finally {
@@ -103,6 +104,25 @@ class ConnectedRestTest {
             polls.shutdownNow();
             workers.shutdownNow();
         }
+    }
+
+    private static void verifyReview(SpringBootOrderService rest, Fixture fixture) throws Exception {
+        var client = new RestReviewClient(rest);
+        var id = UUID.fromString(fixture.session);
+        assertFalse(get(client.eligibility(id)).eligible());
+        var draft = new com.roseroots.customer.state.ReviewState.Draft(4, Set.of(
+                com.roseroots.customer.state.ReviewState.Topic.TASTE), "  Enjoyed the dish  ");
+        var attempt = new com.roseroots.customer.state.ReviewState.Attempt(id, UUID.randomUUID(), draft);
+        var notEligible = assertThrows(ExecutionException.class, () -> get(client.send(attempt)));
+        assertInstanceOf(com.roseroots.customer.state.ReviewState.NotEligible.class, notEligible.getCause());
+        fixture.reviewEligible = true;
+        assertTrue(get(client.eligibility(id)).eligible());
+        var accepted = get(client.send(attempt));
+        assertEquals(accepted, get(client.send(attempt)));
+        assertEquals(accepted, get(client.eligibility(id)).receipt());
+        var duplicate = assertThrows(ExecutionException.class, () -> get(client.send(
+                new com.roseroots.customer.state.ReviewState.Attempt(id, UUID.randomUUID(), draft))));
+        assertInstanceOf(com.roseroots.customer.state.ReviewState.AlreadyExists.class, duplicate.getCause());
     }
 
     private static void verifyAssistance(SpringBootOrderService rest, Fixture fixture, TerminalSession session,
@@ -180,6 +200,9 @@ class ConnectedRestTest {
         final java.util.concurrent.atomic.AtomicInteger opens = new java.util.concurrent.atomic.AtomicInteger();
         volatile String stage = "RECEIVED";
         volatile String assistanceStatus = "SUBMITTED";
+        volatile boolean reviewEligible;
+        private String reviewKey;
+        private JsonObject review;
         final Map<String, JsonObject> assistancePosts = new ConcurrentHashMap<>();
 
         Fixture() throws IOException {
@@ -265,7 +288,12 @@ class ConnectedRestTest {
                         }
                     }
                     default -> {
-                        if (path.equals("sessions/" + session + "/assistance")) {
+                        if (path.equals("sessions/" + session + "/review")) {
+                            send(http, 200, "{\"eligible\":" + (reviewEligible && review == null)
+                                    + ",\"review\":" + (review == null ? "null" : review.toString()) + "}", "application/json");
+                        } else if (path.equals("sessions/" + session + "/reviews")) {
+                            review(http);
+                        } else if (path.equals("sessions/" + session + "/assistance")) {
                             send(http, 200, "{\"requests\":[" + assistance(assistanceStatus) + "],\"nextCursor\":null}", "application/json");
                         } else if (path.equals("sessions/" + session + "/bill")) send(http, 200, bill.toString(), "application/json");
                         else if (path.equals("sessions/" + session + "/orders")) {
@@ -276,6 +304,32 @@ class ConnectedRestTest {
                     }
                 }
             }
+        }
+
+        private synchronized void review(HttpExchange http) throws IOException {
+            if (!reviewEligible) {
+                problem(http, 422, "REVIEW_NOT_ELIGIBLE");
+                return;
+            }
+            String key = http.getRequestHeaders().getFirst("Idempotency-Key");
+            var data = body(http);
+            if (data.size() != 3 || data.get("rating").getAsInt() != 4
+                    || !"Enjoyed the dish".equals(data.get("comment").getAsString())
+                    || !"TASTE".equals(data.getAsJsonArray("topics").get(0).getAsString())) {
+                problem(http, 400, "BAD_REQUEST");
+                return;
+            }
+            if (review != null) {
+                if (reviewKey.equals(key)) send(http, 200, review.toString(), "application/json");
+                else problem(http, 409, "REVIEW_ALREADY_EXISTS");
+                return;
+            }
+            reviewKey = key;
+            data.addProperty("id", "00000000-0000-4000-8000-000000000103");
+            data.addProperty("sessionId", session);
+            data.addProperty("submittedAt", "2026-11-21T18:10:00Z");
+            review = data;
+            send(http, 201, review.toString(), "application/json");
         }
 
         private JsonObject assistance(String status) {

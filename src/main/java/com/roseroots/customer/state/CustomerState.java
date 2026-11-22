@@ -17,6 +17,7 @@ public final class CustomerState {
     private TerminalSession terminalSession;
     private final CartDraft cart = new CartDraft();
     private final AssistanceState assistance;
+    private final ReviewState reviews;
 
     public CustomerState() {
         this(new AssistanceState(com.roseroots.customer.services.AssistanceService.unavailable(),
@@ -24,10 +25,16 @@ public final class CustomerState {
     }
 
     public CustomerState(AssistanceState assistance) {
+        this(assistance, new ReviewState());
+    }
+
+    public CustomerState(AssistanceState assistance, ReviewState reviews) {
         this.assistance = Objects.requireNonNull(assistance);
+        this.reviews = Objects.requireNonNull(reviews);
     }
 
     public AssistanceState assistance() { return assistance; }
+    public ReviewState reviews() { return reviews; }
     private final Map<String, AllergyDeclaration> declarations = new HashMap<>();
     private final MenuBrowseState menu = new MenuBrowseState();
 
@@ -95,10 +102,15 @@ public final class CustomerState {
         }
     }
 
+    public java.util.Set<MenuItem.Allergen> ingredientConflicts(ConfiguredDish dish) {
+        return com.roseroots.customer.models.AllergyReview.forDish(dish, sessionAllergy()).ingredientConflicts();
+    }
+
     public boolean saveDish(UUID line, ConfiguredDish dish) {
         if (terminalSession == null || !terminalSession.allowsCart()
                 || dish.item().availability() != MenuItem.Availability.AVAILABLE
-                || (line != null && cart.line(line) == null)) {
+                || (line != null && cart.line(line) == null)
+                || !ingredientConflicts(dish).isEmpty()) {
             return false;
         }
         cart.save(line, dish);

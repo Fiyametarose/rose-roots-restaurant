@@ -57,6 +57,26 @@ class OrderConfirmationTest {
         assertEquals(AllergyDeclaration.unreviewed(), customer.sessionAllergy());
     }
 
+    @Test void quickAddRejectsKnownVisitConflictsButAllowsUncertaintyAndCrossContact() {
+        var seed = customer.cart().lines().getFirst().item();
+        var known = new MenuItem.FoodSafety(Set.of(), Set.of(MenuItem.Allergen.MILK), Set.of(), true);
+        var crossContact = new MenuItem.FoodSafety(Set.of(), Set.of(), Set.of(MenuItem.Allergen.MILK), false);
+        assertFalse(customer.addToDraft(withSafety(seed, known)));
+        var itemDeclaration = new ConfiguredDish(withSafety(seed, known), 1, Map.of(), "", disclosed);
+        customer.rememberAllergy(AllergyDeclaration.unreviewed());
+        assertFalse(customer.saveDish(null, itemDeclaration));
+        customer.rememberAllergy(disclosed);
+        assertTrue(customer.addToDraft(withSafety(seed, crossContact)));
+        assertEquals(2, customer.cart().count());
+        assertFalse(flow.hasIngredientConflict());
+    }
+
+    private static MenuItem withSafety(MenuItem seed, MenuItem.FoodSafety safety) {
+        return new MenuItem(seed.id(), seed.categoryId(), seed.cuisine(), seed.name(), seed.summary(), seed.description(),
+                seed.price(), seed.image(), seed.ingredients(), safety, seed.spice(), seed.availability(), seed.highlights(),
+                seed.preparationTime(), seed.customizationGroups());
+    }
+
     @Test void selectedCustomizationConflictBlocksQuotesUntilEdited() {
         var original = customer.cart().lines().getFirst();
         var seed = original.item();
@@ -67,8 +87,13 @@ class OrderConfirmationTest {
         var item = new MenuItem(seed.id(), seed.categoryId(), seed.cuisine(), seed.name(), seed.summary(),
                 seed.description(), seed.price(), seed.image(), seed.ingredients(), seed.safety(), seed.spice(),
                 seed.availability(), seed.highlights(), seed.preparationTime(), List.of(group));
-        assertTrue(customer.saveDish(original.id(), new ConfiguredDish(item, 1,
-                Map.of(group.id(), Set.of(choice.id())), "", AllergyDeclaration.unreviewed())));
+        var selected = new ConfiguredDish(item, 1, Map.of(group.id(), Set.of(choice.id())), "", AllergyDeclaration.unreviewed());
+        assertFalse(customer.saveDish(original.id(), selected));
+        assertEquals(original, customer.cart().line(original.id()));
+        customer.rememberAllergy(AllergyDeclaration.unreviewed());
+        assertTrue(customer.saveDish(original.id(), selected));
+        customer.rememberAllergy(disclosed);
+        assertEquals(Set.of(MenuItem.Allergen.MILK), customer.ingredientConflicts(selected));
         assertTrue(flow.hasIngredientConflict());
         assertFalse(flow.canQuote());
         flow.requestQuote(changed);
