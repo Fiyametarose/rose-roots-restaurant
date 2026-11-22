@@ -227,17 +227,24 @@ class OrderingService {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ObjectNode history(Actor actor, UUID sessionId, String cursor, int limit) {
         ownedSession(actor, sessionId, false);
-        return page(actor, sessionId, cursor, limit, false);
+        return page(null, sessionId, cursor, limit, false);
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ObjectNode kitchen(Actor actor, String cursor, int limit) {
-        return page(actor, null, cursor, limit, false);
+        return page(actor.restaurantId(), null, cursor, limit, false);
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ObjectNode kitchenHistory(Actor actor, String cursor, int limit) {
-        return page(actor, null, cursor, limit, true);
+        return page(actor.restaurantId(), null, cursor, limit, true);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public ObjectNode managerKitchen(String cursor) {
+        UUID restaurant = jdbc.sql("SELECT id FROM ordering_restaurant").query(UUID.class).optional()
+                .orElseThrow(OrderingProblem::missing);
+        return page(restaurant, null, cursor, 50, false);
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -396,11 +403,49 @@ class OrderingService {
 
     private record ItemState(String preparation, String review, long version, boolean knownIngredientConflict) {}
 
-    private record OrderView(ObjectNode order, String destination, Instant delayAt, long sequence, String completedAt) {
+    @Transactional
+    public ObjectNode changePriority(Actor staff, String manager, UUID order, boolean rush, boolean enabled,
+                                      String reason, long expectedVersion) {
+        if (staff != null && !staff.prioritySupervisor()) {
+            throw new OrderingProblem(403, "FORBIDDEN", "A Kitchen Supervisor or Manager is required.");
+        }
+        var current = jdbc.sql("""
+                SELECT o.status, o.version FROM accepted_order o JOIN dining_session s ON s.id = o.session_id
+                WHERE o.id = :id AND (:managerAccess OR s.restaurant_id = CAST(:restaurant AS uuid))
+                FOR UPDATE OF o
+                """).param("id", order).param("managerAccess", staff == null)
+                .param("restaurant", staff == null ? null : staff.restaurantId())
+                .query((row, index) -> new PriorityState(row.getString(1), row.getLong(2)))
+                .optional().orElseThrow(OrderingProblem::missing);
+        if (current.version() != expectedVersion) throw conflict("VERSION_CONFLICT", "Reload the current order first.");
+        if (!current.status().equals("RECEIVED") && !current.status().equals("PREPARING")) {
+            throw conflict("INVALID_TRANSITION", "Priority changes apply to work waiting or in preparation.");
+        }
+        Instant now = now();
+        long version = expectedVersion + 1;
+        jdbc.sql((rush ? "UPDATE accepted_order SET rush" : "UPDATE accepted_order SET delayed_override")
+                + " = :enabled, version = :version WHERE id = :id")
+                .param("enabled", enabled).param("version", version).param("id", order).update();
+        jdbc.sql("""
+                INSERT INTO order_priority_audit (order_id, version, marker, enabled, reason,
+                    staff_credential_id, manager_username, changed_at)
+                VALUES (:id, :version, :marker, :enabled, :reason, :staff, :manager, :now)
+                """).param("id", order).param("version", version).param("marker", rush ? "RUSH" : "DELAYED")
+                .param("enabled", enabled).param("reason", reason).param("staff", staff == null ? null : staff.credentialId())
+                .param("manager", manager).param("now", utc(now)).update();
+        outbox(order, version, "ORDER_UPDATED", now);
+        return readOrders("WHERE o.id = :id", Map.of("id", order)).getFirst().ticket(now);
+    }
+
+    private record PriorityState(String status, long version) {}
+
+    private record OrderView(ObjectNode order, String destination, Instant delayAt, long sequence, String completedAt,
+                             boolean rush, Boolean delayedOverride) {
         ObjectNode ticket(Instant now) {
             String status = order.path("status").asText();
-            ObjectNode ticket = object().put("serviceDestination", destination).put("priority", "NORMAL")
-                    .put("delayed", (status.equals("RECEIVED") || status.equals("PREPARING")) && !delayAt.isAfter(now));
+            boolean active = status.equals("RECEIVED") || status.equals("PREPARING");
+            ObjectNode ticket = object().put("serviceDestination", destination).put("priority", rush ? "RUSH" : "NORMAL")
+                    .put("delayed", active && (delayedOverride == null ? !delayAt.isAfter(now) : delayedOverride));
             return ticket.set("order", order);
         }
     }
@@ -411,9 +456,9 @@ class OrderingService {
                 .stream().findFirst().orElseThrow(OrderingProblem::missing);
     }
 
-    private ObjectNode page(Actor actor, UUID sessionId, String rawCursor, int limit, boolean history) {
+    private ObjectNode page(UUID restaurant, UUID sessionId, String rawCursor, int limit, boolean history) {
         boolean kitchen = sessionId == null;
-        UUID scope = kitchen ? actor.restaurantId() : sessionId;
+        UUID scope = kitchen ? restaurant : sessionId;
         String cursorScope = (history ? "h:" : kitchen ? "k:" : "s:") + scope;
         String clause = !kitchen ? "o.session_id = :scope" : "s.restaurant_id = :scope AND "
                 + (history ? "o.status IN ('READY', 'SERVED', 'COLLECTED', 'CANCELLED')"
@@ -468,6 +513,7 @@ class OrderingService {
         return jdbc.sql("""
                 SELECT o.id, o.session_id, o.accepted_at, o.status, o.version, o.visit_allergy,
                     o.payable_minor, o.delay_at, o.sequence, s.mode, s.table_number, s.pickup_reference, h.completed_at,
+                    o.rush, o.delayed_override,
                     (SELECT jsonb_agg(jsonb_build_object(
                         'id', i.id, 'pricing', i.pricing, 'allergy', i.allergy,
                         'preparationInstructions', i.instructions, 'preparationStatus', i.preparation_status,
@@ -493,7 +539,8 @@ class OrderingService {
                     ? "Table " + row.getString("table_number") : row.getString("pickup_reference");
             var completed = row.getObject("completed_at", OffsetDateTime.class);
             return new OrderView(order, destination, instant(row, "delay_at"), row.getLong("sequence"),
-                    completed == null ? null : completed.toInstant().toString());
+                    completed == null ? null : completed.toInstant().toString(), row.getBoolean("rush"),
+                    row.getObject("delayed_override", Boolean.class));
         }).list();
     }
 

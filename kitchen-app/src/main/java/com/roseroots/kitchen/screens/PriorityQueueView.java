@@ -7,6 +7,7 @@ import com.roseroots.kitchen.model.RushChange.Action;
 import com.roseroots.kitchen.model.Ticket;
 import com.roseroots.kitchen.model.Ticket.Status;
 import com.roseroots.kitchen.service.KitchenService;
+import com.roseroots.kitchen.service.http.SpringBootKitchenService;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
@@ -47,6 +48,7 @@ public final class PriorityQueueView extends ScrollPane {
     private final ComboBox<StaffMember> staff = new ComboBox<>();
     private final TextArea reason = new TextArea();
     private final Button apply = new Button();
+    private final Button delayed = new Button();
     private final ToggleGroup rows = new ToggleGroup();
     private final Map<Ticket, Label> timers = new LinkedHashMap<>();
     private List<QueueEntry> waitingEntries;
@@ -92,7 +94,7 @@ public final class PriorityQueueView extends ScrollPane {
         List<Ticket> tickets = service.activeTickets();
         var waiting = entries(tickets, Status.RECEIVED, now);
         var active = entries(tickets, Status.PREPARING, now);
-        if (!waiting.equals(waitingEntries) || !active.equals(active)) {
+        if (!waiting.equals(waitingEntries) || !active.equals(activeEntries)) {
             waitingEntries = waiting;
             activeEntries = active;
             long selectedId = selected == null ? -1 : selected.id();
@@ -110,7 +112,9 @@ public final class PriorityQueueView extends ScrollPane {
         rushCount.setText(Long.toString(tickets.stream().filter(t -> t.status() != Status.READY && t.rush()).count()));
         delayedCount.setText(Long.toString(tickets.stream().filter(t -> t.delayedAt(now)).count()));
         List<java.time.Duration> targets = tickets.stream().map(Ticket::delayTarget).distinct().toList();
-        target.setText(targets.isEmpty() ? "—" : targets.size() == 1 ? targets.getFirst().toMinutes() + " min" : "Per order");
+        target.setText(targets.isEmpty() || targets.size() == 1 && targets.getFirst() == null ? "—"
+                : targets.size() == 1 ? targets.getFirst().toMinutes() + " min" : "Per order");
+        updateControls();
     }
 
     private record QueueEntry(Ticket ticket, boolean delayed) {}
@@ -185,6 +189,17 @@ public final class PriorityQueueView extends ScrollPane {
     }
 
     private VBox approval(List<StaffMember> staffMembers, Consumer<String> selectProfile) {
+        if (service instanceof SpringBootKitchenService rest) {
+            reason.setPromptText("Required for every priority change");
+            reason.setWrapText(true);
+            reason.setPrefRowCount(3);
+            apply.setOnAction(event -> changeConnected(rest, true));
+            delayed.setOnAction(event -> changeConnected(rest, false));
+            var fields = new VBox(7, selection, changeInfo, reason, new HBox(6, apply, delayed), feedback);
+            fields.getStyleClass().add("ticket-list");
+            updateControls();
+            return section("Order priority", "Kitchen Supervisor authorization required", fields);
+        }
         if (staffMembers.isEmpty()) {
             VBox unavailable = new VBox(label("Rush changes are unavailable in connected mode for this phase.", "item-note"));
             unavailable.getStyleClass().add("ticket-list");
@@ -229,12 +244,32 @@ public final class PriorityQueueView extends ScrollPane {
     }
 
     private void updateControls() {
+        if (service instanceof SpringBootKitchenService) {
+            boolean disabled = selected == null || !service.writesAvailable();
+            apply.setText(selected != null && selected.rush() ? "Remove Rush" : "Apply Rush");
+            delayed.setText(selected != null && selected.server().delayed() ? "Remove Delayed" : "Mark Delayed");
+            reason.setDisable(disabled);
+            apply.setDisable(disabled);
+            delayed.setDisable(disabled);
+            return;
+        }
         StaffMember actor = staff.getValue();
         boolean allowed = actor != null && actor.role().canAuthorizeRush();
         permission.setText(allowed ? "This local profile can authorize Rush." : "This profile cannot authorize Rush. Supervisor or manager required.");
         apply.setText(selected != null && selected.rush() ? "Remove Rush" : "Apply Rush");
         reason.setDisable(selected == null || !allowed);
         apply.setDisable(selected == null || !allowed);
+    }
+
+    private void changeConnected(SpringBootKitchenService rest, boolean rush) {
+        if (selected == null) return;
+        try {
+            rest.changePriority(selected, rush, !(rush ? selected.rush() : selected.server().delayed()), reason.getText());
+            reason.clear();
+            feedback.setText("");
+        } catch (IllegalArgumentException | IllegalStateException failure) {
+            feedback.setText(failure.getMessage());
+        }
     }
 
     private void applyChange() {

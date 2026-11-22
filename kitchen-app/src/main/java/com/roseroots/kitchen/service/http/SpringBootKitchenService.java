@@ -384,7 +384,51 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
 
     @Override
     public void changeRush(long ticketId, boolean enabled, String reason) {
-        throw new UnsupportedOperationException("Rush changes are unavailable in connected mode.");
+        var displayed = tickets.stream().filter(ticket -> ticket.id() == ticketId).findFirst()
+                .orElseThrow(() -> new IllegalStateException("Order no longer available."));
+        changePriority(displayed, true, enabled, reason);
+    }
+
+    public synchronized void changePriority(Ticket displayed, boolean rush, boolean enabled, String reason) {
+        String note = reason.strip();
+        if (note.isEmpty() || note.length() > 240) throw new IllegalArgumentException("Enter a reason of 1–240 characters.");
+        if (stopped || status != Status.CONNECTED || busy) {
+            throw new IllegalStateException("Wait for the current synchronization before changing priority.");
+        }
+        long ticketId = displayed.id();
+        var ticket = tickets.stream().filter(entry -> entry.id() == ticketId && entry.server().version() == displayed.server().version()
+                && (entry.status() == Ticket.Status.RECEIVED || entry.status() == Ticket.Status.PREPARING))
+                .findFirst().orElseThrow(() -> new IllegalStateException("This order can no longer be reprioritized."));
+        var body = new JsonObject();
+        if (rush) body.addProperty("priority", enabled ? "RUSH" : "NORMAL");
+        else body.addProperty("delayed", enabled);
+        body.addProperty("reason", note);
+        body.addProperty("expectedVersion", ticket.server().version());
+        cancelPoll();
+        begin(Status.CONNECTED, "Saving priority change…");
+        var path = "/api/v1/kitchen/orders/" + ticket.server().id() + (rush ? "/rush" : "/delayed");
+        send(path, body, "POST").thenApply(raw -> {
+            var updated = parse(() -> json.ticket(KitchenTicketJson.object(raw)));
+            if (!updated.server().id().equals(ticket.server().id()) || updated.server().version() <= ticket.server().version()) {
+                throw unreadable();
+            }
+            return rejectOlderVersions(List.of(ticket), List.of(updated)).getFirst();
+        }).whenComplete((updated, error) -> finishPriority(ticketId, updated, error));
+    }
+
+    private synchronized void finishPriority(long ticketId, Ticket updated, Throwable error) {
+        if (stopped) return;
+        if (error == null) {
+            tickets = tickets.stream().map(ticket -> ticket.id() == ticketId ? updated : ticket).toList();
+            finish(Status.CONNECTED, "Priority change recorded.");
+            return;
+        }
+        var failure = failure(error);
+        if (failure.httpStatus == 401 || failure.httpStatus == 429) readFailed(failure, "");
+        else {
+            finish(Status.CONNECTED, failure.httpStatus == 403 ? "A Kitchen Supervisor must change priority."
+                    : "The priority change could not be confirmed. Review the latest ticket before retrying.");
+        }
     }
 
     private void handleWriteFailure(long ticketId, Item item, Ticket.Status target, Failure failure) {

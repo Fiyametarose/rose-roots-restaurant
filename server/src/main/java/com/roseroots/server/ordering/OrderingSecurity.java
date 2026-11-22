@@ -7,7 +7,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.util.List;
+import java.util.ArrayList;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
@@ -29,7 +29,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Profile("catalog")
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 class OrderingSecurity {
-    record Actor(UUID credentialId, UUID restaurantId, UUID terminalId, String scope, boolean allergyReviewer) {}
+    record Actor(UUID credentialId, UUID restaurantId, UUID terminalId, String scope, boolean allergyReviewer,
+                 boolean prioritySupervisor) {}
 
     @Bean
     @Order(20)
@@ -38,6 +39,8 @@ class OrderingSecurity {
                         "/api/v1/order-quotes", "/api/v1/orders", "/api/v1/orders/**", "/api/v1/assistance", "/api/v1/kitchen/**")
                 .authorizeHttpRequests(rules -> rules
                         .requestMatchers("/api/v1/kitchen/items/{id}/allergy-review").hasAuthority("ALLERGY_REVIEW")
+                        .requestMatchers("/api/v1/kitchen/orders/{id}/rush", "/api/v1/kitchen/orders/{id}/delayed")
+                        .hasAuthority("MANAGE_PRIORITY")
                         .requestMatchers("/api/v1/kitchen/**").hasAuthority("KITCHEN")
                         .anyRequest().hasAuthority("TERMINAL"))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -80,7 +83,8 @@ class OrderingSecurity {
                     try {
                         jdbc.sql("""
                                 SELECT c.id, c.restaurant_id, c.terminal_id, c.scope,
-                                    COALESCE(s.allergy_reviewer, c.allergy_reviewer) AS allergy_reviewer
+                                    COALESCE(s.allergy_reviewer, c.allergy_reviewer) AS allergy_reviewer,
+                                    COALESCE(s.staff_role = 'SUPERVISOR', false) AS priority_supervisor
                                 FROM ordering_credential c LEFT JOIN staff_account s ON s.credential_id = c.id
                                 WHERE c.token_sha256 = :hash AND c.revoked_at IS NULL AND c.expires_at > now()
                                     AND COALESCE(s.enabled, true)
@@ -88,14 +92,15 @@ class OrderingSecurity {
                                 .query((row, index) -> new Actor(row.getObject("id", UUID.class),
                                         row.getObject("restaurant_id", UUID.class),
                                         row.getObject("terminal_id", UUID.class), row.getString("scope"),
-                                        row.getBoolean("allergy_reviewer")))
+                                        row.getBoolean("allergy_reviewer"), row.getBoolean("priority_supervisor")))
                                 .optional().ifPresent(actor -> {
                                     var context = SecurityContextHolder.createEmptyContext();
-                                    var scope = new SimpleGrantedAuthority(actor.scope());
+                                    var authorities = new ArrayList<SimpleGrantedAuthority>();
+                                    authorities.add(new SimpleGrantedAuthority(actor.scope()));
+                                    if (actor.allergyReviewer()) authorities.add(new SimpleGrantedAuthority("ALLERGY_REVIEW"));
+                                    if (actor.prioritySupervisor()) authorities.add(new SimpleGrantedAuthority("MANAGE_PRIORITY"));
                                     context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
-                                            actor, null, actor.allergyReviewer()
-                                                    ? List.of(scope, new SimpleGrantedAuthority("ALLERGY_REVIEW"))
-                                                    : List.of(scope)));
+                                            actor, null, authorities));
                                     SecurityContextHolder.setContext(context);
                                 });
                     } catch (DataAccessException e) {

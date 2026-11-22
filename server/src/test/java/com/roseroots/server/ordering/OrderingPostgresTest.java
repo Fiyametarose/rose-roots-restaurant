@@ -385,7 +385,10 @@ class OrderingPostgresTest {
             staffWrite(bootstrap, csrf, "PATCH", "/" + manager.at("/account/id").asText(), off, 200);
             assertEquals(403, individual.send(request("/admin/staff", null).GET().build(),
                     HttpResponse.BodyHandlers.discarding()).statusCode());
-            assertEquals(4L, db.sql("SELECT count(*) FROM staff_account_audit WHERE manager_username = 'ordering-manager-test'")
+            assertEquals(4L, db.sql("""
+                    SELECT count(*) FROM staff_account_audit a JOIN staff_account s ON s.id = a.account_id
+                    WHERE a.manager_username = 'ordering-manager-test' AND s.username IN ('integration-chef', 'integration-manager')
+                    """)
                     .query(Long.class).single());
         }
     }
@@ -395,6 +398,39 @@ class OrderingPostgresTest {
         var call = request("/admin/staff" + suffix, null).header("X-CSRF-TOKEN", csrf)
                 .header("Content-Type", "application/json").method(method, HttpRequest.BodyPublishers.ofString(body.toString()));
         return json(manager.send(call.build(), HttpResponse.BodyHandlers.ofString()), expected);
+    }
+
+    @Test
+    void supervisorAndManagerAuditPriorityWithoutReleasingAllergyHolds() throws Exception {
+        String terminal = terminal(true);
+        String session = session(terminal, "DINE_IN", 201);
+        ObjectNode input = draft(session, dish());
+        input.withObject("/visitAllergy").put("kind", "DISCLOSED").putArray("allergens").add("SOY");
+        var quote = json(send(terminal, "POST", "/order-quotes", input, null), 200);
+        var accepted = json(send(terminal, "POST", "/orders", submitBody(input, quote), UUID.randomUUID()), 201);
+        String order = accepted.path("id").asText();
+        String item = accepted.at("/lines/0/id").asText();
+        String path = "/kitchen/orders/" + order;
+        var rush = object().put("priority", "RUSH").put("reason", "Service recovery").put("expectedVersion", 1);
+        problem(send(CHEF_TOKEN, "POST", path + "/rush", rush, null), 403, "FORBIDDEN");
+        try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
+            managerLogin(manager);
+            var csrf = manager.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
+            var supervisor = staffWrite(manager, csrf, "POST", "", object().put("username", "priority-supervisor")
+                    .put("role", "SUPERVISOR"), 201).path("bearerToken").asText();
+            assertEquals("RUSH", json(send(supervisor, "POST", path + "/rush", rush, null), 200).path("priority").asText());
+            problem(send(supervisor, "POST", path + "/rush", rush, null), 409, "VERSION_CONFLICT");
+            problem(send(supervisor, "PATCH", "/kitchen/items/" + item + "/status", transition("PREPARING", 1), null),
+                    409, "REVIEW_REQUIRED");
+            var delay = object().put("delayed", true).put("reason", "Station paused").put("expectedVersion", 2);
+            assertTrue(json(send(supervisor, "POST", path + "/delayed", delay, null), 200).path("delayed").asBoolean());
+            var remove = request("/admin/orders/" + order + "/delayed", null).header("X-CSRF-TOKEN", csrf)
+                    .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(
+                            delay.put("delayed", false).put("expectedVersion", 3).toString())).build();
+            assertFalse(json(manager.send(remove, HttpResponse.BodyHandlers.ofString()), 200).path("delayed").asBoolean());
+            assertEquals(3L, db.sql("SELECT count(*) FROM order_priority_audit WHERE order_id = CAST(:id AS uuid)")
+                    .param("id", order).query(Long.class).single());
+        }
     }
 
     @Test

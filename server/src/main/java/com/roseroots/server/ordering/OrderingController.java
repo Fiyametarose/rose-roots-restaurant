@@ -114,6 +114,33 @@ class OrderingController {
                 integer(input, "expectedVersion", 1, MAX_SAFE)));
     }
 
+    @PostMapping(path = {"/kitchen/orders/{id}/rush", "/kitchen/orders/{id}/delayed"}, consumes = JSON_MEDIA)
+    ResponseEntity<String> kitchenPriority(@AuthenticationPrincipal Actor actor, @PathVariable("id") String order,
+                                           HttpServletRequest request) {
+        return priority(actor, null, order, request);
+    }
+
+    @PostMapping(path = {"/admin/orders/{id}/rush", "/admin/orders/{id}/delayed"}, consumes = JSON_MEDIA)
+    ResponseEntity<String> managerPriority(Principal actor, @PathVariable("id") String order, HttpServletRequest request) {
+        return priority(null, actor.getName(), order, request);
+    }
+
+    @GetMapping("/admin/kitchen/priority")
+    ResponseEntity<String> managerPriorityQueue(@RequestParam(name = "cursor", required = false) String cursor) {
+        return response(200, ordering.managerKitchen(cursor));
+    }
+
+    private ResponseEntity<String> priority(Actor actor, String manager, String order, HttpServletRequest request) {
+        boolean rush = request.getRequestURI().endsWith("/rush");
+        var input = fields(body(request), rush ? "priority" : "delayed", "reason", "expectedVersion");
+        if (!rush && !input.get("delayed").isBoolean()) throw OrderingProblem.bad("The delayed field must be boolean.");
+        boolean enabled = rush ? choice(input, "priority", "RUSH", "NORMAL").equals("RUSH") : input.get("delayed").booleanValue();
+        String reason = text(input, "reason", 240).strip();
+        if (reason.isEmpty()) throw OrderingProblem.bad("A priority change reason is required.");
+        return response(200, ordering.changePriority(actor, manager, id(order), rush, enabled, reason,
+                integer(input, "expectedVersion", 1, MAX_SAFE)));
+    }
+
     @PostMapping(path = "/kitchen/items/{id}/allergy-review", consumes = JSON_MEDIA)
     ResponseEntity<String> review(@AuthenticationPrincipal Actor actor, @PathVariable("id") String item,
                                   HttpServletRequest request) {

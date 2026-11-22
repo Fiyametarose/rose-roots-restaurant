@@ -108,6 +108,17 @@ final class AdminApi {
         return JsonParser.parseString(send(request, id == null ? 201 : 200)).getAsJsonObject();
     }
 
+    JsonObject priorityQueue(String cursor) throws IOException, InterruptedException {
+        return JsonParser.parseString(send(endpoint("kitchen/priority" + (cursor == null ? "" : "?cursor=" + encode(cursor)))
+                .GET(), 200)).getAsJsonObject();
+    }
+
+    JsonObject changePriority(String id, String marker, JsonObject body) throws IOException, InterruptedException {
+        var request = endpoint("orders/" + id + "/" + marker).header("X-CSRF-TOKEN", csrf())
+                .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body.toString()));
+        return JsonParser.parseString(send(request, 200)).getAsJsonObject();
+    }
+
     JsonObject orders(OperationsPresentation.Filters filters, String cursor) throws IOException, InterruptedException {
         return JsonParser.parseString(send(endpoint("orders?" + filters.query(cursor)).GET(), 200)).getAsJsonObject();
     }

@@ -221,6 +221,9 @@ public final class AdminWorkspace {
         } else if (destination == AdminSection.STAFF) {
             AdminApi active = session;
             page.getChildren().setAll(new StaffWorkspace(active, () -> expired(active)));
+        } else if (destination == AdminSection.KITCHEN) {
+            AdminApi active = session;
+            page.getChildren().setAll(new ManagerPriorityWorkspace(active, () -> expired(active)));
         } else if (destination == AdminSection.BRANDING) {
             AdminApi active = session;
             page.getChildren().setAll(new BrandingWorkspace(active, () -> expired(active)));
