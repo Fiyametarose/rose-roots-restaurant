@@ -30,11 +30,29 @@ class OrderingController {
     private final OrderingService ordering;
     private final AssistanceRequests assistance;
     private final VisitReviews reviews;
+    private final WaitEstimates estimates;
 
-    OrderingController(OrderingService ordering, AssistanceRequests assistance, VisitReviews reviews) {
+    OrderingController(OrderingService ordering, AssistanceRequests assistance, VisitReviews reviews, WaitEstimates estimates) {
         this.ordering = ordering;
         this.assistance = assistance;
         this.reviews = reviews;
+        this.estimates = estimates;
+    }
+
+    @PostMapping(path = "/wait-estimates", consumes = JSON_MEDIA)
+    ResponseEntity<String> estimateDraft(@AuthenticationPrincipal Actor actor, HttpServletRequest request) {
+        var input = body(request);
+        if (input.isObject() && !input.has("visitAllergy")) {
+            fields(input, "sessionId", "lines");
+            ((com.fasterxml.jackson.databind.node.ObjectNode) input).set("visitAllergy",
+                    object().put("kind", "UNREVIEWED").put("other", "").set("allergens", array()));
+        }
+        return response(200, estimates.draft(actor, OrderingPricing.draft(fields(input, "sessionId", "lines", "visitAllergy"))));
+    }
+
+    @GetMapping("/orders/{id}/wait-estimate")
+    ResponseEntity<String> estimateAccepted(@AuthenticationPrincipal Actor actor, @PathVariable("id") String order) {
+        return response(200, estimates.accepted(actor, id(order)));
     }
 
     @GetMapping("/device")

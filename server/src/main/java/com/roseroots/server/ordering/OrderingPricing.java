@@ -29,7 +29,7 @@ class OrderingPricing {
             "TREE_NUTS", "SOY", "FISH", "SHELLFISH", "NUTS_UNSPECIFIED");
 
     record Line(UUID menuItemId, ObjectNode pricing, JsonNode allergy, String instructions,
-                ObjectNode risk, int prepMinutes) {}
+                ObjectNode risk, int prepMinutes, boolean ingredientsKnown) {}
 
     record Price(List<Line> lines, long subtotal) {
         ObjectNode snapshot() {
@@ -64,6 +64,14 @@ class OrderingPricing {
     }
 
     Price price(JsonNode draft) {
+        return price(draft, false);
+    }
+
+    Price priceFromSnapshot(JsonNode draft) {
+        return price(draft, true);
+    }
+
+    private Price price(JsonNode draft, boolean snapshot) {
         if (!currency.equalsIgnoreCase("KES")) {
             throw new OrderingProblem(503, "SERVICE_UNAVAILABLE", "The catalog currency is unavailable for v1 ordering.");
         }
@@ -80,7 +88,7 @@ class OrderingPricing {
                 throw invalidSelection("Client line IDs must be unique.");
             }
             UUID itemId = id(line, "menuItemId");
-            Dish dish = dishes.computeIfAbsent(itemId, this::requireDish);
+            Dish dish = dishes.computeIfAbsent(itemId, id -> requireDish(id, snapshot));
             int quantity = (int) integer(line, "quantity", 1, 99);
             JsonNode allergy = declaration(line.get("allergy"));
             String instructions = text(line, "preparationInstructions", 240);
@@ -103,7 +111,8 @@ class OrderingPricing {
                 violations.add(object().put("pointer", "/lines/" + lines.size()).put("code", "ALLERGEN_CONFLICT")
                         .put("message", "Declared allergens in this configuration: " + String.join(", ", names) + "."));
             }
-            lines.add(new Line(itemId, pricing, allergy, instructions, risk, dish.prepMinutes()));
+            lines.add(new Line(itemId, pricing, allergy, instructions, risk, dish.prepMinutes(),
+                    dish.ingredients() != null && dish.ingredients().stream().anyMatch(value -> !value.isBlank())));
         }
         if (!violations.isEmpty()) {
             throw new OrderingProblem(422, "ALLERGEN_CONFLICT",
@@ -112,9 +121,9 @@ class OrderingPricing {
         return new Price(List.copyOf(lines), subtotal);
     }
 
-    private Dish requireDish(UUID id) {
+    private Dish requireDish(UUID id, boolean snapshot) {
         try {
-            return catalog.requireOrderable(id);
+            return snapshot ? catalog.readOrderableSnapshot(id) : catalog.requireOrderable(id);
         } catch (ResponseStatusException e) {
             throw new OrderingProblem(422, "ITEM_UNAVAILABLE", "A selected dish is unavailable.");
         }

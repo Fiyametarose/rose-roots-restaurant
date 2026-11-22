@@ -33,6 +33,8 @@ class KitchenConfigurationController {
     record Availability(Integer minutes, Long expectedVersion) {}
     record ProfileInput(UUID stationId, Integer durationSeconds, Long expectedVersion) {}
     record PrepTime(UUID menuItemId, UUID stationId, int durationSeconds, long version) {}
+    record OptionWork(UUID groupId, UUID optionId, int lowerSeconds, int upperSeconds) {}
+    record EstimateWorkload(int upperDurationSeconds, long expectedVersion, List<OptionWork> options) {}
 
     private static final String STATIONS = """
             SELECT s.*, ARRAY(SELECT chef_id FROM kitchen_station_chef WHERE station_id = s.id ORDER BY chef_id) AS assignments,
@@ -121,11 +123,45 @@ class KitchenConfigurationController {
                 INSERT INTO kitchen_prep_profile(menu_item_id, station_id, duration_seconds)
                 VALUES (:menu,:station,:seconds) ON CONFLICT DO NOTHING RETURNING *
                 """) : jdbc.sql("""
-                UPDATE kitchen_prep_profile SET station_id = :station, duration_seconds = :seconds, version = version + 1
+                UPDATE kitchen_prep_profile SET station_id = :station, duration_seconds = :seconds, version = version + 1,
+                    upper_duration_seconds = CASE WHEN station_id = :station AND duration_seconds = :seconds
+                        THEN upper_duration_seconds ELSE NULL END
                 WHERE menu_item_id = :menu AND version = :expected RETURNING *
                 """).param("expected", input.expectedVersion());
         var profile = statement.param("menu", menu).param("station", input.stationId()).param("seconds", input.durationSeconds())
                 .query(KitchenConfigurationController::profile).optional().orElseThrow(KitchenConfigurationController::stale);
+        audit("PREP_PROFILE", menu, profile.version(), manager);
+        return ok(profile);
+    }
+
+    @PatchMapping("/prep-times/{id}/estimate-workload")
+    @Transactional
+    public ResponseEntity<PrepTime> calibrate(@PathVariable("id") UUID menu, @RequestBody EstimateWorkload input, Principal manager) {
+        if (input.expectedVersion() < 1 || input.upperDurationSeconds() < 1 || input.upperDurationSeconds() > 86400
+                || input.options() == null || input.options().size() > 900) {
+            throw bad("Supply a measured upper duration, profile version and option workload list.");
+        }
+        var keys = new java.util.HashSet<java.util.Map.Entry<UUID, UUID>>();
+        for (var option : input.options()) {
+            if (option == null || option.groupId() == null || option.optionId() == null || option.lowerSeconds() < 0
+                    || option.upperSeconds() < option.lowerSeconds() || option.upperSeconds() > 86400
+                    || !keys.add(java.util.Map.entry(option.groupId(), option.optionId()))) {
+                throw bad("Option workload IDs must be unique and their measured durations valid.");
+            }
+        }
+        var profile = jdbc.sql("""
+                UPDATE kitchen_prep_profile SET upper_duration_seconds = :upper, version = version + 1
+                WHERE menu_item_id = :menu AND version = :expected AND duration_seconds <= :upper RETURNING *
+                """).param("upper", input.upperDurationSeconds()).param("menu", menu).param("expected", input.expectedVersion())
+                .query(KitchenConfigurationController::profile).optional().orElseThrow(KitchenConfigurationController::stale);
+        jdbc.sql("DELETE FROM kitchen_option_workload WHERE menu_item_id = :menu").param("menu", menu).update();
+        for (var option : input.options()) {
+            jdbc.sql("""
+                    INSERT INTO kitchen_option_workload(menu_item_id, group_id, option_id, lower_seconds, upper_seconds)
+                    VALUES (:menu, :group, :option, :low, :high)
+                    """).param("menu", menu).param("group", option.groupId()).param("option", option.optionId())
+                    .param("low", option.lowerSeconds()).param("high", option.upperSeconds()).update();
+        }
         audit("PREP_PROFILE", menu, profile.version(), manager);
         return ok(profile);
     }

@@ -36,7 +36,7 @@ class OrderingSecurity {
     @Order(20)
     SecurityFilterChain orderingEndpoints(HttpSecurity http, JdbcClient jdbc) throws Exception {
         return http.securityMatcher("/api/v1/device", "/api/v1/sessions", "/api/v1/sessions/**",
-                        "/api/v1/order-quotes", "/api/v1/orders", "/api/v1/orders/**", "/api/v1/assistance", "/api/v1/kitchen/**")
+                        "/api/v1/order-quotes", "/api/v1/wait-estimates", "/api/v1/orders", "/api/v1/orders/**", "/api/v1/assistance", "/api/v1/kitchen/**")
                 .authorizeHttpRequests(rules -> rules
                         .requestMatchers("/api/v1/kitchen/items/{id}/allergy-review").hasAuthority("ALLERGY_REVIEW")
                         .requestMatchers("/api/v1/kitchen/orders/{id}/rush", "/api/v1/kitchen/orders/{id}/delayed")

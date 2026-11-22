@@ -1481,6 +1481,21 @@
         }
       }
     },
+    "/orders/{id}/wait-estimate": {
+      "get": {
+        "operationId": "estimateAcceptedOrder",
+        "summary": "Read the current order-ready range for the owning terminal",
+        "security": [{ "terminalBearer": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/Id" } }],
+        "responses": {
+          "200": { "description": "Current available or unavailable estimate", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WaitEstimate" } } } },
+          "401": { "$ref": "#/components/responses/Problem401" },
+          "403": { "$ref": "#/components/responses/Problem403" },
+          "404": { "$ref": "#/components/responses/Problem404" },
+          "503": { "$ref": "#/components/responses/Problem503" }
+        }
+      }
+    },
     "/wait-estimates": {
       "post": {
         "operationId": "estimateWait",
@@ -3834,6 +3849,7 @@
           "lines"
         ],
         "properties": {
+          "visitAllergy": { "$ref": "#/components/schemas/Declaration" },
           "sessionId": {
             "$ref": "#/components/schemas/Id"
           },

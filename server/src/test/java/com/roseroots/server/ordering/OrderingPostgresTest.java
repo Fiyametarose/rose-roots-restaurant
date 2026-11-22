@@ -1055,6 +1055,78 @@ class OrderingPostgresTest {
 
     private static ObjectNode none() { return object().put("kind", "NONE").put("other", "").set("allergens", array()); }
 
+    @Test
+    void estimatesMeasuredDraftAndAcceptedPreparationFromPostgres() throws Exception {
+        String terminalToken = terminal(true);
+        String session = session(terminalToken, "DINE_IN", 201);
+        UUID menu = dish();
+        var input = draft(session, menu);
+        assertEquals("MISSING_PREP_PROFILE", json(send(terminalToken, "POST", "/wait-estimates", input, null), 200)
+                .path("reason").asText());
+        UUID station = db.sql("SELECT id FROM kitchen_station WHERE code='HOT'").query(UUID.class).single();
+        db.sql("""
+                INSERT INTO kitchen_prep_profile(menu_item_id,station_id,duration_seconds,upper_duration_seconds)
+                VALUES (:menu,:station,120,180)
+                """).param("menu", menu).param("station", station).update();
+        var prior = db.sql("""
+                SELECT id, preparation_status FROM accepted_order_item WHERE preparation_status IN ('RECEIVED','PREPARING')
+                AND allergy_review_status IN ('NOT_REQUIRED','APPROVED_FOR_PREPARATION')
+                """)
+                .query((row, index) -> java.util.Map.entry(row.getObject(1, UUID.class), row.getString(2))).list();
+        prior.forEach(row -> db.sql("UPDATE accepted_order_item SET preparation_status='READY' WHERE id=:id")
+                .param("id", row.getKey()).update());
+        try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
+            managerLogin(manager);
+            var csrf = manager.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
+            String chef = staffWrite(manager, csrf, "POST", "", object().put("username", "estimate-chef").put("role", "CHEF"), 201)
+                    .at("/account/id").asText();
+            db.sql("UPDATE kitchen_station SET parallel_slots=2 WHERE id=:id").param("id", station).update();
+            db.sql("INSERT INTO kitchen_station_chef(station_id,chef_id) VALUES (:station,CAST(:chef AS uuid))")
+                    .param("station", station).param("chef", chef).update();
+            assertEquals("NO_CAPACITY", json(send(terminalToken, "POST", "/wait-estimates", input, null), 200).path("reason").asText());
+            configWrite(manager, csrf, "/chef-availability/" + chef, object().put("minutes", 60).put("expectedVersion", 1), 200);
+            ((ObjectNode) input.at("/lines/0")).put("quantity", 2);
+            var estimate = json(send(terminalToken, "POST", "/wait-estimates", input, null), 200);
+            assertEquals(4, estimate.path("minimumMinutes").asInt());
+            assertEquals(6, estimate.path("maximumMinutes").asInt());
+            UUID secondMenu = dish();
+            UUID secondStation = db.sql("SELECT id FROM kitchen_station WHERE code='COLD'").query(UUID.class).single();
+            db.sql("UPDATE kitchen_station SET parallel_slots=2 WHERE id=:id").param("id", secondStation).update();
+            db.sql("INSERT INTO kitchen_station_chef(station_id,chef_id) VALUES (:station,CAST(:chef AS uuid))")
+                    .param("station", secondStation).param("chef", chef).update();
+            db.sql("""
+                    INSERT INTO kitchen_prep_profile(menu_item_id,station_id,duration_seconds,upper_duration_seconds)
+                    VALUES (:menu,:station,120,180)
+                    """).param("menu", secondMenu).param("station", secondStation).update();
+            var both = input.deepCopy();
+            both.withArray("lines").add(draft(session, secondMenu).at("/lines/0"));
+            assertEquals(9, json(send(terminalToken, "POST", "/wait-estimates", both, null), 200).path("maximumMinutes").asInt());
+            String secondChef = staffWrite(manager, csrf, "POST", "", object().put("username", "estimate-specialist")
+                    .put("role", "CHEF"), 201).at("/account/id").asText();
+            db.sql("INSERT INTO kitchen_station_chef(station_id,chef_id) VALUES (:station,CAST(:chef AS uuid))")
+                    .param("station", secondStation).param("chef", secondChef).update();
+            configWrite(manager, csrf, "/chef-availability/" + secondChef, object().put("minutes", 60).put("expectedVersion", 1), 200);
+            assertEquals(6, json(send(terminalToken, "POST", "/wait-estimates", both, null), 200).path("maximumMinutes").asInt());
+            var quote = json(send(terminalToken, "POST", "/order-quotes", input, null), 200);
+            var accepted = json(send(terminalToken, "POST", "/orders", submitBody(input, quote), UUID.randomUUID()), 201);
+            String path = "/orders/" + accepted.path("id").asText() + "/wait-estimate";
+            String item = accepted.at("/lines/0/id").asText();
+            assertEquals(6, get(terminalToken, path, 200).path("maximumMinutes").asInt());
+            problem(send(terminal(true), "GET", path, null, null), 404, "NOT_FOUND");
+            patch(item, "PREPARING", 1, 200);
+            db.sql("UPDATE accepted_order_item SET preparation_started_at=now() - interval '2 minutes' WHERE id=CAST(:id AS uuid)")
+                    .param("id", item).update();
+            assertEquals(4, get(terminalToken, path, 200).path("maximumMinutes").asInt());
+            patch(item, "READY", 2, 200);
+            assertEquals(0, get(terminalToken, path, 200).path("maximumMinutes").asInt());
+            input.withObject("/visitAllergy").put("kind", "DISCLOSED").putArray("allergens").add("SOY");
+            assertEquals("ALLERGY_REVIEW", json(send(terminalToken, "POST", "/wait-estimates", input, null), 200).path("reason").asText());
+        } finally {
+            prior.forEach(row -> db.sql("UPDATE accepted_order_item SET preparation_status=:state WHERE id=:id")
+                    .param("state", row.getValue()).param("id", row.getKey()).update());
+        }
+    }
+
     private static ObjectNode submitBody(ObjectNode draft, JsonNode quote) {
         return draft.deepCopy().put("quoteId", quote.path("quoteId").asText()).put("allergyReviewed", true);
     }

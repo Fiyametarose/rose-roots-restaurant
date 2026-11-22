@@ -15,8 +15,6 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
@@ -199,24 +197,22 @@ class OrderingService {
                 .param("subtotal", current.subtotal()).param("delay", utc(acceptedAt.plus(prepMinutes, ChronoUnit.MINUTES)))
                 .update();
         int position = 0;
-        var profiles = jdbc.sql("""
-                SELECT menu_item_id, station_id, duration_seconds FROM kitchen_prep_profile WHERE menu_item_id IN (:items)
-                """).param("items", current.lines().stream().map(OrderingPricing.Line::menuItemId).distinct().toList())
-                .query((row, index) -> new PrepSnapshot(row.getObject("menu_item_id", UUID.class),
-                        row.getObject("station_id", UUID.class), row.getInt("duration_seconds"))).list().stream()
-                .collect(Collectors.toMap(PrepSnapshot::menu, Function.identity()));
+        var profiles = PreparationProfiles.load(jdbc, current.lines());
         for (var line : current.lines()) {
             var profile = profiles.get(line.menuItemId());
+            var workload = profile == null ? null : profile.workload(line);
             jdbc.sql("""
                     INSERT INTO accepted_order_item (id, order_id, menu_item_id, position, pricing, allergy,
-                        instructions, allergy_risk, allergy_review_status, preparation_status, station_id, planned_duration_seconds)
+                        instructions, allergy_risk, allergy_review_status, preparation_status, station_id, planned_duration_seconds,
+                        estimated_lower_seconds, estimated_upper_seconds)
                     VALUES (:id, :order, :menu, :position, CAST(:pricing AS jsonb), CAST(:allergy AS jsonb),
-                        :instructions, CAST(:risk AS jsonb), :review, 'RECEIVED', :station, :duration)
+                        :instructions, CAST(:risk AS jsonb), :review, 'RECEIVED', :station, :duration, :lower, :upper)
                     """).param("id", UUID.randomUUID()).param("order", orderId).param("menu", line.menuItemId())
                     .param("position", position++).param("pricing", line.pricing().toString())
                     .param("allergy", line.allergy().toString()).param("instructions", line.instructions())
                     .param("station", profile == null ? null : profile.station())
-                    .param("duration", profile == null ? null : profile.duration())
+                    .param("duration", profile == null ? null : profile.lower())
+                    .param("lower", workload == null ? null : workload.lower()).param("upper", workload == null ? null : workload.upper())
                     .param("risk", line.risk().toString()).param("review", line.risk().path("unresolved").booleanValue()
                             ? "PENDING_ALLERGY_REVIEW" : "NOT_REQUIRED").update();
         }
@@ -414,7 +410,6 @@ class OrderingService {
     }
 
     private record ItemState(String preparation, String review, long version, boolean knownIngredientConflict) {}
-    private record PrepSnapshot(UUID menu, UUID station, int duration) {}
 
     @Transactional
     public ObjectNode changePriority(Actor staff, String manager, UUID order, boolean rush, boolean enabled,

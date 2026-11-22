@@ -152,6 +152,15 @@ public class CatalogService {
     @Transactional(propagation = Propagation.MANDATORY)
     public Dish requireOrderable(UUID id) {
         categories.lockCatalog();
+        return orderableDish(id);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
+    public Dish readOrderableSnapshot(UUID id) {
+        return orderableDish(id);
+    }
+
+    private Dish orderableDish(UUID id) {
         var dish = findDish(id);
         if (dish.archived || dish.availability != Availability.AVAILABLE
                 || !pathHasStatus(dish.categoryId, tree(), true)) {
