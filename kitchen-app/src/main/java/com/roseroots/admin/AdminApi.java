@@ -108,6 +108,22 @@ final class AdminApi {
         return JsonParser.parseString(send(request, id == null ? 201 : 200)).getAsJsonObject();
     }
 
+    com.google.gson.JsonArray workstations() throws IOException, InterruptedException {
+        return JsonParser.parseString(send(endpoint("kitchen-workstations").GET(), 200)).getAsJsonArray();
+    }
+
+    JsonObject issueWorkstation(String label) throws IOException, InterruptedException {
+        var body = new JsonObject();
+        body.addProperty("label", label);
+        var request = endpoint("kitchen-workstations").header("X-CSRF-TOKEN", csrf())
+                .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body.toString()));
+        return JsonParser.parseString(send(request, 201)).getAsJsonObject();
+    }
+
+    void revokeWorkstation(String id) throws IOException, InterruptedException {
+        send(endpoint("kitchen-workstations/" + id).header("X-CSRF-TOKEN", csrf()).DELETE(), 204);
+    }
+
     JsonObject priorityQueue(String cursor) throws IOException, InterruptedException {
         return JsonParser.parseString(send(endpoint("kitchen/priority" + (cursor == null ? "" : "?cursor=" + encode(cursor)))
                 .GET(), 200)).getAsJsonObject();

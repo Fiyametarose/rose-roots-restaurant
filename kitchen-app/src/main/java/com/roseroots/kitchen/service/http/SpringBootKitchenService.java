@@ -94,8 +94,9 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
     @Override public Status status() { return status; }
     @Override public String message() { return message; }
     @Override public boolean busy() { return busy && !quietRead; }
+    public boolean workstation() { return credentials instanceof WorkstationCredential; }
     @Override public boolean writesAvailable() {
-        return !stopped && status == Status.CONNECTED && (!busy || quietRead && pendingAdvance == null);
+        return !workstation() && !stopped && status == Status.CONNECTED && (!busy || quietRead && pendingAdvance == null);
     }
     @Override public List<Ticket> activeTickets() { return tickets; }
 

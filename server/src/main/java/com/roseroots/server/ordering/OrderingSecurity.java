@@ -15,6 +15,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
 import org.springframework.dao.DataAccessException;
+import org.springframework.http.HttpMethod;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -41,6 +42,10 @@ class OrderingSecurity {
                         .requestMatchers("/api/v1/kitchen/items/{id}/allergy-review").hasAuthority("ALLERGY_REVIEW")
                         .requestMatchers("/api/v1/kitchen/orders/{id}/rush", "/api/v1/kitchen/orders/{id}/delayed")
                         .hasAuthority("MANAGE_PRIORITY")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/kitchen/orders", "/api/v1/kitchen/assistance")
+                        .hasAnyAuthority("KITCHEN", "KITCHEN_WORKSTATION")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/kitchen/assistance/{id}")
+                        .hasAnyAuthority("KITCHEN", "KITCHEN_WORKSTATION")
                         .requestMatchers("/api/v1/kitchen/**").hasAuthority("KITCHEN")
                         .anyRequest().hasAuthority("TERMINAL"))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -88,9 +93,13 @@ class OrderingSecurity {
                                 FROM ordering_credential c LEFT JOIN staff_account s ON s.credential_id = c.id
                                 WHERE c.token_sha256 = :hash AND c.revoked_at IS NULL AND c.expires_at > now()
                                     AND COALESCE(s.enabled, true)
+                                    AND (c.scope = 'KITCHEN_WORKSTATION') = :workstationToken
+                                    AND (c.scope <> 'KITCHEN_WORKSTATION' OR (:secure AND EXISTS(
+                                        SELECT 1 FROM kitchen_workstation w WHERE w.credential_id = c.id)))
                                     AND (c.scope <> 'TERMINAL' OR EXISTS(SELECT 1 FROM ordering_terminal t
                                         WHERE t.id=c.terminal_id AND t.enabled))
-                                """).param("hash", OrderingJson.digest(token))
+                                """).param("hash", OrderingJson.digest(token)).param("secure", request.isSecure())
+                                .param("workstationToken", token.matches("ws_[A-Za-z0-9_-]{43}"))
                                 .query((row, index) -> new Actor(row.getObject("id", UUID.class),
                                         row.getObject("restaurant_id", UUID.class),
                                         row.getObject("terminal_id", UUID.class), row.getString("scope"),
@@ -99,8 +108,10 @@ class OrderingSecurity {
                                     var context = SecurityContextHolder.createEmptyContext();
                                     var authorities = new ArrayList<SimpleGrantedAuthority>();
                                     authorities.add(new SimpleGrantedAuthority(actor.scope()));
-                                    if (actor.allergyReviewer()) authorities.add(new SimpleGrantedAuthority("ALLERGY_REVIEW"));
-                                    if (actor.prioritySupervisor()) authorities.add(new SimpleGrantedAuthority("MANAGE_PRIORITY"));
+                                    if ("KITCHEN".equals(actor.scope())) {
+                                        if (actor.allergyReviewer()) authorities.add(new SimpleGrantedAuthority("ALLERGY_REVIEW"));
+                                        if (actor.prioritySupervisor()) authorities.add(new SimpleGrantedAuthority("MANAGE_PRIORITY"));
+                                    }
                                     context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
                                             actor, null, authorities));
                                     SecurityContextHolder.setContext(context);

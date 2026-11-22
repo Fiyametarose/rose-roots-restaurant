@@ -569,11 +569,76 @@ class OrderingPostgresTest {
     }
 
     @Test
+    void workstationCredentialsAreRestrictedAndRevocable() throws Exception {
+        String path = "/admin/kitchen-workstations";
+        String terminal = terminal(true);
+        String session = session(terminal, "DINE_IN", 201);
+        String order = submitNew(terminal, session, dish());
+        String item = ticket(order).at("/order/lines/0/id").asText();
+        try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
+            managerLogin(manager);
+            var csrf = manager.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
+            assertEquals(403, manager.send(request(path, null).header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString("{\"label\":\"Missing CSRF\"}")).build(),
+                    HttpResponse.BodyHandlers.discarding()).statusCode());
+            var issued = issueWorkstation(manager, csrf, "Shared test display");
+            String token = issued.path("bearerToken").asText();
+            UUID id = UUID.fromString(issued.at("/workstation/id").asText());
+            assertTrue(token.matches("ws_[A-Za-z0-9_-]{43}"));
+            var listed = manager.send(request(path, null).GET().build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, listed.statusCode());
+            assertFalse(listed.body().contains("bearerToken"));
+            assertTrue(listed.body().contains(id.toString()));
+            assertTrue(get(token, "/kitchen/orders", 200).path("tickets").toString().contains(order));
+            get(token, "/kitchen/assistance", 200);
+            problem(send("ws_" + token(), "GET", "/kitchen/orders", null, null), 401, "UNAUTHENTICATED");
+            problem(send(token, "PATCH", itemPath(item), transition("PREPARING", 1), null), 403, "FORBIDDEN");
+            problem(send(token, "POST", "/kitchen/items/" + item + "/allergy-review", object(), null), 403, "FORBIDDEN");
+            for (String action : new String[]{"rush", "delayed", "handoff"}) {
+                problem(send(token, "POST", "/kitchen/orders/" + order + "/" + action, object(), null), 403, "FORBIDDEN");
+            }
+            for (String restricted : new String[]{"/kitchen/history", "/kitchen/reviews", "/sessions/" + session}) {
+                problem(send(token, "GET", restricted, null, null), 403, "FORBIDDEN");
+            }
+            assertEquals(401, send(token, "GET", path, null, null).statusCode());
+            assertEquals(401, send(token, "GET", "/admin/staff", null, null).statusCode());
+            assertEquals(403, send(token, "POST", "/staff/payments/" + UUID.randomUUID() + "/confirm-cash",
+                    object(), null).statusCode());
+            var revoke = request(path + "/" + id, null).header("X-CSRF-TOKEN", csrf).DELETE().build();
+            assertEquals(204, manager.send(revoke, HttpResponse.BodyHandlers.discarding()).statusCode());
+            assertEquals(204, manager.send(revoke, HttpResponse.BodyHandlers.discarding()).statusCode());
+            for (String queue : new String[]{"/kitchen/orders", "/kitchen/assistance"}) {
+                problem(send(token, "GET", queue, null, null), 401, "UNAUTHENTICATED");
+            }
+            assertEquals("ordering-manager-test", db.sql("SELECT revoked_by FROM kitchen_workstation WHERE credential_id = :id")
+                    .param("id", id).query(String.class).single());
+            get(STAFF_TOKEN, "/kitchen/orders", 200);
+        }
+    }
+
+    private static JsonNode issueWorkstation(HttpClient manager, String csrf, String label) throws Exception {
+        var request = request("/admin/kitchen-workstations", null).header("X-CSRF-TOKEN", csrf)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(object().put("label", label).toString())).build();
+        var response = manager.send(request, HttpResponse.BodyHandlers.ofString());
+        assertEquals("no-store", response.headers().firstValue("Cache-Control").orElse(""));
+        return json(response, 201);
+    }
+
+    @Test
     void javaFxKitchenDiscoversPersistedAssistanceAndCustomerReadsEveryTransition() throws Exception {
         startFx();
         String terminal = terminal(true);
         String session = session(terminal, "DINE_IN", 201);
-        var kitchen = LoopbackKitchenClient.create(server.getWebServer().getPort(), STAFF_TOKEN, tls.trust());
+        JsonNode workstation;
+        try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
+            managerLogin(manager);
+            var csrf = manager.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
+            workstation = issueWorkstation(manager, csrf, "Assistance display");
+        }
+        String bearer = workstation.path("bearerToken").asText();
+        UUID workstationId = UUID.fromString(workstation.at("/workstation/id").asText());
+        var kitchen = LoopbackKitchenClient.create(server.getWebServer().getPort(), bearer, tls.trust());
         var stage = fx(() -> {
             var window = new Stage();
             window.setScene(new Scene(new ConnectedAssistanceView(kitchen, count -> {}), 800, 560));
@@ -589,14 +654,19 @@ class OrderingPostgresTest {
             awaitKitchen(() -> uiText(root, id));
             click(root, "Acknowledge", id);
             awaitKitchen(() -> uiText(root, "Acknowledged") && statusIs(terminal, session, id, "ACKNOWLEDGED"));
+            problem(send(bearer, "PATCH", "/kitchen/assistance/" + id, transition("ACKNOWLEDGED", 1), null),
+                    409, "VERSION_CONFLICT");
+            problem(send(bearer, "PATCH", "/kitchen/assistance/" + id, transition("ACKNOWLEDGED", 2), null),
+                    409, "INVALID_TRANSITION");
             click(root, "Start", id);
             awaitKitchen(() -> statusIs(terminal, session, id, "IN_PROGRESS"));
             click(root, "Complete", id);
             awaitKitchen(() -> statusIs(terminal, session, id, "COMPLETED") && uiText(root, "Completed"));
             assertEquals(3L, db.sql("""
-                    SELECT count(*) FROM assistance_transition a JOIN ordering_credential c ON c.id = a.staff_credential_id
-                    WHERE a.request_id = CAST(:id AS uuid) AND c.token_sha256 = :hash
-                    """).param("id", id).param("hash", digest(STAFF_TOKEN)).query(Long.class).single());
+                    SELECT count(*) FROM assistance_transition a
+                    JOIN kitchen_workstation w ON w.credential_id = a.staff_credential_id
+                    WHERE a.request_id = CAST(:id AS uuid) AND w.credential_id = :workstation AND a.occurred_at IS NOT NULL
+                    """).param("id", id).param("workstation", workstationId).query(Long.class).single());
         } finally {
             fx(() -> {
                 ((ConnectedAssistanceView) stage.getScene().getRoot()).stop();

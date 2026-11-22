@@ -49,6 +49,7 @@ final class KitchenShell extends BorderPane {
     private ConnectedAssistanceView connectedAssistance;
     private ConnectedReviewsView connectedReviews;
     private ToggleButton assistanceButton;
+    private final List<ToggleButton> individualDestinations = new java.util.ArrayList<>();
     private final ReviewsView reviews;
     private final HistoryView history;
     private final KitchenSync sync;
@@ -179,6 +180,7 @@ final class KitchenShell extends BorderPane {
             history.loadHistory();
             show(workspace, history, "History & Sync");
         });
+        individualDestinations.addAll(List.of(priorityButton, reviewsButton, handoffButton, historyButton));
         Region spring = new Region();
         VBox.setVgrow(spring, Priority.ALWAYS);
         connection.setWrapText(true);
@@ -247,7 +249,14 @@ final class KitchenShell extends BorderPane {
     void connectStaffWorkspaces(SpringBootKitchenService service) {
         connectedAssistance = new ConnectedAssistanceView(service,
                 count -> assistanceButton.setText(count == 0 ? "Assistance" : "Assistance (" + count + ")"));
-        connectedReviews = new ConnectedReviewsView(service);
+        if (service.workstation()) {
+            individualDestinations.forEach(button -> {
+                button.setDisable(true);
+                button.setTooltip(new javafx.scene.control.Tooltip("Available with individual staff access."));
+            });
+        } else {
+            connectedReviews = new ConnectedReviewsView(service);
+        }
     }
 
     private static Region spacer() {

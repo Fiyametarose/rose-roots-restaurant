@@ -12,6 +12,7 @@ import com.roseroots.kitchen.service.MockAssistanceService;
 import com.roseroots.kitchen.service.MockRushAuthorization;
 import com.roseroots.kitchen.service.http.KitchenBackendConfig;
 import com.roseroots.kitchen.service.http.SpringBootKitchenService;
+import com.roseroots.kitchen.service.http.WorkstationCredential;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -42,8 +43,12 @@ public final class KitchenApplication extends Application {
             return;
         }
         if (config.mode() == KitchenBackendConfig.Mode.CONNECTED) {
+            String credentialPath = environment.get("ROSE_KITCHEN_WORKSTATION_TOKEN_FILE");
+            boolean workstation = credentialPath != null;
             var remote = new SpringBootKitchenService(config,
-                    () -> Optional.ofNullable(environment.get("ROSE_KITCHEN_STAFF_TOKEN")), Platform::runLater);
+                    workstation ? new WorkstationCredential(credentialPath)
+                            : () -> Optional.ofNullable(environment.get("ROSE_KITCHEN_STAFF_TOKEN")),
+                    Platform::runLater);
             board = new KitchenShell(remote, disconnectedAssistance(), List::of, remote,
                     List.of(), id -> {}, clock, () -> stage.setFullScreen(!stage.isFullScreen()),
                     () -> new AdminWorkspace(stage));

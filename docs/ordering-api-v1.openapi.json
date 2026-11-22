@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Rose & Roots shared ordering API",
-    "version": "1.0.0-draft.3",
+    "version": "1.0.0-draft.4",
     "description": "Review draft for Customer, Staff and Spring Boot. No endpoint in this document is declared implemented."
   },
   "servers": [
@@ -1105,6 +1105,9 @@
         "security": [
           {
             "staffBearer": []
+          },
+          {
+            "workstationBearer": []
           }
         ],
         "responses": {
@@ -2153,6 +2156,9 @@
         "security": [
           {
             "staffBearer": []
+          },
+          {
+            "workstationBearer": []
           }
         ],
         "responses": {
@@ -2227,6 +2233,9 @@
         "security": [
           {
             "staffBearer": []
+          },
+          {
+            "workstationBearer": []
           }
         ],
         "requestBody": {
@@ -4775,6 +4784,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Server-issued token with kitchen permission"
+      },
+      "workstationBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Revocable, restaurant-scoped Kitchen workstation credential over HTTPS. Authorizes only the active ticket feed and Assistance read/transition operations."
       },
       "adminBearer": {
         "type": "http",
