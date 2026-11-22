@@ -1466,6 +1466,7 @@
                     "serviceDestination": { "type": "string" },
                     "priority": { "type": "string", "enum": ["NORMAL", "RUSH"] },
                     "delayed": { "type": "boolean" },
+                    "stationCodes": { "$ref": "#/components/schemas/KitchenStationCodes" },
                     "order": { "$ref": "#/components/schemas/Order" },
                     "completedAt": { "type": ["string", "null"], "format": "date-time" }
                   }
@@ -1645,7 +1646,7 @@
         "summary": "Read configured stations and active qualified capacity",
         "security": [
           {
-            "adminBearer": []
+            "managerCookie": []
           }
         ],
         "responses": {
@@ -1667,6 +1668,7 @@
                     "name": "Hot line",
                     "active": true,
                     "qualifiedAvailableChefs": 2,
+                    "chefIds": ["00000000-0000-4000-8000-000000000014", "00000000-0000-4000-8000-000000000015"],
                     "parallelSlots": 3,
                     "version": 1
                   }
@@ -1714,10 +1716,10 @@
       ],
       "patch": {
         "operationId": "updateCapacity",
-        "summary": "Set current qualified chef and parallel slot capacity",
+        "summary": "Configure station activity, qualified Chef assignments, and parallel slots",
         "security": [
           {
-            "adminBearer": []
+            "managerCookie": []
           }
         ],
         "requestBody": {
@@ -1728,8 +1730,9 @@
                 "$ref": "#/components/schemas/StationCapacity"
               },
               "example": {
-                "qualifiedAvailableChefs": 2,
+                "active": true,
                 "parallelSlots": 3,
+                "chefIds": [],
                 "expectedVersion": 1
               }
             }
@@ -1779,7 +1782,7 @@
         "summary": "Read menu-item preparation profiles",
         "security": [
           {
-            "adminBearer": []
+            "managerCookie": []
           }
         ],
         "responses": {
@@ -1849,7 +1852,7 @@
         "summary": "Save the station and duration for a menu item ID",
         "security": [
           {
-            "adminBearer": []
+            "managerCookie": []
           }
         ],
         "requestBody": {
@@ -3586,6 +3589,7 @@
           }
         }
       },
+      "KitchenStationCodes": { "type": "object", "additionalProperties": { "type": "string", "enum": ["HOT", "COLD", "BEVERAGES"] } },
       "KitchenTicket": {
         "type": "object",
         "additionalProperties": false,
@@ -3596,6 +3600,7 @@
           "delayed"
         ],
         "properties": {
+          "stationCodes": { "$ref": "#/components/schemas/KitchenStationCodes" },
           "order": {
             "$ref": "#/components/schemas/Order"
           },
@@ -3914,6 +3919,7 @@
           "name",
           "active",
           "qualifiedAvailableChefs",
+          "chefIds",
           "parallelSlots",
           "version"
         ],
@@ -3929,6 +3935,7 @@
           "active": {
             "type": "boolean"
           },
+          "chefIds": { "type": "array", "items": { "$ref": "#/components/schemas/Id" } },
           "qualifiedAvailableChefs": {
             "type": "integer",
             "minimum": 0,
@@ -3950,16 +3957,14 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "qualifiedAvailableChefs",
+          "active",
           "parallelSlots",
+          "chefIds",
           "expectedVersion"
         ],
         "properties": {
-          "qualifiedAvailableChefs": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 1000
-          },
+          "active": { "type": "boolean" },
+          "chefIds": { "type": "array", "uniqueItems": true, "maxItems": 200, "items": { "$ref": "#/components/schemas/Id" } },
           "parallelSlots": {
             "type": "integer",
             "minimum": 0,

@@ -15,6 +15,8 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
@@ -197,15 +199,24 @@ class OrderingService {
                 .param("subtotal", current.subtotal()).param("delay", utc(acceptedAt.plus(prepMinutes, ChronoUnit.MINUTES)))
                 .update();
         int position = 0;
+        var profiles = jdbc.sql("""
+                SELECT menu_item_id, station_id, duration_seconds FROM kitchen_prep_profile WHERE menu_item_id IN (:items)
+                """).param("items", current.lines().stream().map(OrderingPricing.Line::menuItemId).distinct().toList())
+                .query((row, index) -> new PrepSnapshot(row.getObject("menu_item_id", UUID.class),
+                        row.getObject("station_id", UUID.class), row.getInt("duration_seconds"))).list().stream()
+                .collect(Collectors.toMap(PrepSnapshot::menu, Function.identity()));
         for (var line : current.lines()) {
+            var profile = profiles.get(line.menuItemId());
             jdbc.sql("""
                     INSERT INTO accepted_order_item (id, order_id, menu_item_id, position, pricing, allergy,
-                        instructions, allergy_risk, allergy_review_status, preparation_status)
+                        instructions, allergy_risk, allergy_review_status, preparation_status, station_id, planned_duration_seconds)
                     VALUES (:id, :order, :menu, :position, CAST(:pricing AS jsonb), CAST(:allergy AS jsonb),
-                        :instructions, CAST(:risk AS jsonb), :review, 'RECEIVED')
+                        :instructions, CAST(:risk AS jsonb), :review, 'RECEIVED', :station, :duration)
                     """).param("id", UUID.randomUUID()).param("order", orderId).param("menu", line.menuItemId())
                     .param("position", position++).param("pricing", line.pricing().toString())
                     .param("allergy", line.allergy().toString()).param("instructions", line.instructions())
+                    .param("station", profile == null ? null : profile.station())
+                    .param("duration", profile == null ? null : profile.duration())
                     .param("risk", line.risk().toString()).param("review", line.risk().path("unresolved").booleanValue()
                             ? "PENDING_ALLERGY_REVIEW" : "NOT_REQUIRED").update();
         }
@@ -277,11 +288,12 @@ class OrderingService {
                 || item.preparation().equals("PREPARING") && next.equals("READY"))) {
             throw conflict("INVALID_TRANSITION", "Only the next preparation state is permitted.");
         }
-        jdbc.sql("""
-                UPDATE accepted_order_item SET preparation_status = :next, version = version + 1, updated_by = :actor
-                WHERE id = :id
-                """).param("next", next).param("actor", actor.credentialId()).param("id", itemId).update();
         Instant now = now();
+        jdbc.sql("""
+                UPDATE accepted_order_item SET preparation_status = :next, version = version + 1, updated_by = :actor,
+                    preparation_started_at = CASE WHEN :next = 'PREPARING' THEN :time ELSE preparation_started_at END
+                WHERE id = :id
+                """).param("next", next).param("actor", actor.credentialId()).param("id", itemId).param("time", utc(now)).update();
         updateOrder(orderId, now);
         return readOrders("WHERE o.id = :id", Map.of("id", orderId)).getFirst().ticket(now);
     }
@@ -402,6 +414,7 @@ class OrderingService {
     }
 
     private record ItemState(String preparation, String review, long version, boolean knownIngredientConflict) {}
+    private record PrepSnapshot(UUID menu, UUID station, int duration) {}
 
     @Transactional
     public ObjectNode changePriority(Actor staff, String manager, UUID order, boolean rush, boolean enabled,
@@ -440,12 +453,13 @@ class OrderingService {
     private record PriorityState(String status, long version) {}
 
     private record OrderView(ObjectNode order, String destination, Instant delayAt, long sequence, String completedAt,
-                             boolean rush, Boolean delayedOverride) {
+                             boolean rush, Boolean delayedOverride, JsonNode stationCodes) {
         ObjectNode ticket(Instant now) {
             String status = order.path("status").asText();
             boolean active = status.equals("RECEIVED") || status.equals("PREPARING");
             ObjectNode ticket = object().put("serviceDestination", destination).put("priority", rush ? "RUSH" : "NORMAL")
                     .put("delayed", active && (delayedOverride == null ? !delayAt.isAfter(now) : delayedOverride));
+            if (!stationCodes.isEmpty()) ticket.set("stationCodes", stationCodes);
             return ticket.set("order", order);
         }
     }
@@ -514,6 +528,8 @@ class OrderingService {
                 SELECT o.id, o.session_id, o.accepted_at, o.status, o.version, o.visit_allergy,
                     o.payable_minor, o.delay_at, o.sequence, s.mode, s.table_number, s.pickup_reference, h.completed_at,
                     o.rush, o.delayed_override,
+                    (SELECT jsonb_object_agg(i.id, station.code) FROM accepted_order_item i
+                     JOIN kitchen_station station ON station.id = i.station_id WHERE i.order_id = o.id) AS station_codes,
                     (SELECT jsonb_agg(jsonb_build_object(
                         'id', i.id, 'pricing', i.pricing, 'allergy', i.allergy,
                         'preparationInstructions', i.instructions, 'preparationStatus', i.preparation_status,
@@ -538,9 +554,10 @@ class OrderingService {
             String destination = row.getString("mode").equals("DINE_IN")
                     ? "Table " + row.getString("table_number") : row.getString("pickup_reference");
             var completed = row.getObject("completed_at", OffsetDateTime.class);
+            String stationCodes = row.getString("station_codes");
             return new OrderView(order, destination, instant(row, "delay_at"), row.getLong("sequence"),
                     completed == null ? null : completed.toInstant().toString(), row.getBoolean("rush"),
-                    row.getObject("delayed_override", Boolean.class));
+                    row.getObject("delayed_override", Boolean.class), stationCodes == null ? object() : parse(stationCodes));
         }).list();
     }
 

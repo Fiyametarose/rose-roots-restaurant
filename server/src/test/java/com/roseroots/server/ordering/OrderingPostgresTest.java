@@ -434,6 +434,55 @@ class OrderingPostgresTest {
     }
 
     @Test
+    void managerConfiguresRealStationsAvailabilityAndImmutableOrderRouting() throws Exception {
+        String terminal = terminal(true);
+        String session = session(terminal, "DINE_IN", 201);
+        UUID menu = dish();
+        try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
+            managerLogin(manager);
+            var csrf = manager.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
+            var chef = staffWrite(manager, csrf, "POST", "", object().put("username", "station-chef")
+                    .put("role", "CHEF"), 201).at("/account/id").asText();
+            var stations = json(manager.send(request("/admin/stations", null).GET().build(),
+                    HttpResponse.BodyHandlers.ofString()), 200);
+            assertEquals(3, stations.size());
+            String station = stations.get(0).path("id").asText();
+            var config = object().put("active", true).put("parallelSlots", 2)
+                    .put("expectedVersion", stations.get(0).path("version").asLong());
+            config.putArray("chefIds").add(chef);
+            var assigned = configWrite(manager, csrf, "/stations/" + station, config, 200);
+            assertEquals(0, assigned.path("qualifiedAvailableChefs").asInt());
+            configWrite(manager, csrf, "/stations/" + station, config, 409);
+            var availability = object().put("minutes", 60).put("expectedVersion", 1);
+            assertFalse(configWrite(manager, csrf, "/chef-availability/" + chef, availability, 200).path("availableUntil").isNull());
+            var live = json(manager.send(request("/admin/stations", null).GET().build(),
+                    HttpResponse.BodyHandlers.ofString()), 200);
+            assertEquals(1, live.get(0).path("qualifiedAvailableChefs").asInt());
+            var profile = object().put("stationId", station).put("durationSeconds", 420).put("expectedVersion", 0);
+            assertEquals(1, configWrite(manager, csrf, "/prep-times/" + menu, profile, 200).path("version").asLong());
+            String order = submitNew(terminal, session, menu);
+            String item = get(terminal, "/orders/" + order, 200).at("/lines/0/id").asText();
+            assertEquals("BEVERAGES", ticket(order).path("stationCodes").path(item).asText());
+            assertFalse(get(terminal, "/orders/" + order, 200).has("stationCodes"));
+            profile.put("stationId", stations.get(1).path("id").asText()).put("durationSeconds", 600).put("expectedVersion", 1);
+            assertEquals(2, configWrite(manager, csrf, "/prep-times/" + menu, profile, 200).path("version").asLong());
+            assertEquals("BEVERAGES", ticket(order).path("stationCodes").path(item).asText());
+            patch(item, "PREPARING", 1, 200);
+            assertTrue(db.sql("""
+                    SELECT planned_duration_seconds = 420 AND preparation_started_at IS NOT NULL
+                    FROM accepted_order_item WHERE id = CAST(:id AS uuid)
+                    """).param("id", item).query(Boolean.class).single());
+        }
+    }
+
+    private static JsonNode configWrite(HttpClient manager, String csrf, String path, JsonNode body,
+                                        int expected) throws Exception {
+        var call = request("/admin" + path, null).header("X-CSRF-TOKEN", csrf).header("Content-Type", "application/json")
+                .method("PATCH", HttpRequest.BodyPublishers.ofString(body.toString())).build();
+        return json(manager.send(call, HttpResponse.BodyHandlers.ofString()), expected);
+    }
+
+    @Test
     void explicitHandoffEnforcesScopeServiceModeReadinessAndOrderVersion() throws Exception {
         String terminal = terminal(true);
         String session = session(terminal, "DINE_IN", 201);

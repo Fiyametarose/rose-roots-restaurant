@@ -119,6 +119,10 @@ final class AdminApi {
         return JsonParser.parseString(send(request, 200)).getAsJsonObject();
     }
 
+    com.google.gson.JsonArray kitchenConfiguration(String resource) throws IOException, InterruptedException {
+        return JsonParser.parseString(send(endpoint(resource).GET(), 200)).getAsJsonArray();
+    }
+
     JsonObject orders(OperationsPresentation.Filters filters, String cursor) throws IOException, InterruptedException {
         return JsonParser.parseString(send(endpoint("orders?" + filters.query(cursor)).GET(), 200)).getAsJsonObject();
     }

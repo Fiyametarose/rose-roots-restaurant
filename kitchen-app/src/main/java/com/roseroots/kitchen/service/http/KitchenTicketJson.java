@@ -40,9 +40,10 @@ final class KitchenTicketJson {
         JsonObject order = wrapper.getAsJsonObject("order");
         UUID id = id(order, "id");
         Status status = Status.valueOf(text(order, "status"));
+        var stationCodes = wrapper.getAsJsonObject("stationCodes");
         var items = new ArrayList<Item>();
         for (JsonElement line : order.getAsJsonArray("lines")) {
-            items.add(item(line.getAsJsonObject()));
+            items.add(item(line.getAsJsonObject(), stationCodes));
         }
         if (items.stream().map(line -> line.server().id()).distinct().count() != items.size()) {
             throw new IllegalArgumentException("Duplicate item");
@@ -66,8 +67,10 @@ final class KitchenTicketJson {
                 null, List.of(), items, completion, server);
     }
 
-    private Item item(JsonObject line) {
+    private Item item(JsonObject line, JsonObject stationCodes) {
         UUID id = id(line, "id");
+        var station = stationCodes == null || !stationCodes.has(id.toString()) ? null
+                : Ticket.Station.valueOf(text(stationCodes, id.toString()));
         JsonObject pricing = line.getAsJsonObject("pricing");
         JsonObject risk = line.getAsJsonObject("allergyRisk");
         String options = pricing.getAsJsonArray("options").asList().stream()
@@ -86,7 +89,7 @@ final class KitchenTicketJson {
         if (quantity < 1 || quantity > 99) {
             throw new IllegalArgumentException("Invalid quantity");
         }
-        return new Item(handle.applyAsLong(id), text(pricing, "name"), quantity, null, options,
+        return new Item(handle.applyAsLong(id), text(pricing, "name"), quantity, station, options,
                 text(line, "preparationInstructions"), allergens, arrayText(risk, "crossContactMatches"),
                 Status.valueOf(text(line, "preparationStatus")),
                 new ServerItem(id, version(line), reviewStatus, bool(risk, "unresolved")));

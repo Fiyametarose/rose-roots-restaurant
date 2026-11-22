@@ -39,8 +39,7 @@ public final class StationsView extends VBox {
         this.clock = clock;
         this.openDetails = openDetails;
         setSpacing(10);
-        Label heading = label(service.local() ? "Preparation stations" : "Station assignments unavailable from this API",
-                "handoff-banner-text");
+        Label heading = label("Preparation stations", "handoff-banner-text");
         heading.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(heading, Priority.ALWAYS);
         HBox banner = new HBox(10, heading, total);
@@ -118,7 +117,9 @@ public final class StationsView extends VBox {
                 list.getChildren().add(card(entry, now));
             }
         }
-        total.setText(itemCount + " items across all stations");
+        long unassigned = tickets.stream().flatMap(ticket -> ticket.items().stream())
+                .filter(item -> item.station() == null && Status.LANES.contains(item.status())).count();
+        total.setText(itemCount + " items across all stations" + (unassigned == 0 ? "" : " · " + unassigned + " unassigned"));
     }
 
     private VBox card(KitchenBoard.Card entry, OffsetDateTime now) {
@@ -137,7 +138,7 @@ public final class StationsView extends VBox {
         card.getStyleClass().addAll("ticket", "station-card");
         for (var item : entry.items()) {
             card.getChildren().add(TicketCard.itemRow(item, service.writesAvailable() ? selected -> {
-                service.advanceItem(ticket.id(), selected.id(), selected.status());
+                service.advanceItem(ticket.id(), selected);
                 refresh();
             } : null));
         }
