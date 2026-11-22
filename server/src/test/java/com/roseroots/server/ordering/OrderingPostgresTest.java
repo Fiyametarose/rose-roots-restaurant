@@ -343,13 +343,58 @@ class OrderingPostgresTest {
     }
 
     private static void managerLogin(HttpClient manager) throws Exception {
+        managerLogin(manager, "ordering-manager-test", MANAGER_PASSWORD);
+    }
+
+    private static void managerLogin(HttpClient manager, String username, String password) throws Exception {
         var csrf = manager.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString());
-        String form = "username=ordering-manager-test&password="
-                + URLEncoder.encode(MANAGER_PASSWORD, StandardCharsets.UTF_8);
+        String form = "username=" + URLEncoder.encode(username, StandardCharsets.UTF_8) + "&password="
+                + URLEncoder.encode(password, StandardCharsets.UTF_8);
         var login = request("/admin/login", null).header("X-CSRF-TOKEN", csrf.body())
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .POST(HttpRequest.BodyPublishers.ofString(form)).build();
         assertEquals(204, manager.send(login, HttpResponse.BodyHandlers.ofString()).statusCode());
+    }
+
+    @Test
+    void managerProvisionsIndividualStaffAndDisablesExistingCredentialsAndSessions() throws Exception {
+        try (var bootstrap = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build();
+             var individual = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
+            managerLogin(bootstrap);
+            var csrf = bootstrap.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
+            var chef = staffWrite(bootstrap, csrf, "POST", "", object().put("username", "integration-chef")
+                    .put("role", "CHEF").put("allergyReviewer", true), 201);
+            String token = chef.path("bearerToken").asText();
+            assertEquals(43, token.length());
+            get(token, "/kitchen/orders", 200);
+            problem(send(token, "POST", "/kitchen/items/" + UUID.randomUUID() + "/allergy-review",
+                    object().put("decision", "APPROVE").put("reason", "Verified").put("expectedVersion", 1), null),
+                    404, "NOT_FOUND");
+            String chefPath = "/" + chef.at("/account/id").asText();
+            var off = object().put("enabled", false).put("allergyReviewer", false).put("expectedVersion", 1);
+            assertEquals(2, staffWrite(bootstrap, csrf, "PATCH", chefPath, off, 200).path("version").asInt());
+            staffWrite(bootstrap, csrf, "PATCH", chefPath, off, 409);
+            problem(send(token, "GET", "/kitchen/orders", null, null), 401, "UNAUTHENTICATED");
+
+            String password = UUID.randomUUID().toString();
+            var manager = staffWrite(bootstrap, csrf, "POST", "", object().put("username", "integration-manager")
+                    .put("role", "MANAGER").put("password", password), 201);
+            managerLogin(individual, "integration-manager", password);
+            assertEquals(200, individual.send(request("/admin/staff", null).GET().build(),
+                    HttpResponse.BodyHandlers.discarding()).statusCode());
+            staffWrite(bootstrap, csrf, "PATCH", "/" + manager.at("/account/id").asText(), off, 200);
+            assertEquals(403, individual.send(request("/admin/staff", null).GET().build(),
+                    HttpResponse.BodyHandlers.discarding()).statusCode());
+            assertEquals(4L, db.sql("SELECT count(*) FROM staff_account_audit WHERE manager_username = 'ordering-manager-test'")
+                    .query(Long.class).single());
+        }
+    }
+
+    private static JsonNode staffWrite(HttpClient manager, String csrf, String method, String suffix,
+                                       JsonNode body, int expected) throws Exception {
+        var call = request("/admin/staff" + suffix, null).header("X-CSRF-TOKEN", csrf)
+                .header("Content-Type", "application/json").method(method, HttpRequest.BodyPublishers.ofString(body.toString()));
+        return json(manager.send(call.build(), HttpResponse.BodyHandlers.ofString()), expected);
     }
 
     @Test

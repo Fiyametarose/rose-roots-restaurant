@@ -218,6 +218,9 @@ public final class AdminWorkspace {
             AdminApi active = session;
             page.getChildren().setAll(new ReviewsWorkspace(active, () -> expired(active),
                     () -> ((ScrollPane) root.getCenter()).setVvalue(0)));
+        } else if (destination == AdminSection.STAFF) {
+            AdminApi active = session;
+            page.getChildren().setAll(new StaffWorkspace(active, () -> expired(active)));
         } else if (destination == AdminSection.BRANDING) {
             AdminApi active = session;
             page.getChildren().setAll(new BrandingWorkspace(active, () -> expired(active)));

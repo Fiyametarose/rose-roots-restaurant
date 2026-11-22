@@ -79,8 +79,11 @@ class OrderingSecurity {
                 if (token.matches("[A-Za-z0-9_-]{43,128}")) {
                     try {
                         jdbc.sql("""
-                                SELECT id, restaurant_id, terminal_id, scope, allergy_reviewer FROM ordering_credential
-                                WHERE token_sha256 = :hash AND revoked_at IS NULL AND expires_at > now()
+                                SELECT c.id, c.restaurant_id, c.terminal_id, c.scope,
+                                    COALESCE(s.allergy_reviewer, c.allergy_reviewer) AS allergy_reviewer
+                                FROM ordering_credential c LEFT JOIN staff_account s ON s.credential_id = c.id
+                                WHERE c.token_sha256 = :hash AND c.revoked_at IS NULL AND c.expires_at > now()
+                                    AND COALESCE(s.enabled, true)
                                 """).param("hash", OrderingJson.digest(token))
                                 .query((row, index) -> new Actor(row.getObject("id", UUID.class),
                                         row.getObject("restaurant_id", UUID.class),

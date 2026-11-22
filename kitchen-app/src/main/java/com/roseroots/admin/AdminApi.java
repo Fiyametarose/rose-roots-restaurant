@@ -97,6 +97,17 @@ final class AdminApi {
         return JsonParser.parseString(send(request, 200)).getAsJsonObject();
     }
 
+    com.google.gson.JsonArray staff() throws IOException, InterruptedException {
+        return JsonParser.parseString(send(endpoint("staff").GET(), 200)).getAsJsonArray();
+    }
+
+    JsonObject saveStaff(String id, JsonObject payload) throws IOException, InterruptedException {
+        var request = endpoint(id == null ? "staff" : "staff/" + id).header("X-CSRF-TOKEN", csrf())
+                .header("Content-Type", "application/json").method(id == null ? "POST" : "PATCH",
+                        HttpRequest.BodyPublishers.ofString(payload.toString()));
+        return JsonParser.parseString(send(request, id == null ? 201 : 200)).getAsJsonObject();
+    }
+
     JsonObject orders(OperationsPresentation.Filters filters, String cursor) throws IOException, InterruptedException {
         return JsonParser.parseString(send(endpoint("orders?" + filters.query(cursor)).GET(), 200)).getAsJsonObject();
     }

@@ -1,5 +1,7 @@
 package com.roseroots.server.admin;
 
+import java.util.Locale;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
@@ -10,6 +12,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
@@ -27,12 +30,19 @@ class AdminSecurity {
     @Bean
     @Order(10)
     @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
-    SecurityFilterChain adminEndpoints(HttpSecurity http) throws Exception {
+    SecurityFilterChain adminEndpoints(HttpSecurity http, ObjectProvider<StaffAccounts> accounts) throws Exception {
         return http.securityMatcher(PREFIX + "/**")
                 .authorizeHttpRequests(rules -> rules
                         .requestMatchers(HttpMethod.GET, CSRF).permitAll()
                         .requestMatchers(HttpMethod.POST, LOGIN).permitAll()
-                        .anyRequest().hasRole(MANAGER))
+                        .anyRequest().access((authentication, context) -> {
+                            var principal = authentication.get();
+                            boolean manager = principal != null && principal.getAuthorities().stream()
+                                    .anyMatch(role -> role.getAuthority().equals("ROLE_" + MANAGER));
+                            var staff = accounts.getIfAvailable();
+                            return new AuthorizationDecision(manager && (staff == null || staff.manager(principal.getName())
+                                    .map(org.springframework.security.core.userdetails.UserDetails::isEnabled).orElse(true)));
+                        }))
                 .requestCache(cache -> cache.disable())
                 .exceptionHandling(errors -> errors
                         .authenticationEntryPoint((request, response, failure) -> response.setStatus(401))
@@ -61,11 +71,19 @@ class AdminSecurity {
 
     @Bean
     @ConditionalOnMissingBean(UserDetailsService.class)
-    UserDetailsService configuredAccounts(Environment environment) {
+    UserDetailsService configuredAccounts(Environment environment, ObjectProvider<StaffAccounts> accounts) {
         var users = new InMemoryUserDetailsManager();
         addAccount(users, environment, "manager", MANAGER);
         addAccount(users, environment, "kitchen", "KITCHEN_STAFF");
-        return users;
+        return username -> {
+            if (users.userExists(username)) return users.loadUserByUsername(username);
+            var staff = accounts.getIfAvailable();
+            if (staff != null) {
+                var manager = staff.manager(username.strip().toLowerCase(Locale.ROOT));
+                if (manager.isPresent()) return manager.get();
+            }
+            return users.loadUserByUsername(username);
+        };
     }
 
     private static void addAccount(InMemoryUserDetailsManager users, Environment environment,
