@@ -787,7 +787,22 @@ class OrderingPostgresTest {
                     INSERT INTO kitchen_station_chef(station_id,chef_id)
                     SELECT :station,id FROM staff_account WHERE username IN ('prep-alice','prep-bob')
                     """).param("station", station).update();
-            db.sql("UPDATE staff_account SET available_until=now()+interval '5 minutes' WHERE username='prep-alice'").update();
+            var startShift = request("/admin/chef-availability/" + alice, null).header("X-CSRF-TOKEN", csrf)
+                    .header("Content-Type", "application/json").method("PATCH", HttpRequest.BodyPublishers.ofString(
+                            object().put("minutes", 480).put("expectedVersion", 1).toString())).build();
+            var left = manager.sendAsync(startShift, HttpResponse.BodyHandlers.ofString());
+            var right = manager.sendAsync(startShift, HttpResponse.BodyHandlers.ofString());
+            var started = left.get(10, TimeUnit.SECONDS);
+            var duplicate = right.get(10, TimeUnit.SECONDS);
+            if (duplicate.statusCode() == 200) {
+                var swap = started;
+                started = duplicate;
+                duplicate = swap;
+            }
+            var shift = json(started, 200);
+            assertEquals(409, duplicate.statusCode());
+            assertEquals(Duration.ofHours(8), Duration.between(java.time.OffsetDateTime.parse(shift.path("serverTime").asText()),
+                    java.time.OffsetDateTime.parse(shift.path("availableUntil").asText())));
 
             var terminal = terminal(true);
             var session = session(terminal, "DINE_IN", 201);
@@ -807,7 +822,8 @@ class OrderingPostgresTest {
             String bobToken = kitchenSignIn(workstation, "prep-bob", password);
             String supervisorToken = kitchenSignIn(workstation, "prep-supervisor", password);
             problem(send(bobToken, "POST", two, claim, null), 409, "CHEF_NOT_AVAILABLE");
-            db.sql("UPDATE staff_account SET available_until=now()+interval '5 minutes' WHERE username='prep-bob'").update();
+            configWrite(manager, csrf, "/chef-availability/" + bob,
+                    object().put("minutes", 240).put("expectedVersion", 1), 200);
             var claims = java.util.List.of(client.sendAsync(http(aliceToken, "POST", one, claim, null),
                     HttpResponse.BodyHandlers.ofString()), client.sendAsync(http(bobToken, "POST", one, claim, null),
                     HttpResponse.BodyHandlers.ofString()));
@@ -819,9 +835,17 @@ class OrderingPostgresTest {
             String owner = aliceWon ? aliceToken : bobToken;
             String other = aliceWon ? bobToken : aliceToken;
             String otherId = aliceWon ? bob : alice;
+            String ownerId = aliceWon ? alice : bob;
             json(send(other, "POST", two, claim, null), 200);
             problem(send(other, "PATCH", itemPath(first), transition("PREPARING", 2), null), 403, "FORBIDDEN");
             json(send(owner, "PATCH", itemPath(first), transition("PREPARING", 2), null), 200);
+            var ended = configWrite(manager, csrf, "/chef-availability/" + ownerId,
+                    object().put("minutes", 0).put("expectedVersion", 2), 200);
+            assertTrue(ended.path("availableUntil").isNull());
+            assertEquals(1, ended.path("unfinishedItems").asInt());
+            assertEquals(ownerId, ticket(order.path("id").asText()).path("itemChefs").path(first).path("id").asText());
+            assertFalse(ticket(order.path("id").asText()).path("itemChefs").path(first).path("onDuty").asBoolean());
+            problem(send(owner, "PATCH", itemPath(first), transition("READY", 3), null), 409, "CHEF_NOT_AVAILABLE");
             var reassign = object().put("action", "REASSIGNED").put("expectedVersion", 3)
                     .put("chefId", otherId).put("reason", "Shift coverage");
             problem(send(workstation, "POST", one, reassign, null), 403, "FORBIDDEN");
@@ -834,6 +858,14 @@ class OrderingPostgresTest {
             assertEquals("Shift coverage", events.get(2).path("reason").asText());
             assertEquals("prep-supervisor", events.get(2).path("actor").asText());
             assertNotEquals(events.get(0).path("actor"), events.get(3).path("actor"));
+            staffWrite(manager, csrf, "PATCH", "/" + ownerId, object().put("state", "DEACTIVATED").put("expectedVersion", 3), 200);
+            configWrite(manager, csrf, "/chef-availability/" + ownerId, object().put("minutes", 480).put("expectedVersion", 4), 409);
+            staffWrite(manager, csrf, "PATCH", "/" + ownerId, object().put("state", "ARCHIVED").put("expectedVersion", 4), 200);
+            configWrite(manager, csrf, "/chef-availability/" + ownerId, object().put("minutes", 480).put("expectedVersion", 5), 409);
+            var chefs = json(manager.send(request("/admin/chef-availability", null).GET().build(),
+                    HttpResponse.BodyHandlers.ofString()), 200);
+            assertTrue(chefs.valueStream().anyMatch(chef -> ownerId.equals(chef.path("id").asText())
+                    && chef.path("archived").asBoolean() && !chef.path("eligible").asBoolean()));
             var held = draft(session, menu);
             held.withObject("/visitAllergy").put("kind", "DISCLOSED").putArray("allergens").add("SOY");
             var heldQuote = json(send(terminal, "POST", "/order-quotes", held, null), 200);
@@ -1456,6 +1488,19 @@ class OrderingPostgresTest {
             var estimate = json(send(terminalToken, "POST", "/wait-estimates", input, null), 200);
             assertEquals(4, estimate.path("minimumMinutes").asInt());
             assertEquals(6, estimate.path("maximumMinutes").asInt());
+            var shiftRoute = "/chef-availability/" + chef;
+            configWrite(manager, csrf, shiftRoute, object().put("minutes", 0).put("expectedVersion", 2), 200);
+            assertEquals("NO_CAPACITY", json(send(terminalToken, "POST", "/wait-estimates", input, null), 200).path("reason").asText());
+            configWrite(manager, csrf, shiftRoute, object().put("minutes", 240).put("expectedVersion", 3), 200);
+            assertEquals(6, json(send(terminalToken, "POST", "/wait-estimates", input, null), 200).path("maximumMinutes").asInt());
+            db.sql("UPDATE staff_account SET available_until=now()-interval '1 second' WHERE id=CAST(:chef AS uuid)")
+                    .param("chef", chef).update();
+            assertEquals("NO_CAPACITY", json(send(terminalToken, "POST", "/wait-estimates", input, null), 200).path("reason").asText());
+            var stationRows = json(manager.send(request("/admin/stations", null).GET().build(),
+                    HttpResponse.BodyHandlers.ofString()), 200);
+            assertEquals(0, stationRows.valueStream().filter(row -> station.toString().equals(row.path("id").asText()))
+                    .findFirst().orElseThrow().path("qualifiedAvailableChefs").asInt());
+            configWrite(manager, csrf, shiftRoute, object().put("minutes", 720).put("expectedVersion", 4), 200);
             UUID secondMenu = dish();
             UUID secondStation = db.sql("SELECT id FROM kitchen_station WHERE code='COLD'").query(UUID.class).single();
             db.sql("UPDATE kitchen_station SET parallel_slots=2 WHERE id=:id").param("id", secondStation).update();

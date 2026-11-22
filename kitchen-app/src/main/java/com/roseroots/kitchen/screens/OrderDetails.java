@@ -105,7 +105,9 @@ public final class OrderDetails extends VBox {
             var remote = service instanceof SpringBootKitchenService rest ? rest : null;
             var staff = remote == null ? null : remote.signedInStaff();
             boolean owner = staff != null && staff.id().equals(item.server().chefId());
-            var row = TicketCard.itemRow(item, historical == null && service.writesAvailable() && (service.local() || owner) ? selected -> {
+            boolean offDuty = item.server() != null && Boolean.FALSE.equals(item.server().chefOnDuty());
+            var row = TicketCard.itemRow(item, historical == null && service.writesAvailable()
+                    && (service.local() || owner && !offDuty) ? selected -> {
                 service.advanceItem(ticketId, selected);
                 if (service.local()) {
                     render(ticketId);
@@ -114,6 +116,9 @@ public final class OrderDetails extends VBox {
             if (remote != null && item.server() != null) {
                 String chef = item.server().chefName();
                 row.getChildren().add(label("Responsible Chef: " + (chef == null ? "Unassigned" : chef), "metadata"));
+                if (historical == null && offDuty && (item.status() == Status.RECEIVED || item.status() == Status.PREPARING)) {
+                    row.getChildren().add(label("Responsible Chef unavailable. Supervisor reassignment is needed.", "item-note"));
+                }
                 if (staff != null && !staff.role().equals("WAITER")) {
                     var actions = new FlowPane(6, 5);
                     var history = new Button("Preparation history");

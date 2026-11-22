@@ -99,7 +99,8 @@ final class KitchenTicketJson {
                 text(line, "preparationInstructions"), allergens, arrayText(risk, "crossContactMatches"),
                 Status.valueOf(text(line, "preparationStatus")),
                 new ServerItem(id, version(line), reviewStatus, bool(risk, "unresolved"),
-                        chef == null ? null : id(chef, "id"), chef == null ? null : text(chef, "username")));
+                        chef == null ? null : id(chef, "id"), chef == null ? null : text(chef, "username"),
+                        chef != null && chef.has("onDuty") ? bool(chef, "onDuty") : null));
     }
 
     private static String declaration(JsonObject declaration) {

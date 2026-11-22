@@ -37,9 +37,9 @@ public record Ticket(long id, Type type, String destination, OffsetDateTime orde
     }
 
     public record ServerItem(UUID id, long version, String allergyReviewStatus, boolean unresolvedRisk, UUID chefId,
-                             String chefName) {
+                             String chefName, Boolean chefOnDuty) {
         public ServerItem(UUID id, long version, String allergyReviewStatus, boolean unresolvedRisk) {
-            this(id, version, allergyReviewStatus, unresolvedRisk, null, null);
+            this(id, version, allergyReviewStatus, unresolvedRisk, null, null, null);
         }
         public boolean cleared() {
             return !unresolvedRisk && ("NOT_REQUIRED".equals(allergyReviewStatus)

@@ -107,7 +107,10 @@ class WaitEstimates {
         jdbc.sql("""
                 SELECT s.id AS station, s.parallel_slots, c.id AS chef, c.available_until
                 FROM kitchen_station s LEFT JOIN kitchen_station_chef a ON a.station_id = s.id
-                LEFT JOIN staff_account c ON c.id = a.chef_id AND c.enabled AND c.staff_role = 'CHEF' AND c.available_until > :now
+                LEFT JOIN staff_account c ON c.id=a.chef_id AND c.enabled AND c.staff_role='CHEF'
+                    AND NOT c.password_reset_required AND c.available_until > :now
+                    AND EXISTS(SELECT 1 FROM ordering_credential auth WHERE auth.id=c.credential_id
+                        AND auth.revoked_at IS NULL AND auth.expires_at > :now)
                 WHERE s.active AND s.parallel_slots > 0
                 """).param("now", OffsetDateTime.ofInstant(now, java.time.ZoneOffset.UTC)).query((row, index) -> {
                     UUID station = row.getObject("station", UUID.class);

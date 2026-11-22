@@ -3917,7 +3917,7 @@
           "delayed"
         ],
         "properties": {
-          "itemChefs": {"type": "object", "additionalProperties": {"type": "object", "required": ["id", "username"], "properties": {"id": {"type": "string", "format": "uuid"}, "username": {"type": "string"}}}},
+          "itemChefs": {"type": "object", "additionalProperties": {"type": "object", "required": ["id", "username"], "properties": {"id": {"type": "string", "format": "uuid"}, "username": {"type": "string"}, "onDuty": {"type": "boolean"}}}},
           "handoff": {
             "type": "object",
             "description": "Persisted service audit. Actor fields are null for legacy records.",

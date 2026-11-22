@@ -29,13 +29,26 @@ class KitchenConfigurationController {
     record Station(UUID id, String name, boolean active, int qualifiedAvailableChefs, int parallelSlots,
                    long version, List<UUID> chefIds) {}
     record StationEdit(Boolean active, Integer parallelSlots, Long expectedVersion, Set<UUID> chefIds) {}
-    record Chef(UUID id, String username, boolean enabled, OffsetDateTime availableUntil, long version) {}
+    record Chef(UUID id, String username, boolean enabled, OffsetDateTime availableUntil, long version,
+                boolean archived, boolean eligible, long unfinishedItems, OffsetDateTime serverTime) {}
     record Availability(Integer minutes, Long expectedVersion) {}
     private static final String STATIONS = """
             SELECT s.*, ARRAY(SELECT chef_id FROM kitchen_station_chef WHERE station_id = s.id ORDER BY chef_id) AS assignments,
                 (SELECT count(*) FROM kitchen_station_chef a JOIN staff_account c ON c.id = a.chef_id
-                 WHERE a.station_id = s.id AND s.active AND c.enabled AND c.available_until > now()) AS qualified
+                 JOIN ordering_credential auth ON auth.id=c.credential_id
+                 WHERE a.station_id=s.id AND s.active AND c.enabled AND c.staff_role='CHEF'
+                    AND NOT c.password_reset_required AND c.available_until > now()
+                    AND auth.revoked_at IS NULL AND auth.expires_at > now()) AS qualified
             FROM kitchen_station s
+            """;
+    private static final String CHEFS = """
+            SELECT c.*, now() AS server_time,
+                (c.enabled AND NOT c.password_reset_required AND auth.revoked_at IS NULL
+                    AND auth.expires_at > now()) AS eligible,
+                (SELECT count(*) FROM accepted_order_item i WHERE i.claimed_by=c.id
+                    AND i.preparation_status IN ('RECEIVED','PREPARING')) AS unfinished_items
+            FROM staff_account c JOIN ordering_credential auth ON auth.id=c.credential_id
+            WHERE c.staff_role='CHEF'
             """;
 
     private final JdbcClient jdbc;
@@ -75,7 +88,7 @@ class KitchenConfigurationController {
 
     @GetMapping("/chef-availability")
     ResponseEntity<List<Chef>> chefs() {
-        return ok(jdbc.sql("SELECT * FROM staff_account WHERE staff_role = 'CHEF' ORDER BY username")
+        return ok(jdbc.sql(CHEFS + " ORDER BY c.username")
                 .query(KitchenConfigurationController::chef).list());
     }
 
@@ -86,12 +99,16 @@ class KitchenConfigurationController {
                 || input.expectedVersion() == null || input.expectedVersion() < 1) {
             throw bad("Specify 0 to 720 minutes of availability and the current account version.");
         }
-        var chef = jdbc.sql("""
+        jdbc.sql("""
                 UPDATE staff_account SET available_until = CASE WHEN :minutes = 0 THEN NULL
                     ELSE now() + make_interval(mins => :minutes) END, version = version + 1
-                WHERE id = :id AND staff_role = 'CHEF' AND enabled AND version = :expected RETURNING *
+                WHERE id = :id AND staff_role = 'CHEF' AND enabled AND NOT password_reset_required AND version = :expected
+                    AND (:minutes = 0 OR EXISTS(SELECT 1 FROM ordering_credential auth
+                        WHERE auth.id=staff_account.credential_id AND auth.revoked_at IS NULL AND auth.expires_at > now()))
+                RETURNING version
                 """).param("id", id).param("minutes", input.minutes()).param("expected", input.expectedVersion())
-                .query(KitchenConfigurationController::chef).optional().orElseThrow(KitchenConfigurationController::stale);
+                .query(Long.class).optional().orElseThrow(KitchenConfigurationController::stale);
+        var chef = jdbc.sql(CHEFS + " AND c.id=:id").param("id", id).query(KitchenConfigurationController::chef).single();
         audit("CHEF_AVAILABILITY", id, chef.version(), manager);
         return ok(chef);
     }
@@ -116,7 +133,9 @@ class KitchenConfigurationController {
 
     private static Chef chef(ResultSet row, int index) throws SQLException {
         return new Chef(row.getObject("id", UUID.class), row.getString("username"), row.getBoolean("enabled"),
-                row.getObject("available_until", OffsetDateTime.class), row.getLong("version"));
+                row.getObject("available_until", OffsetDateTime.class), row.getLong("version"),
+                row.getObject("archived_at") != null, row.getBoolean("eligible"),
+                row.getLong("unfinished_items"), row.getObject("server_time", OffsetDateTime.class));
     }
 
     private static <T> ResponseEntity<T> ok(T data) { return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(data); }

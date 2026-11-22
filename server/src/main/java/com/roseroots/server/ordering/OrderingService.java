@@ -317,7 +317,8 @@ class OrderingService {
                 SELECT s.id FROM staff_account s JOIN ordering_credential c ON c.id=s.credential_id
                 JOIN kitchen_station_chef a ON a.chef_id=s.id JOIN kitchen_station k ON k.id=a.station_id
                 WHERE s.id=:chef AND c.restaurant_id=:restaurant AND k.id=:station AND k.active AND s.enabled
-                    AND s.staff_role='CHEF' AND s.available_until > now() AND c.revoked_at IS NULL AND c.expires_at > now()
+                    AND s.staff_role='CHEF' AND NOT s.password_reset_required
+                    AND s.available_until > now() AND c.revoked_at IS NULL AND c.expires_at > now()
                 FOR SHARE OF s,c,a,k
                 """).param("restaurant", restaurant).param("chef", chef).param("station", station)
                 .query(UUID.class).optional().isEmpty()) {
@@ -371,7 +372,7 @@ class OrderingService {
                 JOIN kitchen_station k ON k.id=i.station_id JOIN kitchen_station_chef a ON a.station_id=k.id
                 JOIN staff_account staff ON staff.id=a.chef_id JOIN ordering_credential c ON c.id=staff.credential_id
                 WHERE i.id=:item AND s.restaurant_id=:restaurant AND c.restaurant_id=s.restaurant_id AND k.active
-                    AND staff.enabled AND staff.staff_role='CHEF' AND staff.available_until > now()
+                    AND staff.enabled AND staff.staff_role='CHEF' AND NOT staff.password_reset_required AND staff.available_until > now()
                     AND c.revoked_at IS NULL AND c.expires_at > now() AND staff.id IS DISTINCT FROM i.claimed_by
                 ORDER BY staff.username
                 """).param("item", item).param("restaurant", actor.restaurantId())
@@ -668,8 +669,11 @@ class OrderingService {
                     waiter.username AS handoff_actor,
                     (SELECT jsonb_object_agg(i.id, station.code) FROM accepted_order_item i
                      JOIN kitchen_station station ON station.id = i.station_id WHERE i.order_id = o.id) AS station_codes,
-                    (SELECT jsonb_object_agg(i.id, jsonb_build_object('id', chef.id, 'username', chef.username))
+                    (SELECT jsonb_object_agg(i.id, jsonb_build_object('id', chef.id, 'username', chef.username,
+                        'onDuty', chef.enabled AND NOT chef.password_reset_required AND coalesce(chef.available_until > now(), false)
+                            AND auth.revoked_at IS NULL AND auth.expires_at > now()))
                      FROM accepted_order_item i JOIN staff_account chef ON chef.id=i.claimed_by
+                     JOIN ordering_credential auth ON auth.id=chef.credential_id
                      WHERE i.order_id=o.id) AS item_chefs,
                     (SELECT jsonb_agg(jsonb_build_object(
                         'id', i.id, 'pricing', i.pricing, 'allergy', i.allergy,

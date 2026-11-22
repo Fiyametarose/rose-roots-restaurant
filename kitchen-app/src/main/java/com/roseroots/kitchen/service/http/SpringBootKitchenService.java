@@ -807,7 +807,7 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
                     case "INVALID_TRANSITION" -> "The server rejected the preparation transition.";
                     case "VERSION_CONFLICT" -> "The ticket version changed.";
                     case "ITEM_ALREADY_CLAIMED" -> "Another Chef already claimed this item.";
-                    case "CHEF_NOT_AVAILABLE" -> "The Chef must be available and assigned to this station.";
+                    case "CHEF_NOT_AVAILABLE" -> "The Chef must be on duty and assigned to this station.";
                     default -> "The server rejected the current item state.";
                 };
                 case 429 -> "The server is rate limiting requests.";
