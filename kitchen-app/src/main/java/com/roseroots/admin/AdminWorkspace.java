@@ -212,8 +212,12 @@ public final class AdminWorkspace {
                     () -> expired(active)));
         } else if (destination == AdminSection.ORDERS) {
             AdminApi active = session;
-            page.getChildren().setAll(new OperationsWorkspace(active, () -> expired(active),
-                    () -> ((ScrollPane) root.getCenter()).setVvalue(0)));
+            var history = new OperationsWorkspace(active, () -> expired(active),
+                    () -> ((ScrollPane) root.getCenter()).setVvalue(0));
+            var operations = new javafx.scene.control.TabPane(new javafx.scene.control.Tab("Orders and history", history),
+                    new javafx.scene.control.Tab("Cash confirmation", new CashPaymentsWorkspace(active, () -> expired(active))));
+            operations.setTabClosingPolicy(javafx.scene.control.TabPane.TabClosingPolicy.UNAVAILABLE);
+            page.getChildren().setAll(operations);
         } else if (destination == AdminSection.REVIEWS) {
             AdminApi active = session;
             page.getChildren().setAll(new ReviewsWorkspace(active, () -> expired(active),

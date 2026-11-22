@@ -119,6 +119,26 @@ final class AdminApi {
         return JsonParser.parseString(send(request, 200)).getAsJsonObject();
     }
 
+    com.google.gson.JsonArray cashRequests() throws IOException, InterruptedException {
+        return JsonParser.parseString(send(endpoint("payments").GET(), 200)).getAsJsonArray();
+    }
+
+    JsonObject confirmCash(String id, JsonObject body) throws IOException, InterruptedException {
+        var call = HttpRequest.newBuilder(base.resolve("/api/v1/staff/payments/" + id + "/confirm-cash"))
+                .timeout(Duration.ofSeconds(8));
+        return cashAction(call, body);
+    }
+
+    JsonObject resolveCash(String id, JsonObject body) throws IOException, InterruptedException {
+        return cashAction(endpoint("payments/" + id + "/resolve-cash"), body);
+    }
+
+    private JsonObject cashAction(HttpRequest.Builder endpoint, JsonObject body) throws IOException, InterruptedException {
+        var call = endpoint.header("X-CSRF-TOKEN", csrf()).header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body.toString()));
+        return JsonParser.parseString(send(call, 200)).getAsJsonObject();
+    }
+
     com.google.gson.JsonArray kitchenConfiguration(String resource) throws IOException, InterruptedException {
         return JsonParser.parseString(send(endpoint(resource).GET(), 200)).getAsJsonArray();
     }

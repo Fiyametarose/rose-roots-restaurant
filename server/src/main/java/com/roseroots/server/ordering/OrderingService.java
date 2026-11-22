@@ -145,6 +145,7 @@ class OrderingService {
         }
         var session = ownedSession(actor, sessionId, true);
         session.requireOpen(now());
+        Payments.requireMutable(jdbc, sessionId);
         if (!body.path("allergyReviewed").isBoolean()) {
             throw OrderingProblem.bad("Expected a boolean allergyReviewed field.");
         }
@@ -224,6 +225,7 @@ class OrderingService {
                 """).param("session", sessionId).param("key", key).param("fingerprint", fingerprint)
                 .param("order", orderId).param("response", accepted.toString()).update();
         outbox(orderId, 1, "ORDER_CREATED", acceptedAt);
+        Payments.advanceBill(jdbc, sessionId);
         return new Result(201, accepted);
     }
 
@@ -299,6 +301,12 @@ class OrderingService {
         if (!actor.allergyReviewer()) {
             throw new OrderingProblem(403, "FORBIDDEN", "An authorized Chef credential is required.");
         }
+        UUID sessionId = jdbc.sql("""
+                SELECT s.id FROM accepted_order_item i JOIN accepted_order o ON o.id=i.order_id
+                JOIN dining_session s ON s.id=o.session_id WHERE i.id=:item AND s.restaurant_id=:restaurant FOR UPDATE OF s
+                """).param("item", itemId).param("restaurant", actor.restaurantId()).query(UUID.class).optional()
+                .orElseThrow(OrderingProblem::missing);
+        Payments.requireMutable(jdbc, sessionId);
         UUID orderId = lockItemOrder(actor, itemId);
         var item = itemAtVersion(itemId, expectedVersion);
         if (!item.preparation().equals("RECEIVED") || !item.review().equals("PENDING_ALLERGY_REVIEW")) {
@@ -316,6 +324,7 @@ class OrderingService {
                 .param("review", approve ? "APPROVED_FOR_PREPARATION" : "DECLINED")
                 .param("actor", actor.credentialId()).param("id", itemId).update();
         long orderVersion = updateOrder(orderId, now);
+        if (!approve) Payments.advanceBill(jdbc, sessionId);
         jdbc.sql("""
                 INSERT INTO order_item_allergy_review (item_id, previous_version, resulting_version,
                     order_version, reviewer_id, decision, reason, reviewed_at)

@@ -1138,6 +1138,67 @@ class OrderingPostgresTest {
                 .path("id").asText();
     }
 
+    @Test
+    void settlesCashOnceWithImmutableReceiptAndKeepsReviewEligibilityAfterClosing() throws Exception {
+        String terminal = terminal(true);
+        String session = session(terminal, "DINE_IN", 201);
+        String prefix = "/sessions/" + session;
+        UUID menu = dish();
+        String order = submitNew(terminal, session, menu);
+        var draft = draft(session, menu);
+        var quote = json(send(terminal, "POST", "/order-quotes", draft, null), 200);
+        var balance = get(terminal, prefix + "/payable-balance", 200);
+        long version = balance.path("billVersion").asLong();
+        assertEquals(21025, balance.path("outstandingMinor").asLong());
+        var request = object().put("method", "CASH").put("expectedBillVersion", version);
+        var key = UUID.randomUUID();
+        problem(send(terminal, "POST", prefix + "/payments", request.deepCopy().put("method", "MPESA"), key),
+                422, "PAYMENT_METHOD_UNAVAILABLE");
+        var attempt = json(send(terminal, "POST", prefix + "/payments", request, key), 201);
+        assertEquals(attempt, json(send(terminal, "POST", prefix + "/payments", request, key), 200));
+        problem(send(terminal, "POST", prefix + "/payments", request, UUID.randomUUID()), 409, "PAYMENT_PENDING");
+        problem(send(terminal, "POST", "/orders", submitBody(draft, quote), UUID.randomUUID()), 409, "PAYMENT_PENDING");
+        String payment = attempt.path("id").asText();
+        String path = "/staff/payments/" + payment + "/confirm-cash";
+        var confirmation = object().put("expectedVersion", 1).put("expectedBillVersion", version);
+        assertEquals(403, send(STAFF_TOKEN, "POST", path, confirmation, null).statusCode());
+        problem(send(terminal(true), "GET", prefix + "/payments/" + payment, null, null), 404, "NOT_FOUND");
+        try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
+            managerLogin(manager);
+            String csrf = manager.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
+            var call = managerPost(path, csrf, confirmation);
+            var first = manager.sendAsync(call, HttpResponse.BodyHandlers.ofString());
+            var second = manager.sendAsync(call, HttpResponse.BodyHandlers.ofString());
+            var paid = json(first.get(10, TimeUnit.SECONDS), 200);
+            assertEquals(paid, json(second.get(10, TimeUnit.SECONDS), 200));
+            assertEquals("SUCCEEDED", paid.path("status").asText());
+            String receipt = paid.path("receiptId").asText();
+            var document = get(terminal, prefix + "/receipts/" + receipt, 200);
+            assertEquals(21025, document.path("amountMinor").asLong());
+            assertEquals(order, document.at("/lines/0/orderId").asText());
+            assertThrows(org.springframework.dao.DataAccessException.class, () -> db.sql("""
+                    UPDATE payment_receipt SET receipt='{}' WHERE id=CAST(:id AS uuid)
+                    """).param("id", receipt).update());
+            assertEquals(0, get(terminal, prefix + "/payable-balance", 200).path("outstandingMinor").asLong());
+            String close = "/admin/sessions/" + session + "/close";
+            var closeInput = object().put("expectedBillVersion", version + 1);
+            problem(manager.send(managerPost(close, csrf, closeInput), HttpResponse.BodyHandlers.ofString()), 409, "HANDOFF_REQUIRED");
+            String item = get(terminal, "/orders/" + order, 200).at("/lines/0/id").asText();
+            patch(item, "PREPARING", 1, 200);
+            patch(item, "READY", 2, 200);
+            json(send(STAFF_TOKEN, "POST", "/kitchen/orders/" + order + "/handoff", transition("SERVED", 3), null), 200);
+            assertEquals("CLOSED", json(manager.send(managerPost(close, csrf, closeInput), HttpResponse.BodyHandlers.ofString()), 200)
+                    .path("status").asText());
+            assertTrue(get(terminal, prefix + "/review", 200).path("eligible").asBoolean());
+            assertEquals(document, get(terminal, prefix + "/receipts/" + receipt, 200));
+        }
+    }
+
+    private static HttpRequest managerPost(String path, String csrf, JsonNode value) {
+        return request(path, null).header("X-CSRF-TOKEN", csrf).header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(value.toString())).build();
+    }
+
     private static JsonNode ticket(String order) throws Exception {
         for (JsonNode ticket : get(STAFF_TOKEN, "/kitchen/orders", 200).path("tickets")) {
             if (ticket.at("/order/id").asText().equals(order)) {

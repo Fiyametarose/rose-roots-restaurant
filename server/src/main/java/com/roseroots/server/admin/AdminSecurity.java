@@ -31,7 +31,7 @@ class AdminSecurity {
     @Order(10)
     @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
     SecurityFilterChain adminEndpoints(HttpSecurity http, ObjectProvider<StaffAccounts> accounts) throws Exception {
-        return http.securityMatcher(PREFIX + "/**")
+        return http.securityMatcher(PREFIX + "/**", "/api/v1/staff/payments/*/confirm-cash")
                 .authorizeHttpRequests(rules -> rules
                         .requestMatchers(HttpMethod.GET, CSRF).permitAll()
                         .requestMatchers(HttpMethod.POST, LOGIN).permitAll()
