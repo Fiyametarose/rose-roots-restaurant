@@ -97,6 +97,7 @@ public final class CustomerApplication extends Application {
         state.setLocale(settings.languages().getFirst());
         var content = new StackPane();
         var navigator = new Navigator(content);
+        var payments = backend == null ? null : new com.roseroots.customer.services.api.RestPaymentClient(backend);
         navigator.register(Route.WELCOME, () -> {
             var welcome = new WelcomeScreen(settings, state, mode -> {
                 var messages = new Messages(state.locale());
@@ -106,6 +107,8 @@ public final class CustomerApplication extends Application {
                 }
                 openSession(stage, content, navigator, state, mode, sessions, takeaway, switchingWithDraft);
             });
+            if (payments != null) welcome.enableReceiptRecovery(() ->
+                    new com.roseroots.customer.components.ReceiptRecoveryDialog(stage, state.locale(), payments).show());
             return welcome;
         });
         Runnable goHome = () -> navigator.show(Route.WELCOME);
@@ -122,7 +125,6 @@ public final class CustomerApplication extends Application {
         var tracking = backend == null ? OrderTrackingService.unavailable() : new RestOrderTracking(backend, orderExecutor);
         var confirmation = new OrderConfirmation(state, orders, Clock.systemUTC(), Platform::runLater);
         Runnable goOrders = () -> navigator.show(Route.ORDERS);
-        var payments = backend == null ? null : new com.roseroots.customer.services.api.RestPaymentClient(backend);
         var paymentJournal = backend == null ? null : com.roseroots.customer.state.PaymentCheckout.persistent(
                 address.base().toString());
         navigator.register(Route.ORDERS, () -> new OrdersScreen(settings, state, tracking, locale -> {

@@ -37,10 +37,16 @@ public final class PaymentCheckout {
         return recover(false);
     }
 
+    public UUID sessionId() { return session; }
+
     public CompletionStage<View> recover(boolean replayIfUnknown) {
         return service.balance(session).thenCompose(balance -> {
             requireSession(balance.sessionId());
             var entry = journal.load(session);
+            if (balance.settledAttempt() != null) {
+                return settledAttempt(service, session, balance).thenCompose(attempt -> describe(balance, attempt, entry,
+                        entry != null && attempt.id().equals(entry.attemptId()) ? entry.key() : null));
+            }
             if (entry != null && entry.attemptId() != null
                     && (balance.openAttempt() == null || balance.openAttempt().equals(entry.attemptId()))) {
                 return service.attempt(session, entry.attemptId()).thenCompose(attempt ->
@@ -65,7 +71,7 @@ public final class PaymentCheckout {
         if (previous != null && previous.attemptId() == null) return recover(true);
         return service.balance(session).thenCompose(current -> {
             requireSession(current.sessionId());
-            if (current.openAttempt() != null) return refresh();
+            if (current.openAttempt() != null || current.settledAttempt() != null) return refresh();
             if (current.billVersion() != reviewed.billVersion() || current.outstanding() != reviewed.outstanding()) {
                 return CompletableFuture.failedFuture(new Problem("BILL_VERSION_CONFLICT", false));
             }
@@ -121,13 +127,36 @@ public final class PaymentCheckout {
         if (attempt.status() != Payment.Status.SUCCEEDED) {
             return CompletableFuture.completedFuture(new View(balance, attempt, null, false));
         }
-        return CompletableFuture.completedFuture(attempt.receiptId())
-                .thenCompose(id -> service.receipt(session, id))
-                .handle((receipt, failure) -> {
-                    boolean valid = failure == null && receipt != null && receipt.id().equals(attempt.receiptId())
-                            && session.equals(receipt.sessionId()) && attempt.id().equals(receipt.paymentId())
-                            && receipt.amount() == attempt.amount();
-                    return new View(balance, attempt, valid ? receipt : null, !valid);
+        return verifiedReceipt(service, session, attempt)
+                .handle((receipt, failure) -> new View(balance, attempt, receipt, failure != null));
+    }
+
+    public static CompletionStage<Payment.Receipt> discoverReceipt(PaymentService service, UUID session) {
+        return service.balance(session).thenCompose(balance -> {
+            if (!session.equals(balance.sessionId())) throw new Problem("INVALID_RESPONSE", false);
+            if (balance.settledAttempt() == null) return CompletableFuture.completedFuture(null);
+            return settledAttempt(service, session, balance).thenCompose(attempt -> verifiedReceipt(service, session, attempt));
+        });
+    }
+
+    private static CompletionStage<Payment.Attempt> settledAttempt(PaymentService service, UUID session, Payment.Balance balance) {
+        return service.attempt(session, balance.settledAttempt()).thenApply(attempt -> {
+            if (!balance.settledAttempt().equals(attempt.id()) || !session.equals(attempt.sessionId())
+                    || attempt.status() != Payment.Status.SUCCEEDED || attempt.amount() != balance.settled()) {
+                throw new Problem("INVALID_RESPONSE", false);
+            }
+            return attempt;
+        });
+    }
+
+    private static CompletionStage<Payment.Receipt> verifiedReceipt(PaymentService service, UUID session, Payment.Attempt attempt) {
+        return CompletableFuture.completedFuture(attempt.receiptId()).thenCompose(id -> service.receipt(session, id))
+                .thenApply(receipt -> {
+                    if (receipt == null || !receipt.id().equals(attempt.receiptId()) || !session.equals(receipt.sessionId())
+                            || !attempt.id().equals(receipt.paymentId()) || receipt.amount() != attempt.amount()) {
+                        throw new Problem("INVALID_RESPONSE", false);
+                    }
+                    return receipt;
                 });
     }
 

@@ -17,10 +17,12 @@ final class OperationsDetails extends VBox {
     private final JsonObject detail;
     private final JsonObject order;
     private final String currency;
+    private final java.util.function.BiConsumer<String, String> recover;
 
-    OperationsDetails(JsonObject detail, Runnable scrollToTop) {
+    OperationsDetails(JsonObject detail, Runnable scrollToTop, java.util.function.BiConsumer<String, String> recover) {
         super(14);
         this.detail = detail;
+        this.recover = recover;
         order = object(detail, "order");
         currency = text(detail, "currency");
         var area = new VBox(orderDetails());
@@ -79,7 +81,7 @@ final class OperationsDetails extends VBox {
     private Node paymentDetails() {
         var paymentSummary = panel("Payment oversight", content(
                 entry("Order payment status", state(text(order, "paymentStatus"))),
-                label("Financial actions are unavailable. This view is read-only.", "muted")));
+                label("Review verified settlements and authorize receipt recovery.", "muted")));
         var linkedBill = object(detail, "sessionBill");
         var billContent = content(label("Combined session bill unavailable.", "muted"));
         if (linkedBill != null) {
@@ -108,6 +110,10 @@ final class OperationsDetails extends VBox {
             facts.getChildren().add(fields(entry("Receipt number", value(receipt, "number")),
                     entry("Receipt issued", timestamp(receipt, "issuedAt")),
                     entry("Receipt amount", amount(receipt, "amountMinor", currency))));
+            if ("SUCCESSFUL".equals(text(transaction, "status")) && "CASH".equals(text(transaction, "method"))) {
+                facts.getChildren().add(button("Authorize receipt recovery",
+                        () -> recover.accept(text(receipt, "number"), text(transaction, "sessionId"))));
+            }
         }
         facts.getStyleClass().add("operations-record");
         facts.setPrefWidth(315);

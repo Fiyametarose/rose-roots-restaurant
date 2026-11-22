@@ -173,6 +173,11 @@ final class AdminApi {
         return JsonParser.parseString(send(endpoint("orders/" + id).GET(), 200)).getAsJsonObject();
     }
 
+    void revokeReceiptRecovery(String grant) throws IOException, InterruptedException {
+        send(endpoint("receipt-recovery/" + grant + "/revoke").header("X-CSRF-TOKEN", csrf())
+                .POST(HttpRequest.BodyPublishers.noBody()), 204);
+    }
+
     void writeCatalog(String method, String path, JsonObject body) throws IOException, InterruptedException {
         var request = endpoint(path).header("X-CSRF-TOKEN", csrf())
                 .header("Content-Type", "application/json")

@@ -23,7 +23,8 @@ public final class RestPaymentClient implements PaymentService {
             return new Payment.Balance(session, amount(json, "billVersion", 1), payable, settled, outstanding,
                     json.getAsJsonArray("blockedReasons").asList().stream().map(value -> value.getAsString())
                             .collect(Collectors.toUnmodifiableSet()),
-                    optionalId(json, "openAttemptId"), json.getAsJsonArray("availableMethods").asList().stream()
+                    optionalId(json, "openAttemptId"), json.has("settledAttemptId") ? optionalId(json, "settledAttemptId") : null,
+                    json.getAsJsonArray("availableMethods").asList().stream()
                             .anyMatch(value -> "CASH".equals(value.getAsString())));
         });
     }
@@ -51,17 +52,41 @@ public final class RestPaymentClient implements PaymentService {
     }
 
     @Override public CompletionStage<Payment.Receipt> receipt(UUID session, UUID id) {
-        return rest.get(path(session) + "receipts/" + id).thenApply(json -> {
-            verify(json, session, true);
-            if (!id.equals(id(json, "id"))) throw invalid();
-            var lines = json.getAsJsonArray("lines").asList().stream().map(value -> {
-                var line = value.getAsJsonObject();
-                return new Payment.Line(id(line, "orderId"), id(line, "itemId"),
-                        SpringBootOrderService.price(line.getAsJsonObject("pricing")));
-            }).toList();
-            return new Payment.Receipt(id, session, id(json, "paymentId"), amount(json, "amountMinor", 0),
-                    Instant.parse(json.get("verifiedAt").getAsString()), lines);
+        return rest.get(path(session) + "receipts/" + id).thenApply(json -> readReceipt(json, session, id));
+    }
+
+    public CompletionStage<Payment.Receipt> redeem(String code, UUID key) {
+        return rest.call("receipt-recovery/redeem", recoveryInput(code, key), null, json -> {
+            var receipt = readReceipt(json.getAsJsonObject("receipt"), id(json, "sessionId"), id(json, "receiptId"));
+            if (!receipt.paymentId().equals(id(json, "paymentId")) || receipt.amount() != amount(json, "amountMinor", 1)) {
+                throw invalid();
+            }
+            return receipt;
         });
+    }
+
+    public CompletionStage<Boolean> completeRecovery(String code, UUID key) {
+        return rest.call("receipt-recovery/complete", recoveryInput(code, key), null,
+                json -> json.get("completed").getAsBoolean());
+    }
+
+    private static JsonObject recoveryInput(String code, UUID key) {
+        var body = new JsonObject();
+        body.addProperty("code", code);
+        body.addProperty("redemptionKey", key.toString());
+        return body;
+    }
+
+    private static Payment.Receipt readReceipt(JsonObject json, UUID session, UUID id) {
+        verify(json, session, true);
+        if (!id.equals(id(json, "id"))) throw invalid();
+        var lines = json.getAsJsonArray("lines").asList().stream().map(value -> {
+            var line = value.getAsJsonObject();
+            return new Payment.Line(id(line, "orderId"), id(line, "itemId"),
+                    SpringBootOrderService.price(line.getAsJsonObject("pricing")));
+        }).toList();
+        return new Payment.Receipt(id, session, id(json, "paymentId"), amount(json, "amountMinor", 0),
+                Instant.parse(json.get("verifiedAt").getAsString()), lines);
     }
 
     private static Payment.Attempt readAttempt(JsonObject json, UUID session, UUID expected) {

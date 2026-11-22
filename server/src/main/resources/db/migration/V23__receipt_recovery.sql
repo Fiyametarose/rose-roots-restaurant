@@ -1,0 +1,21 @@
+CREATE TABLE receipt_recovery_grant (
+    id uuid PRIMARY KEY,
+    receipt_id uuid NOT NULL REFERENCES payment_receipt(id),
+    restaurant_id uuid NOT NULL,
+    terminal_id uuid NOT NULL,
+    token_sha256 bytea NOT NULL UNIQUE CHECK (octet_length(token_sha256) = 32),
+    issued_by text NOT NULL,
+    issued_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL CHECK (expires_at > issued_at),
+    revoked_by text,
+    revoked_at timestamptz,
+    redeemed_by uuid REFERENCES ordering_credential(id),
+    redeemed_at timestamptz,
+    redemption_key uuid,
+    completed_at timestamptz,
+    FOREIGN KEY (restaurant_id, terminal_id) REFERENCES ordering_terminal(restaurant_id, id),
+    CHECK ((revoked_at IS NULL) = (revoked_by IS NULL)),
+    CHECK ((redeemed_at IS NULL) = (redeemed_by IS NULL)),
+    CHECK ((redeemed_at IS NULL) = (redemption_key IS NULL)),
+    CHECK (completed_at IS NULL OR redeemed_at IS NOT NULL)
+);

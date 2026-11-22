@@ -22,7 +22,46 @@ class PaymentController {
     private static final String JSON = MediaType.APPLICATION_JSON_VALUE;
     private final Payments payments;
 
-    PaymentController(Payments payments) { this.payments = payments; }
+    private final ReceiptRecovery recovery;
+
+    PaymentController(Payments payments, ReceiptRecovery recovery) {
+        this.payments = payments;
+        this.recovery = recovery;
+    }
+
+    @PostMapping(path = "/admin/receipts/{receipt}/recovery", consumes = JSON)
+    ResponseEntity<String> issue(@PathVariable("receipt") String receipt, Principal manager, HttpServletRequest request) {
+        requireSecure(request);
+        var input = fields(body(request), "sessionId", "terminalId");
+        return response(201, recovery.issue(id(receipt), id(text(input, "sessionId", 36)),
+                id(text(input, "terminalId", 36)), manager.getName()));
+    }
+
+    @PostMapping("/admin/receipt-recovery/{grant}/revoke")
+    ResponseEntity<String> revoke(@PathVariable("grant") String grant, Principal manager, HttpServletRequest request) {
+        requireSecure(request);
+        recovery.revoke(id(grant), manager.getName());
+        return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
+    }
+
+    @PostMapping(path = "/receipt-recovery/redeem", consumes = JSON)
+    ResponseEntity<String> redeem(@AuthenticationPrincipal Actor actor, HttpServletRequest request) {
+        requireSecure(request);
+        var input = fields(body(request), "code", "redemptionKey");
+        return response(200, recovery.redeem(actor, text(input, "code", 64), id(text(input, "redemptionKey", 36)), false));
+    }
+
+    @PostMapping(path = "/receipt-recovery/complete", consumes = JSON)
+    ResponseEntity<String> complete(@AuthenticationPrincipal Actor actor, HttpServletRequest request) {
+        requireSecure(request);
+        var input = fields(body(request), "code", "redemptionKey");
+        recovery.redeem(actor, text(input, "code", 64), id(text(input, "redemptionKey", 36)), true);
+        return response(200, object().put("completed", true));
+    }
+
+    private static void requireSecure(HttpServletRequest request) {
+        if (!request.isSecure()) throw new OrderingProblem(403, "FORBIDDEN", "Receipt recovery requires HTTPS.");
+    }
 
     @GetMapping("/sessions/{id}/payable-balance")
     ResponseEntity<String> balance(@AuthenticationPrincipal Actor actor, @PathVariable("id") String session) {

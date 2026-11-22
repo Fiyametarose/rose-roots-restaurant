@@ -36,6 +36,7 @@ public final class WelcomeScreen extends BorderPane {
     private final Label languageLabel = new Label();
     private final ServiceChoiceButton dineIn;
     private final ServiceChoiceButton takeaway;
+    private final javafx.scene.control.Button recovery = new javafx.scene.control.Button();
     private final Label fallback = new Label();
 
     public WelcomeScreen(RestaurantSettings settings, CustomerState state,
@@ -98,7 +99,9 @@ public final class WelcomeScreen extends BorderPane {
         languageHeading.setAlignment(Pos.CENTER);
         languageHeading.getStyleClass().add("welcome-language-heading");
         var form = new VBox(new BrandHeader(settings), heading, divider, tagline,
-                serviceOptions, languageHeading, languages, fallback);
+                serviceOptions, languageHeading, languages, fallback, recovery);
+        recovery.managedProperty().bind(recovery.visibleProperty());
+        recovery.setVisible(false);
         form.setAlignment(Pos.CENTER);
         form.getStyleClass().add("welcome-content");
         settings.observeWhileAttached(this, () -> tagline.setText(settings.tagline(state.locale())));
@@ -122,6 +125,12 @@ public final class WelcomeScreen extends BorderPane {
         setCenter(new StackPane(scroll, upper, lower));
     }
 
+    public void enableReceiptRecovery(Runnable open) {
+        recovery.setVisible(true);
+        recovery.getStyleClass().add("secondary-button");
+        recovery.setOnAction(event -> open.run());
+    }
+
     private static void cropHero(ImageView hero) {
         if (hero.getFitWidth() <= 0 || hero.getFitHeight() <= 0) {
             return;
@@ -137,6 +146,7 @@ public final class WelcomeScreen extends BorderPane {
     private void updateCopy(Locale locale) {
         var messages = new Messages(locale);
         messages.applyDirection(this);
+        recovery.setText(messages.text("recovery.title"));
         getStyleClass().remove("ethiopic");
         if (messages.language().equals("am")) {
             getStyleClass().add("ethiopic");

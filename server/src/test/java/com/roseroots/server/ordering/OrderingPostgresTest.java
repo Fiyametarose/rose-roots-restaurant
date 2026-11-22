@@ -1623,6 +1623,8 @@ class OrderingPostgresTest {
                     .path("status").asText());
             assertTrue(get(terminal, prefix + "/review", 200).path("eligible").asBoolean());
             assertEquals(document, get(terminal, prefix + "/receipts/" + receipt, 200));
+            assertEquals(payment, get(terminal, prefix + "/payable-balance", 200).path("settledAttemptId").asText());
+            verifyReceiptRecovery(manager, csrf, session, receipt, document);
             var detail = json(manager.send(request("/admin/orders/" + order, null).GET().build(),
                     HttpResponse.BodyHandlers.ofString()), 200);
             assertEquals("SUCCESSFUL", detail.at("/order/paymentStatus").asText());
@@ -1633,6 +1635,60 @@ class OrderingPostgresTest {
             assertEquals(21025, page.at("/summary/confirmedSalesMinor").asLong());
             assertEquals(0, page.at("/summary/outstandingMinor").asLong());
         }
+    }
+
+    private void verifyReceiptRecovery(HttpClient manager, String csrf, String session, String receipt,
+                                       JsonNode document) throws Exception {
+        String replacement = terminal(true);
+        String unrelated = terminal(true);
+        UUID receivingId = db.sql("SELECT terminal_id FROM ordering_credential WHERE token_sha256=:hash")
+                .param("hash", digest(replacement)).query(UUID.class).single();
+        String issue = "/admin/receipts/" + receipt + "/recovery";
+        var input = object().put("sessionId", session).put("terminalId", receivingId.toString());
+        var grant = json(manager.send(managerPost(issue, csrf, input), HttpResponse.BodyHandlers.ofString()), 201);
+        problem(manager.send(managerPost(issue, csrf, input.deepCopy().put("sessionId", UUID.randomUUID().toString())),
+                HttpResponse.BodyHandlers.ofString()), 404, "NOT_FOUND");
+        var redeem = object().put("code", grant.path("code").asText()).put("redemptionKey", UUID.randomUUID().toString());
+        String route = "/receipt-recovery/redeem";
+        problem(send(replacement, "GET", "/sessions/" + session + "/payable-balance", null, null), 404, "NOT_FOUND");
+        problem(send(unrelated, "POST", route, redeem, null), 404, "NOT_FOUND");
+        assertEquals(403, send(STAFF_TOKEN, "POST", route, redeem, null).statusCode());
+        problem(send(replacement, "POST", route, redeem.deepCopy().put("code", token()), null), 404, "NOT_FOUND");
+        assertEquals(document, json(send(replacement, "POST", route, redeem, null), 200).path("receipt"));
+        // A lost response can be retried with the same request key before acknowledgement.
+        assertEquals(document, json(send(replacement, "POST", route, redeem, null), 200).path("receipt"));
+        problem(send(replacement, "POST", route, redeem.deepCopy().put("redemptionKey", UUID.randomUUID().toString()),
+                null), 404, "NOT_FOUND");
+        assertTrue(json(send(replacement, "POST", "/receipt-recovery/complete", redeem, null), 200)
+                .path("completed").asBoolean());
+        problem(send(replacement, "POST", route, redeem, null), 404, "NOT_FOUND");
+        problem(send(replacement, "GET", "/sessions/" + session + "/receipts/" + receipt, null, null), 404, "NOT_FOUND");
+
+        var revoked = json(manager.send(managerPost(issue, csrf, input), HttpResponse.BodyHandlers.ofString()), 201);
+        assertEquals(204, manager.send(managerPost("/admin/receipt-recovery/" + revoked.path("grantId").asText()
+                + "/revoke", csrf, object()), HttpResponse.BodyHandlers.discarding()).statusCode());
+        problem(send(replacement, "POST", route, redeem.deepCopy().put("code", revoked.path("code").asText()), null),
+                404, "NOT_FOUND");
+        var expired = json(manager.send(managerPost(issue, csrf, input), HttpResponse.BodyHandlers.ofString()), 201);
+        db.sql("""
+                UPDATE receipt_recovery_grant SET issued_at=now()-interval '6 minutes',expires_at=now()-interval '1 minute'
+                WHERE id=:id
+                """).param("id", UUID.fromString(expired.path("grantId").asText())).update();
+        problem(send(replacement, "POST", route, redeem.deepCopy().put("code", expired.path("code").asText()), null),
+                404, "NOT_FOUND");
+        assertEquals(1, db.sql("SELECT count(*) FROM payment_receipt WHERE session_id=:session")
+                .param("session", UUID.fromString(session)).query(Integer.class).single());
+        assertEquals(1, db.sql("SELECT count(*) FROM payment_attempt WHERE session_id=:session")
+                .param("session", UUID.fromString(session)).query(Integer.class).single());
+        assertEquals(1, db.sql("""
+                SELECT count(*) FROM receipt_recovery_grant
+                WHERE id=:id AND redeemed_by IS NOT NULL AND completed_at IS NOT NULL AND issued_by <> ''
+                """).param("id", UUID.fromString(grant.path("grantId").asText())).query(Integer.class).single());
+        var live = json(manager.send(managerPost(issue, csrf, input), HttpResponse.BodyHandlers.ofString()), 201);
+        db.sql("UPDATE ordering_credential SET revoked_at=now() WHERE token_sha256=:hash")
+                .param("hash", digest(replacement)).update();
+        problem(send(replacement, "POST", route, redeem.deepCopy().put("code", live.path("code").asText()), null),
+                401, "UNAUTHENTICATED");
     }
 
     @Test

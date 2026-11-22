@@ -82,6 +82,17 @@ class PaymentCheckoutTest {
         assertNull(result.receipt());
     }
 
+    @Test void discoversClosedVisitReceiptWithoutJournalAndWithoutStartingAnotherAttempt() {
+        get(checkout.start(backend.balanceValue()));
+        journal.save(backend.session, null);
+        backend.status = Payment.Status.SUCCEEDED;
+        backend.discoverSettlement = true;
+        var view = get(checkout.refresh());
+        assertEquals(backend.receiptId, view.receipt().id());
+        assertEquals(1, backend.starts);
+        assertFalse(view.balance().canStart());
+    }
+
     @Test void failedStatusAllowsReviewAndCashMustBeAvailableAndUnblocked() {
         assertFalse(new Payment.Balance(backend.session, 1, 900, 0, 900, Set.of(), null, false).canStart());
         assertFalse(new Payment.Balance(backend.session, 1, 900, 0, 900, Set.of("CHEF_DECISION_PENDING"), null, true).canStart());
@@ -118,12 +129,15 @@ class PaymentCheckoutTest {
         private boolean loseStart;
         private boolean requested;
         private boolean wrongReceiptSession;
+        private boolean discoverSettlement;
 
         private Payment.Balance balanceValue() {
             boolean paid = status == Payment.Status.SUCCEEDED;
             boolean pending = status == Payment.Status.PENDING;
             return new Payment.Balance(session, version, 900, paid ? 900 : 0, paid ? 0 : 900,
-                    paid ? Set.of("ALREADY_SETTLED") : pending ? Set.of("PAYMENT_PENDING") : Set.of(), pending ? id : null, true);
+                    paid && discoverSettlement ? Set.of("ALREADY_SETTLED", "SESSION_NOT_OPEN")
+                            : paid ? Set.of("ALREADY_SETTLED") : pending ? Set.of("PAYMENT_PENDING") : Set.of(),
+                    pending ? id : null, paid && discoverSettlement ? id : null, true);
         }
         private Payment.Attempt attemptValue() {
             return new Payment.Attempt(id, session, status, version, requested ? 2 : 1, 900, requested,

@@ -43,6 +43,12 @@ class Payments {
                 .put("payableMinor", facts.payable()).put("settledMinor", facts.paid())
                 .put("outstandingMinor", facts.payable() - facts.paid())
                 .put("openAttemptId", facts.pending() == null ? null : facts.pending().toString());
+        var settled = jdbc.sql("""
+                SELECT p.id FROM payment_attempt p JOIN payment_receipt r
+                  ON r.payment_id=p.id AND r.session_id=p.session_id
+                WHERE p.session_id=:session AND p.status='SUCCEEDED' AND p.method='CASH'
+                """).param("session", sessionId).query(UUID.class).optional();
+        result.put("settledAttemptId", settled.map(UUID::toString).orElse(null));
         result.set("orders", orders(sessionId));
         result.set("blockedReasons", blocked);
         result.putArray("availableMethods").add("CASH");

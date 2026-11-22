@@ -11,7 +11,11 @@ public final class Payment {
     public enum Status { PENDING, SUCCEEDED, FAILED, CANCELLED }
 
     public record Balance(UUID sessionId, long billVersion, long payable, long settled, long outstanding,
-                          Set<String> blocked, UUID openAttempt, boolean cashAvailable) {
+                          Set<String> blocked, UUID openAttempt, UUID settledAttempt, boolean cashAvailable) {
+        public Balance(UUID sessionId, long billVersion, long payable, long settled, long outstanding,
+                       Set<String> blocked, UUID openAttempt, boolean cashAvailable) {
+            this(sessionId, billVersion, payable, settled, outstanding, blocked, openAttempt, null, cashAvailable);
+        }
         public Balance { blocked = Set.copyOf(blocked); }
         public boolean canStart() {
             return cashAvailable && outstanding > 0 && blocked.isEmpty() && openAttempt == null;

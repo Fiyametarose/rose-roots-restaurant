@@ -216,7 +216,8 @@ final class OperationsWorkspace extends VBox {
                 body.getChildren().setAll(label(explain(failure), "feedback"),
                         button("Retry details", () -> openOrder(selected)));
             } else {
-                body.getChildren().setAll(new OperationsDetails(detail, scrollToTop));
+                body.getChildren().setAll(new OperationsDetails(detail, scrollToTop, (receipt, session) ->
+                        new ReceiptRecoveryWorkspace(getScene().getWindow(), api, receipt, session).show()));
             }
         });
     }

@@ -24,6 +24,7 @@ import javafx.scene.control.CheckBox;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.TextField;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Window;
@@ -82,7 +83,13 @@ public final class PaymentDialog extends Dialog<Void> {
         cancel = CustomerShell.action(messages.text("pay.cancel"), false, () -> perform(() -> checkout.cancel(current.attempt()), false));
         cancel.setId("payment-cancel");
         var actions = new FlowPane(8, 8, start, cancel, retry);
+        var visit = new TextField(checkout.sessionId().toString());
+        visit.setEditable(false);
+        visit.setNodeOrientation(javafx.geometry.NodeOrientation.LEFT_TO_RIGHT);
+        var visitLabel = label("recovery.visit", "catalog-muted");
+        visitLabel.setLabelFor(visit);
         var body = new VBox(10, title, FoodCard.label(context, "catalog-muted"), balance, status, notice,
+                visitLabel, visit,
                 cash, actions, receipt);
         body.getStyleClass().add("assistance-body");
         var scroll = new ScrollPane(body);
@@ -166,9 +173,13 @@ public final class PaymentDialog extends Dialog<Void> {
     }
 
     private void renderReceipt(Payment.Receipt value) {
+        renderReceipt(receipt, value, messages, locale);
+    }
+
+    static void renderReceipt(VBox receipt, Payment.Receipt value, Messages messages, Locale locale) {
         receipt.getChildren().clear();
         if (value == null) return;
-        var title = label("pay.receipt", "dish-section-heading");
+        var title = FoodCard.label(messages.text("pay.receipt"), "dish-section-heading");
         title.setId("verified-receipt");
         receipt.getChildren().addAll(title,
                 FoodCard.label(value.id().toString(), "catalog-muted"),
@@ -178,13 +189,13 @@ public final class PaymentDialog extends Dialog<Void> {
         for (var line : value.lines()) {
             var price = line.price();
             receipt.getChildren().add(FoodCard.label(numbers.format(price.quantity()) + " × " + price.name()
-                    + "   " + money(price.extendedMinor()), "dish-description"));
+                    + "   " + money(price.extendedMinor(), locale), "dish-description"));
             for (var option : price.options()) {
-                receipt.getChildren().add(FoodCard.label(option.name() + "   " + money(option.unitAdjustmentMinor()),
+                receipt.getChildren().add(FoodCard.label(option.name() + "   " + money(option.unitAdjustmentMinor(), locale),
                         "catalog-muted"));
             }
         }
-        receipt.getChildren().add(FoodCard.label(messages.text("pay.settled") + " " + money(value.amount()), "dish-section-heading"));
+        receipt.getChildren().add(FoodCard.label(messages.text("pay.settled") + " " + money(value.amount(), locale), "dish-section-heading"));
     }
 
     private void updateActions() {
@@ -205,6 +216,7 @@ public final class PaymentDialog extends Dialog<Void> {
         node.setManaged(visible);
     }
 
-    private String money(long minor) { return MenuText.price(BigDecimal.valueOf(minor, 2), Currency.getInstance("KES"), locale); }
+    private String money(long minor) { return money(minor, locale); }
+    private static String money(long minor, Locale locale) { return MenuText.price(BigDecimal.valueOf(minor, 2), Currency.getInstance("KES"), locale); }
     private Label label(String key, String style) { return FoodCard.label(messages.text(key), style); }
 }
