@@ -60,6 +60,12 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
     private ScheduledFuture<?> nextPoll;
     private int readFailures;
     private volatile PendingAdvance pendingAdvance;
+    private volatile StaffSession staff;
+
+    public record StaffSession(UUID id, String username, String role, boolean allergyReviewer,
+                               java.time.Instant expiresAt, String token) {
+        @Override public String toString() { return username; }
+    }
 
     private record PendingAdvance(long ticketId, Item item, Boolean approval, String reason) {}
 
@@ -95,8 +101,70 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
     @Override public String message() { return message; }
     @Override public boolean busy() { return busy && !quietRead; }
     public boolean workstation() { return credentials instanceof WorkstationCredential; }
+    public StaffSession signedInStaff() { return staff; }
     @Override public boolean writesAvailable() {
-        return !workstation() && !stopped && status == Status.CONNECTED && (!busy || quietRead && pendingAdvance == null);
+        return (!workstation() || staff != null) && !stopped && status == Status.CONNECTED
+                && (!busy || quietRead && pendingAdvance == null);
+    }
+
+    public CompletableFuture<StaffSession> signIn(String username, String password) {
+        var body = new JsonObject();
+        body.addProperty("username", username);
+        body.addProperty("password", password);
+        return exchange("/api/v1/kitchen/staff-session", body, "POST", null, 201).thenApply(raw -> {
+            var data = KitchenTicketJson.object(raw);
+            var session = new StaffSession(UUID.fromString(data.get("id").getAsString()), data.get("username").getAsString(),
+                    data.get("role").getAsString(), data.get("allergyReviewer").getAsBoolean(),
+                    java.time.Instant.parse(data.get("expiresAt").getAsString()), data.get("sessionToken").getAsString());
+            synchronized (this) {
+                if (stopped) return session;
+                staff = session;
+                long delay = Math.max(0, java.time.Duration.between(java.time.Instant.now(), session.expiresAt()).toMillis());
+                scheduler.schedule(() -> lockIfCurrent(session), delay, TimeUnit.MILLISECONDS);
+                notifyListeners();
+            }
+            return session;
+        });
+    }
+
+    public synchronized void lockStaff() {
+        lockIfCurrent(staff);
+    }
+
+    private synchronized void lockIfCurrent(StaffSession session) {
+        if (session == null || staff != session) return;
+        staff = null;
+        pendingAdvance = null;
+        exchange("/api/v1/kitchen/staff-session", null, "DELETE", session, 204);
+        notifyListeners();
+    }
+
+    public void ownership(Item item, String action, UUID chefId, String reason) {
+        var session = staff;
+        if (session == null) return;
+        var body = new JsonObject();
+        body.addProperty("action", action);
+        body.addProperty("expectedVersion", item.server().version());
+        if (chefId != null) {
+            body.addProperty("chefId", chefId.toString());
+            body.addProperty("reason", reason);
+        }
+        exchange("/api/v1/kitchen/items/" + item.server().id() + "/ownership", body, "POST", session, 200)
+                .whenComplete((response, error) -> {
+                    synchronized (this) {
+                        if (stopped) return;
+                        message = error == null ? "Item ownership saved." : failure(error).getMessage();
+                        if (!busy) read(true);
+                        notifyListeners();
+                    }
+                });
+    }
+
+    public CompletableFuture<JsonObject> preparationDetails(Item item, boolean candidates) {
+        var session = staff;
+        return exchange("/api/v1/kitchen/items/" + item.server().id()
+                        + (candidates ? "/eligible-chefs" : "/preparation-history"), null, "GET", session, 200)
+                .thenApply(KitchenTicketJson::object);
     }
     @Override public List<Ticket> activeTickets() { return tickets; }
 
@@ -132,6 +200,7 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
 
     @Override
     public synchronized void stop() {
+        lockStaff();
         if (stopped) {
             return;
         }
@@ -466,6 +535,10 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
     }
 
     private void readFailed(Failure failure, String prefix) {
+        if (failure.personal && failure.accessDenied()) {
+            finish(Status.CONNECTED, prefix + failure.getMessage());
+            return;
+        }
         readFailures = Math.min(readFailures + 1, 20);
         if (failure.accessDenied()) {
             tickets = List.of();
@@ -600,11 +673,18 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
     }
 
     private CompletableFuture<String> send(String path, JsonObject body, String method) {
+        boolean personalRead = path.startsWith("/api/v1/kitchen/history?") || path.startsWith("/api/v1/kitchen/reviews?");
+        var session = personalRead || body != null && !path.startsWith("/api/v1/kitchen/assistance") ? staff : null;
+        return exchange(path, body, body == null ? "GET" : method, session, 200);
+    }
+
+    private CompletableFuture<String> exchange(String path, JsonObject body, String method, StaffSession personal,
+                                               int expectedStatus) {
         if (stopped) {
             return CompletableFuture.failedFuture(new Failure(0, ""));
         }
         try {
-            String token = credentials.bearerToken().orElse("");
+            String token = personal == null ? credentials.bearerToken().orElse("") : personal.token();
             if (token.isBlank() || !token.matches("[A-Za-z0-9._~+/\\-]+=*")) {
                 return CompletableFuture.failedFuture(new Failure(401, ""));
             }
@@ -614,20 +694,23 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
             if (body != null) {
                 builder.header("Content-Type", "application/json")
                         .method(method, HttpRequest.BodyPublishers.ofString(body.toString()));
+            } else {
+                builder.method(method, HttpRequest.BodyPublishers.noBody());
             }
             return client.sendAsync(builder.build(), HttpResponse.BodyHandlers.ofString())
                     .handle((response, error) -> {
                         if (error != null) {
                             throw new Failure(0, "");
                         }
-                        if (response.statusCode() != 200) {
+                        if (response.statusCode() != expectedStatus) {
+                            if (response.statusCode() == 401 && personal != null && expectedStatus != 204) lockIfCurrent(personal);
                             String code = "";
                             try {
                                 code = KitchenTicketJson.object(response.body()).get("code").getAsString();
                             } catch (RuntimeException ignored) {
                                 // HTTP status remains useful when a Problem body is absent.
                             }
-                            throw new Failure(response.statusCode(), code);
+                            throw new Failure(response.statusCode(), code, personal != null);
                         }
                         return response.body();
                     });
@@ -702,8 +785,13 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
 
     private static final class Failure extends RuntimeException {
         private final int httpStatus;
+        private final boolean personal;
 
         private Failure(int status, String code) {
+            this(status, code, false);
+        }
+
+        private Failure(int status, String code, boolean personal) {
             super(switch (status) {
                 case -2 -> "The server returned older ticket versions. Keeping the last synchronized tickets.";
                 case -1 -> "The server returned an unexpected ticket response.";
@@ -714,12 +802,15 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
                     case "REVIEW_REQUIRED" -> "Allergy review is required before preparation.";
                     case "INVALID_TRANSITION" -> "The server rejected the preparation transition.";
                     case "VERSION_CONFLICT" -> "The ticket version changed.";
+                    case "ITEM_ALREADY_CLAIMED" -> "Another Chef already claimed this item.";
+                    case "CHEF_NOT_AVAILABLE" -> "The Chef must be available and assigned to this station.";
                     default -> "The server rejected the current item state.";
                 };
                 case 429 -> "The server is rate limiting requests.";
                 default -> "The server rejected or could not complete the request (HTTP " + status + ").";
             });
             httpStatus = status;
+            this.personal = personal;
         }
 
         boolean offline() { return httpStatus == 0; }

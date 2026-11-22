@@ -41,9 +41,10 @@ final class KitchenTicketJson {
         UUID id = id(order, "id");
         Status status = Status.valueOf(text(order, "status"));
         var stationCodes = wrapper.getAsJsonObject("stationCodes");
+        var itemChefs = wrapper.getAsJsonObject("itemChefs");
         var items = new ArrayList<Item>();
         for (JsonElement line : order.getAsJsonArray("lines")) {
-            items.add(item(line.getAsJsonObject(), stationCodes));
+            items.add(item(line.getAsJsonObject(), stationCodes, itemChefs));
         }
         if (items.stream().map(line -> line.server().id()).distinct().count() != items.size()) {
             throw new IllegalArgumentException("Duplicate item");
@@ -67,8 +68,9 @@ final class KitchenTicketJson {
                 null, List.of(), items, completion, server);
     }
 
-    private Item item(JsonObject line, JsonObject stationCodes) {
+    private Item item(JsonObject line, JsonObject stationCodes, JsonObject itemChefs) {
         UUID id = id(line, "id");
+        var chef = itemChefs == null ? null : itemChefs.getAsJsonObject(id.toString());
         var station = stationCodes == null || !stationCodes.has(id.toString()) ? null
                 : Ticket.Station.valueOf(text(stationCodes, id.toString()));
         JsonObject pricing = line.getAsJsonObject("pricing");
@@ -92,7 +94,8 @@ final class KitchenTicketJson {
         return new Item(handle.applyAsLong(id), text(pricing, "name"), quantity, station, options,
                 text(line, "preparationInstructions"), allergens, arrayText(risk, "crossContactMatches"),
                 Status.valueOf(text(line, "preparationStatus")),
-                new ServerItem(id, version(line), reviewStatus, bool(risk, "unresolved")));
+                new ServerItem(id, version(line), reviewStatus, bool(risk, "unresolved"),
+                        chef == null ? null : id(chef, "id"), chef == null ? null : text(chef, "username")));
     }
 
     private static String declaration(JsonObject declaration) {

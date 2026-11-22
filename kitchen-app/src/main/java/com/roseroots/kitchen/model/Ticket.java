@@ -24,7 +24,11 @@ public record Ticket(long id, Type type, String destination, OffsetDateTime orde
     public record ServerOrder(UUID id, UUID sessionId, long version, Status status, boolean rush, boolean delayed,
                               String visitAllergy) {}
 
-    public record ServerItem(UUID id, long version, String allergyReviewStatus, boolean unresolvedRisk) {
+    public record ServerItem(UUID id, long version, String allergyReviewStatus, boolean unresolvedRisk, UUID chefId,
+                             String chefName) {
+        public ServerItem(UUID id, long version, String allergyReviewStatus, boolean unresolvedRisk) {
+            this(id, version, allergyReviewStatus, unresolvedRisk, null, null);
+        }
         public boolean cleared() {
             return !unresolvedRisk && ("NOT_REQUIRED".equals(allergyReviewStatus)
                     || "APPROVED_FOR_PREPARATION".equals(allergyReviewStatus));

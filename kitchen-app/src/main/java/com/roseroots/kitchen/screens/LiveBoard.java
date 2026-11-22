@@ -173,7 +173,7 @@ public final class LiveBoard extends VBox {
                 TicketCard card = new TicketCard(entry, now, service.local() ? expected -> {
                     service.advance(entry.ticket().id(), entry.station(), expected);
                     redraw();
-                } : null, service.writesAvailable() ? item -> {
+                } : null, service.local() && service.writesAvailable() ? item -> {
                     service.advanceItem(entry.ticket().id(), item);
                     if (service.local()) {
                         redraw();

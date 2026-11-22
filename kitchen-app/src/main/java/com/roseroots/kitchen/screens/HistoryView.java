@@ -142,7 +142,7 @@ public final class HistoryView extends VBox {
         });
     }
 
-    private static VBox card(Ticket ticket) {
+    private VBox card(Ticket ticket) {
         var completion = ticket.completion();
         String orderType = ticket.type() == Type.DINE_IN ? "Dine-in" : "Takeaway";
         String items = ticket.items().stream().map(item -> item.quantity() + " × " + item.name())
@@ -159,6 +159,14 @@ public final class HistoryView extends VBox {
                 label(text(completion.status()), badge));
         VBox card = new VBox(4, headline, label(items, "item-name"),
                 label("Ordered " + TIME.format(ticket.orderedAt()) + " · " + reached, "metadata"));
+        if (service instanceof com.roseroots.kitchen.service.http.SpringBootKitchenService remote
+                && remote.signedInStaff() != null) {
+            for (var item : ticket.items()) {
+                var history = new Button("Preparation history · " + item.name());
+                history.setOnAction(event -> OrderDetails.showHistory(remote, item, this));
+                card.getChildren().add(history);
+            }
+        }
         card.getStyleClass().addAll("ticket", "history-card");
         return card;
     }

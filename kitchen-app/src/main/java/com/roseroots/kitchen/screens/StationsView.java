@@ -137,7 +137,7 @@ public final class StationsView extends VBox {
         VBox card = new VBox(5, heading, badges);
         card.getStyleClass().addAll("ticket", "station-card");
         for (var item : entry.items()) {
-            card.getChildren().add(TicketCard.itemRow(item, service.writesAvailable() ? selected -> {
+            card.getChildren().add(TicketCard.itemRow(item, service.local() && service.writesAvailable() ? selected -> {
                 service.advanceItem(ticket.id(), selected);
                 refresh();
             } : null));

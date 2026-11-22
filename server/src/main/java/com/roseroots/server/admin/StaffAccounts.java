@@ -27,7 +27,7 @@ class StaffAccounts {
     enum Role { CHEF, SUPERVISOR, MANAGER }
     record Account(UUID id, String username, Role role, boolean enabled, boolean allergyReviewer, long version) {}
     record Create(String username, Role role, Boolean allergyReviewer, String password) {}
-    record Update(Boolean enabled, Boolean allergyReviewer, long expectedVersion) {}
+    record Update(Boolean enabled, Boolean allergyReviewer, long expectedVersion, String kitchenPassword) {}
     record Created(Account account, String bearerToken) {}
 
     private final JdbcClient jdbc;
@@ -115,6 +115,24 @@ class StaffAccounts {
         }
         if (input.allergyReviewer() && current.role() != Role.CHEF || !input.enabled() && current.username().equals(actor)) {
             throw invalid("Only Chefs may review allergies and Managers cannot disable their own account.");
+        }
+        if (input.kitchenPassword() != null) {
+            String password = input.kitchenPassword();
+            if (current.role() == Role.MANAGER || password.length() < 12 || password.indexOf(0) >= 0
+                    || password.getBytes(StandardCharsets.UTF_8).length > 72) {
+                throw invalid("Use a Kitchen password of at least 12 characters and at most 72 UTF-8 bytes.");
+            }
+            byte[] unused = new byte[32];
+            random.nextBytes(unused);
+            jdbc.sql("""
+                    UPDATE ordering_credential SET token_sha256 = :unused, expires_at = 'infinity'
+                    WHERE id = (SELECT credential_id FROM staff_account WHERE id = :id)
+                    """).param("unused", unused).param("id", id).update();
+            jdbc.sql("UPDATE staff_account SET kitchen_password_hash = :hash WHERE id = :id")
+                    .param("hash", encoder.encode(password)).param("id", id).update();
+        }
+        if (!input.enabled() || input.kitchenPassword() != null) {
+            jdbc.sql("DELETE FROM kitchen_staff_session WHERE staff_id = :id").param("id", id).update();
         }
         var updated = jdbc.sql("""
                 UPDATE staff_account SET enabled = :enabled, allergy_reviewer = :allergy, version = version + 1

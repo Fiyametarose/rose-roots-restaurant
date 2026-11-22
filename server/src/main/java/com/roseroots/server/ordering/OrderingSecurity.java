@@ -31,7 +31,12 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 class OrderingSecurity {
     record Actor(UUID credentialId, UUID restaurantId, UUID terminalId, String scope, boolean allergyReviewer,
-                 boolean prioritySupervisor) {}
+                 boolean prioritySupervisor, UUID staffId, String staffRole, boolean personalSession) {
+        Actor(UUID credentialId, UUID restaurantId, UUID terminalId, String scope, boolean allergyReviewer,
+              boolean prioritySupervisor) {
+            this(credentialId, restaurantId, terminalId, scope, allergyReviewer, prioritySupervisor, null, null, false);
+        }
+    }
 
     @Bean
     @Order(20)
@@ -39,6 +44,13 @@ class OrderingSecurity {
         return http.securityMatcher("/api/v1/device", "/api/v1/sessions", "/api/v1/sessions/**",
                         "/api/v1/order-quotes", "/api/v1/wait-estimates", "/api/v1/orders", "/api/v1/orders/**", "/api/v1/assistance", "/api/v1/kitchen/**")
                 .authorizeHttpRequests(rules -> rules
+                        .requestMatchers(HttpMethod.POST, "/api/v1/kitchen/staff-session")
+                        .hasAnyAuthority("KITCHEN", "KITCHEN_WORKSTATION")
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/kitchen/staff-session").hasAuthority("PERSONAL_SESSION")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/kitchen/items/{id}/status").hasAuthority("CHEF")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/kitchen/items/{id}/ownership")
+                        .hasAnyAuthority("CHEF", "PERSONAL_SUPERVISOR")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/kitchen/items/{id}/eligible-chefs").hasAuthority("PERSONAL_SUPERVISOR")
                         .requestMatchers("/api/v1/kitchen/items/{id}/allergy-review").hasAuthority("ALLERGY_REVIEW")
                         .requestMatchers("/api/v1/kitchen/orders/{id}/rush", "/api/v1/kitchen/orders/{id}/delayed")
                         .hasAuthority("MANAGE_PRIORITY")
@@ -86,10 +98,24 @@ class OrderingSecurity {
                 String token = header.substring(7);
                 if (token.matches("[A-Za-z0-9_-]{43,128}")) {
                     try {
-                        jdbc.sql("""
+                        boolean personal = token.matches("ks_[A-Za-z0-9_-]{43}");
+                        var query = personal ? jdbc.sql("""
+                                SELECT c.id, c.restaurant_id, c.terminal_id, c.scope, s.allergy_reviewer,
+                                    s.staff_role = 'SUPERVISOR' AS priority_supervisor, s.id AS staff_id, s.staff_role
+                                FROM kitchen_staff_session k JOIN staff_account s ON s.id = k.staff_id
+                                JOIN ordering_credential c ON c.id = s.credential_id
+                                JOIN ordering_credential entry ON entry.id = k.entry_credential_id
+                                WHERE k.token_sha256 = :hash AND :secure AND k.expires_at > now()
+                                    AND s.enabled AND c.scope = 'KITCHEN' AND c.revoked_at IS NULL AND c.expires_at > now()
+                                    AND entry.restaurant_id = c.restaurant_id AND entry.revoked_at IS NULL
+                                    AND entry.expires_at > now()
+                                    AND NOT EXISTS (SELECT 1 FROM staff_account disabled
+                                        WHERE disabled.credential_id = entry.id AND NOT disabled.enabled)
+                                """) : jdbc.sql("""
                                 SELECT c.id, c.restaurant_id, c.terminal_id, c.scope,
                                     COALESCE(s.allergy_reviewer, c.allergy_reviewer) AS allergy_reviewer,
-                                    COALESCE(s.staff_role = 'SUPERVISOR', false) AS priority_supervisor
+                                    COALESCE(s.staff_role = 'SUPERVISOR', false) AS priority_supervisor,
+                                    s.id AS staff_id, s.staff_role
                                 FROM ordering_credential c LEFT JOIN staff_account s ON s.credential_id = c.id
                                 WHERE c.token_sha256 = :hash AND c.revoked_at IS NULL AND c.expires_at > now()
                                     AND COALESCE(s.enabled, true)
@@ -98,12 +124,13 @@ class OrderingSecurity {
                                         SELECT 1 FROM kitchen_workstation w WHERE w.credential_id = c.id)))
                                     AND (c.scope <> 'TERMINAL' OR EXISTS(SELECT 1 FROM ordering_terminal t
                                         WHERE t.id=c.terminal_id AND t.enabled))
-                                """).param("hash", OrderingJson.digest(token)).param("secure", request.isSecure())
-                                .param("workstationToken", token.matches("ws_[A-Za-z0-9_-]{43}"))
+                                """).param("workstationToken", token.matches("ws_[A-Za-z0-9_-]{43}"));
+                        query.param("hash", OrderingJson.digest(token)).param("secure", request.isSecure())
                                 .query((row, index) -> new Actor(row.getObject("id", UUID.class),
                                         row.getObject("restaurant_id", UUID.class),
                                         row.getObject("terminal_id", UUID.class), row.getString("scope"),
-                                        row.getBoolean("allergy_reviewer"), row.getBoolean("priority_supervisor")))
+                                        row.getBoolean("allergy_reviewer"), row.getBoolean("priority_supervisor"),
+                                        row.getObject("staff_id", UUID.class), row.getString("staff_role"), personal))
                                 .optional().ifPresent(actor -> {
                                     var context = SecurityContextHolder.createEmptyContext();
                                     var authorities = new ArrayList<SimpleGrantedAuthority>();
@@ -111,6 +138,11 @@ class OrderingSecurity {
                                     if ("KITCHEN".equals(actor.scope())) {
                                         if (actor.allergyReviewer()) authorities.add(new SimpleGrantedAuthority("ALLERGY_REVIEW"));
                                         if (actor.prioritySupervisor()) authorities.add(new SimpleGrantedAuthority("MANAGE_PRIORITY"));
+                                        if (actor.personalSession()) {
+                                            authorities.add(new SimpleGrantedAuthority("PERSONAL_SESSION"));
+                                            authorities.add(new SimpleGrantedAuthority("CHEF".equals(actor.staffRole())
+                                                    ? "CHEF" : "PERSONAL_SUPERVISOR"));
+                                        }
                                     }
                                     context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
                                             actor, null, authorities));

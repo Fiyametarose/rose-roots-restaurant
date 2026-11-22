@@ -71,6 +71,8 @@ class OrderingPostgresTest {
     private static final String MANAGER_PASSWORD = token();
     private static final String STAFF_TOKEN = token();
     private static final String CHEF_TOKEN = token();
+    private static final String PREP_TOKEN = "ks_" + token();
+    private static final UUID PREP_CHEF = UUID.randomUUID();
     private static ServletWebServerApplicationContext server;
     private static JdbcClient db;
     private static HttpClient client;
@@ -104,6 +106,14 @@ class OrderingPostgresTest {
         db.sql("INSERT INTO ordering_table (id, restaurant_id, display_number) VALUES (:id, :restaurant, '07')")
                 .param("id", TABLE).param("restaurant", RESTAURANT).update();
         credential(STAFF_TOKEN, null, "KITCHEN");
+        db.sql("""
+                INSERT INTO staff_account (id,username,staff_role,credential_id)
+                SELECT :id,'regression-prep-chef','CHEF',id FROM ordering_credential WHERE token_sha256=:hash
+                """).param("id", PREP_CHEF).param("hash", digest(STAFF_TOKEN)).update();
+        db.sql("""
+                INSERT INTO kitchen_staff_session (token_sha256,staff_id,entry_credential_id,expires_at)
+                SELECT :session,:id,id,now()+interval '10 minutes' FROM ordering_credential WHERE token_sha256=:hash
+                """).param("id", PREP_CHEF).param("hash", digest(STAFF_TOKEN)).param("session", digest(PREP_TOKEN)).update();
         credential(CHEF_TOKEN, null, "KITCHEN");
         db.sql("UPDATE ordering_credential SET allergy_reviewer = true WHERE token_sha256 = :hash")
                 .param("hash", digest(CHEF_TOKEN)).update();
@@ -141,7 +151,7 @@ class OrderingPostgresTest {
         assertEquals("NOT_REQUIRED", accepted.at("/lines/1/allergyReviewStatus").asText());
         patch(ordinary, "PREPARING", 1, 200);
         assertEquals("PREPARING", patch(ordinary, "READY", 2, 200).at("/order/status").asText());
-        problem(send(STAFF_TOKEN, "PATCH", itemPath(held), transition("PREPARING", 1), null), 409, "REVIEW_REQUIRED");
+        problem(send(PREP_TOKEN, "PATCH", itemPath(held), transition("PREPARING", 1), null), 409, "REVIEW_REQUIRED");
         assertEquals("READY", json(review(CHEF_TOKEN, held, "DECLINE", 1), 200).at("/order/status").asText());
     }
 
@@ -421,6 +431,8 @@ class OrderingPostgresTest {
             assertEquals("RUSH", json(send(supervisor, "POST", path + "/rush", rush, null), 200).path("priority").asText());
             problem(send(supervisor, "POST", path + "/rush", rush, null), 409, "VERSION_CONFLICT");
             problem(send(supervisor, "PATCH", "/kitchen/items/" + item + "/status", transition("PREPARING", 1), null),
+                    403, "FORBIDDEN");
+            problem(send(PREP_TOKEN, "PATCH", itemPath(item), transition("PREPARING", 1), null),
                     409, "REVIEW_REQUIRED");
             var delay = object().put("delayed", true).put("reason", "Station paused").put("expectedVersion", 2);
             assertTrue(json(send(supervisor, "POST", path + "/delayed", delay, null), 200).path("delayed").asBoolean());
@@ -566,6 +578,104 @@ class OrderingPostgresTest {
         assertEquals(accepted, json(send(terminal, "POST", "/assistance", other, key), 200));
         assertEquals("ACKNOWLEDGED", assistanceState(terminal, session, id));
         assertTrue(get(terminal, "/sessions/" + session + "/bill", 200).path("orders").isEmpty());
+    }
+
+    @Test
+    void signedInChefsOwnIndividualItemsAndSupervisorReassignsWithHistory() throws Exception {
+        try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
+            managerLogin(manager);
+            String csrf = manager.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
+            String workstation = issueWorkstation(manager, csrf, "Preparation test").path("bearerToken").asText();
+            String password = token();
+            String alice = kitchenAccount(manager, csrf, "prep-alice", "CHEF", password);
+            String bob = kitchenAccount(manager, csrf, "prep-bob", "CHEF", password);
+            String supervisor = kitchenAccount(manager, csrf, "prep-supervisor", "SUPERVISOR", password);
+            UUID menu = dish();
+            UUID station = db.sql("SELECT id FROM kitchen_station WHERE code='HOT'").query(UUID.class).single();
+            db.sql("""
+                    INSERT INTO kitchen_prep_profile(menu_item_id,station_id,duration_seconds)
+                    VALUES (:menu,:station,60)
+                    """).param("menu", menu).param("station", station).update();
+            db.sql("""
+                    INSERT INTO kitchen_station_chef(station_id,chef_id)
+                    SELECT :station,id FROM staff_account WHERE username IN ('prep-alice','prep-bob')
+                    """).param("station", station).update();
+            db.sql("UPDATE staff_account SET available_until=now()+interval '5 minutes' WHERE username='prep-alice'").update();
+
+            var terminal = terminal(true);
+            var session = session(terminal, "DINE_IN", 201);
+            var draft = draft(session, menu);
+            draft.withArray("lines").add(draft(session, menu).at("/lines/0"));
+            var quote = json(send(terminal, "POST", "/order-quotes", draft, null), 200);
+            var order = json(send(terminal, "POST", "/orders", submitBody(draft, quote), UUID.randomUUID()), 201);
+            String first = order.at("/lines/0/id").asText();
+            String second = order.at("/lines/1/id").asText();
+            String one = "/kitchen/items/" + first + "/ownership";
+            String two = "/kitchen/items/" + second + "/ownership";
+            var claim = object().put("action", "CLAIMED").put("expectedVersion", 1);
+            problem(send(workstation, "POST", one, claim, null), 403, "FORBIDDEN");
+            problem(send(workstation, "POST", "/kitchen/staff-session",
+                    object().put("username", "prep-alice").put("password", token()), null), 401, "UNAUTHENTICATED");
+            String aliceToken = kitchenSignIn(workstation, "prep-alice", password);
+            String bobToken = kitchenSignIn(workstation, "prep-bob", password);
+            String supervisorToken = kitchenSignIn(workstation, "prep-supervisor", password);
+            problem(send(bobToken, "POST", two, claim, null), 409, "CHEF_NOT_AVAILABLE");
+            db.sql("UPDATE staff_account SET available_until=now()+interval '5 minutes' WHERE username='prep-bob'").update();
+            var claims = java.util.List.of(client.sendAsync(http(aliceToken, "POST", one, claim, null),
+                    HttpResponse.BodyHandlers.ofString()), client.sendAsync(http(bobToken, "POST", one, claim, null),
+                    HttpResponse.BodyHandlers.ofString()));
+            var firstReply = claims.getFirst().get();
+            var secondReply = claims.getLast().get();
+            boolean aliceWon = firstReply.statusCode() == 200;
+            json(aliceWon ? firstReply : secondReply, 200);
+            problem(aliceWon ? secondReply : firstReply, 409, "VERSION_CONFLICT");
+            String owner = aliceWon ? aliceToken : bobToken;
+            String other = aliceWon ? bobToken : aliceToken;
+            String otherId = aliceWon ? bob : alice;
+            json(send(other, "POST", two, claim, null), 200);
+            problem(send(other, "PATCH", itemPath(first), transition("PREPARING", 2), null), 403, "FORBIDDEN");
+            json(send(owner, "PATCH", itemPath(first), transition("PREPARING", 2), null), 200);
+            var reassign = object().put("action", "REASSIGNED").put("expectedVersion", 3)
+                    .put("chefId", otherId).put("reason", "Shift coverage");
+            problem(send(workstation, "POST", one, reassign, null), 403, "FORBIDDEN");
+            json(send(supervisorToken, "POST", one, reassign, null), 200);
+            problem(send(owner, "PATCH", itemPath(first), transition("READY", 4), null), 403, "FORBIDDEN");
+            json(send(other, "PATCH", itemPath(first), transition("READY", 4), null), 200);
+            var events = get(other, "/kitchen/items/" + first + "/preparation-history", 200).path("events");
+            assertEquals(java.util.List.of("CLAIMED", "STARTED", "REASSIGNED", "READY"),
+                    java.util.stream.StreamSupport.stream(events.spliterator(), false).map(event -> event.path("action").asText()).toList());
+            assertEquals("Shift coverage", events.get(2).path("reason").asText());
+            assertEquals("prep-supervisor", events.get(2).path("actor").asText());
+            assertNotEquals(events.get(0).path("actor"), events.get(3).path("actor"));
+            var held = draft(session, menu);
+            held.withObject("/visitAllergy").put("kind", "DISCLOSED").putArray("allergens").add("SOY");
+            var heldQuote = json(send(terminal, "POST", "/order-quotes", held, null), 200);
+            String heldItem = json(send(terminal, "POST", "/orders", submitBody(held, heldQuote), UUID.randomUUID()), 201)
+                    .at("/lines/0/id").asText();
+            json(send(other, "POST", "/kitchen/items/" + heldItem + "/ownership", claim, null), 200);
+            problem(send(other, "PATCH", itemPath(heldItem), transition("PREPARING", 2), null), 409, "REVIEW_REQUIRED");
+            db.sql("UPDATE ordering_credential SET revoked_at=now() WHERE id=(SELECT credential_id FROM staff_account WHERE id=CAST(:id AS uuid))")
+                    .param("id", otherId).update();
+            problem(send(other, "PATCH", itemPath(second), transition("PREPARING", 2), null), 401, "UNAUTHENTICATED");
+            assertEquals(204, send(supervisorToken, "DELETE", "/kitchen/staff-session", null, null).statusCode());
+            problem(send(supervisorToken, "GET", "/kitchen/orders", null, null), 401, "UNAUTHENTICATED");
+            db.sql("UPDATE staff_account SET available_until=NULL WHERE username IN ('prep-alice','prep-bob')").update();
+        }
+    }
+
+    private static String kitchenAccount(HttpClient manager, String csrf, String username, String role, String password)
+            throws Exception {
+        var created = staffWrite(manager, csrf, "POST", "", object().put("username", username).put("role", role), 201);
+        String id = created.at("/account/id").asText();
+        staffWrite(manager, csrf, "PATCH", "/" + id, object().put("expectedVersion", 1).put("enabled", true)
+                .put("allergyReviewer", false).put("kitchenPassword", password), 200);
+        problem(send(created.path("bearerToken").asText(), "GET", "/kitchen/orders", null, null), 401, "UNAUTHENTICATED");
+        return id;
+    }
+
+    private static String kitchenSignIn(String workstation, String username, String password) throws Exception {
+        return json(send(workstation, "POST", "/kitchen/staff-session",
+                object().put("username", username).put("password", password), null), 201).path("sessionToken").asText();
     }
 
     @Test
@@ -717,7 +827,7 @@ class OrderingPostgresTest {
                 return null;
             });
             awaitKitchen(() -> selected.get().orElseThrow().items().getFirst().actionable());
-            assertTrue(fx(() -> button(details, "Start item").isVisible()));
+            assertTrue(uiText(details, "Responsible Chef: Unassigned"));
             assertEquals("APPROVED_FOR_PREPARATION", get(terminal, "/orders/" + order, 200)
                     .at("/lines/0/allergyReviewStatus").asText());
         } finally {
@@ -803,7 +913,7 @@ class OrderingPostgresTest {
         String terminal = terminal(true);
         String session = session(terminal, "DINE_IN", 201);
         UUID dish = dish();
-        var kitchen = LoopbackKitchenClient.create(server.getWebServer().getPort(), STAFF_TOKEN, tls.trust());
+        var kitchen = LoopbackKitchenClient.create(server.getWebServer().getPort(), PREP_TOKEN, tls.trust());
         try {
             kitchen.startAutomaticRefresh();
             awaitKitchen(() -> kitchen.status() == KitchenSync.Status.CONNECTED);
@@ -888,9 +998,9 @@ class OrderingPostgresTest {
         assertEquals(item, ticket.at("/order/lines/0/id").asText());
         assertEquals("PREPARING", patch(item, "PREPARING", 1, 200).at("/order/status").asText());
         assertEquals("PREPARING", get(terminal, "/orders/" + order, 200).at("/lines/0/preparationStatus").asText());
-        problem(send(STAFF_TOKEN, "PATCH", itemPath(item), transition("READY", 1), null), 409, "VERSION_CONFLICT");
+        problem(send(PREP_TOKEN, "PATCH", itemPath(item), transition("READY", 1), null), 409, "VERSION_CONFLICT");
         assertEquals("READY", patch(item, "READY", 2, 200).at("/order/status").asText());
-        problem(send(STAFF_TOKEN, "PATCH", itemPath(item), transition("SERVED", 3), null), 409, "INVALID_TRANSITION");
+        problem(send(PREP_TOKEN, "PATCH", itemPath(item), transition("SERVED", 3), null), 409, "INVALID_TRANSITION");
         assertEquals("READY", get(terminal, "/orders/" + order, 200).path("status").asText());
         assertEquals("READY", ticket(order).at("/order/status").asText());
         assertEquals("READY", get(terminal, "/sessions/" + session + "/orders", 200).at("/orders/0/status").asText());
@@ -957,8 +1067,8 @@ class OrderingPostgresTest {
         assertTrue(accepted.at("/lines/0/allergyRisk/ingredientMatches").isEmpty());
         assertTrue(accepted.at("/lines/0/allergyRisk/unresolved").asBoolean());
         assertEquals("RECEIVED", ticket(accepted.path("id").asText()).at("/order/status").asText());
-        problem(send(STAFF_TOKEN, "PATCH", itemPath(item), transition("PREPARING", 1), null), 409, "REVIEW_REQUIRED");
-        problem(send(STAFF_TOKEN, "PATCH", itemPath(item), transition("READY", 1), null), 409, "REVIEW_REQUIRED");
+        problem(send(PREP_TOKEN, "PATCH", itemPath(item), transition("PREPARING", 1), null), 409, "REVIEW_REQUIRED");
+        problem(send(PREP_TOKEN, "PATCH", itemPath(item), transition("READY", 1), null), 409, "REVIEW_REQUIRED");
         assertEquals("RECEIVED", get(terminal, "/orders/" + accepted.path("id").asText(), 200)
                 .at("/lines/0/preparationStatus").asText());
     }
@@ -1000,7 +1110,7 @@ class OrderingPostgresTest {
         String second = accepted.at("/lines/1/id").asText();
         String order = accepted.path("id").asText();
         problem(review(STAFF_TOKEN, first, "APPROVE", 1), 403, "FORBIDDEN");
-        problem(send(STAFF_TOKEN, "PATCH", itemPath(first), transition("PREPARING", 1), null), 409, "REVIEW_REQUIRED");
+        problem(send(PREP_TOKEN, "PATCH", itemPath(first), transition("PREPARING", 1), null), 409, "REVIEW_REQUIRED");
         var approved = json(review(CHEF_TOKEN, first, "APPROVE", 1), 200);
         assertEquals("APPROVED_FOR_PREPARATION", approved.at("/order/lines/0/allergyReviewStatus").asText());
         assertFalse(approved.at("/order/lines/0/allergyRisk/unresolved").asBoolean());
@@ -1153,6 +1263,7 @@ class OrderingPostgresTest {
             db.sql("UPDATE kitchen_station SET parallel_slots=2 WHERE id=:id").param("id", station).update();
             db.sql("INSERT INTO kitchen_station_chef(station_id,chef_id) VALUES (:station,CAST(:chef AS uuid))")
                     .param("station", station).param("chef", chef).update();
+            db.sql("UPDATE staff_account SET available_until=NULL WHERE id=:chef").param("chef", PREP_CHEF).update();
             assertEquals("NO_CAPACITY", json(send(terminalToken, "POST", "/wait-estimates", input, null), 200).path("reason").asText());
             configWrite(manager, csrf, "/chef-availability/" + chef, object().put("minutes", 60).put("expectedVersion", 1), 200);
             ((ObjectNode) input.at("/lines/0")).put("quantity", 2);
@@ -1385,7 +1496,20 @@ class OrderingPostgresTest {
     }
 
     private static JsonNode patch(String item, String state, int version, int status) throws Exception {
-        return json(send(STAFF_TOKEN, "PATCH", itemPath(item), transition(state, version), null), status);
+        var id = UUID.fromString(item);
+        db.sql("""
+                UPDATE accepted_order_item SET claimed_by=:chef,
+                    station_id=COALESCE(station_id,(SELECT id FROM kitchen_station WHERE code='HOT')),
+                    planned_duration_seconds=COALESCE(planned_duration_seconds,60)
+                WHERE id=:id
+                """).param("chef", PREP_CHEF).param("id", id).update();
+        db.sql("""
+                INSERT INTO kitchen_station_chef(station_id,chef_id)
+                SELECT station_id,:chef FROM accepted_order_item WHERE id=:id ON CONFLICT DO NOTHING
+                """).param("chef", PREP_CHEF).param("id", id).update();
+        db.sql("UPDATE staff_account SET available_until=now()+interval '1 minute' WHERE id=:chef")
+                .param("chef", PREP_CHEF).update();
+        return json(send(PREP_TOKEN, "PATCH", itemPath(item), transition(state, version), null), status);
     }
 
     private static JsonNode get(String token, String path, int status) throws Exception {

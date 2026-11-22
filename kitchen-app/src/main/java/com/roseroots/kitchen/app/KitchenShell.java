@@ -50,6 +50,8 @@ final class KitchenShell extends BorderPane {
     private ConnectedReviewsView connectedReviews;
     private ToggleButton assistanceButton;
     private final List<ToggleButton> individualDestinations = new java.util.ArrayList<>();
+    private ToggleButton liveDestination;
+    private ToggleButton priorityDestination;
     private final ReviewsView reviews;
     private final HistoryView history;
     private final KitchenSync sync;
@@ -59,6 +61,7 @@ final class KitchenShell extends BorderPane {
     private final Label title = label("Kitchen Display Board", "title");
     private final Label wallClock = label("", "wall-clock");
     private final Timeline timer;
+    private final HBox staffControls = new HBox(5);
 
     KitchenShell(KitchenService service, AssistanceService assistanceService, KitchenReviewService reviewService,
                  KitchenSync sync, List<StaffMember> staff, Consumer<String> selectProfile, Clock clock,
@@ -90,6 +93,7 @@ final class KitchenShell extends BorderPane {
             refresh.getStyleClass().add("filter");
             refresh.setOnAction(event -> sync.refresh());
             header.getChildren().add(refresh);
+            header.getChildren().add(staffControls);
         }
         workspace.getChildren().addAll(heading, live);
         VBox.setVgrow(live, Priority.ALWAYS);
@@ -143,10 +147,12 @@ final class KitchenShell extends BorderPane {
         ToggleGroup group = new ToggleGroup();
         ToggleButton liveButton = destination("Live Orders", group, () -> showLive(workspace));
         liveButton.setSelected(true);
+        liveDestination = liveButton;
         ToggleButton priorityButton = destination("Priority Queue", group, () -> {
             priority.tick();
             show(workspace, priority, "Priority Management");
         });
+        priorityDestination = priorityButton;
         ToggleButton stationsButton = destination("Stations", group, () -> showStations(workspace));
         assistanceButton = destination("Assistance", group, () -> {
             if (local) {
@@ -247,16 +253,58 @@ final class KitchenShell extends BorderPane {
     }
 
     void connectStaffWorkspaces(SpringBootKitchenService service) {
+        var signIn = new Button("Chef / Supervisor sign-in");
+        var lock = new Button("Lock / switch staff");
+        staffControls.getChildren().setAll(signIn, lock);
+        Runnable showStaff = () -> {
+            var staff = service.signedInStaff();
+            signIn.setVisible(staff == null);
+            signIn.setManaged(staff == null);
+            lock.setVisible(staff != null);
+            lock.setManaged(staff != null);
+            if (staff != null) lock.setText("Lock / switch · " + staff.username());
+            if (service.workstation()) {
+                for (var destination : individualDestinations) {
+                    boolean restricted = staff == null || destination == priorityDestination && !staff.role().equals("SUPERVISOR");
+                    if (restricted && destination.isSelected()) liveDestination.fire();
+                    destination.setDisable(restricted);
+                }
+            }
+        };
+        showStaff.run();
+        service.onOrdersChanged(showStaff);
+        lock.setOnAction(event -> service.lockStaff());
+        signIn.setOnAction(event -> {
+            var dialog = new javafx.scene.control.Dialog<javafx.scene.control.ButtonType>();
+            dialog.initOwner(getScene().getWindow());
+            dialog.setTitle("Kitchen staff sign-in");
+            var username = new javafx.scene.control.TextField();
+            username.setPromptText("Staff username");
+            var password = new javafx.scene.control.PasswordField();
+            password.setPromptText("Kitchen password");
+            dialog.getDialogPane().setContent(new VBox(7, username, password));
+            var submit = new javafx.scene.control.ButtonType("Sign in", javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+            dialog.getDialogPane().getButtonTypes().addAll(submit, javafx.scene.control.ButtonType.CANCEL);
+            if (dialog.showAndWait().orElse(null) != submit) {
+                password.clear();
+                return;
+            }
+            signIn.setDisable(true);
+            service.signIn(username.getText(), password.getText()).whenComplete((session, error) ->
+                    javafx.application.Platform.runLater(() -> {
+                        signIn.setDisable(false);
+                        if (error != null) {
+                            var failure = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.WARNING,
+                                    "Kitchen sign-in failed. Check your credentials or wait before trying again.");
+                            failure.initOwner(getScene().getWindow());
+                            failure.show();
+                        }
+                    }));
+            password.clear();
+        });
         connectedAssistance = new ConnectedAssistanceView(service,
                 count -> assistanceButton.setText(count == 0 ? "Assistance" : "Assistance (" + count + ")"));
-        if (service.workstation()) {
-            individualDestinations.forEach(button -> {
-                button.setDisable(true);
-                button.setTooltip(new javafx.scene.control.Tooltip("Available with individual staff access."));
-            });
-        } else {
-            connectedReviews = new ConnectedReviewsView(service);
-        }
+        connectedReviews = new ConnectedReviewsView(service);
     }
 
     private static Region spacer() {

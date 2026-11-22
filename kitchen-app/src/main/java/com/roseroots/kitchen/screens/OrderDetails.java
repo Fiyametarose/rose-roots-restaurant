@@ -5,6 +5,7 @@ import com.roseroots.kitchen.model.Ticket;
 import com.roseroots.kitchen.model.Ticket.Status;
 import com.roseroots.kitchen.model.Ticket.Type;
 import com.roseroots.kitchen.service.KitchenService;
+import com.roseroots.kitchen.service.http.SpringBootKitchenService;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
@@ -87,18 +88,45 @@ public final class OrderDetails extends VBox {
         }
         content.getChildren().add(heading);
         for (var item : ticket.items()) {
-            var row = TicketCard.itemRow(item, service.writesAvailable() ? selected -> {
+            var remote = service instanceof SpringBootKitchenService rest ? rest : null;
+            var staff = remote == null ? null : remote.signedInStaff();
+            boolean owner = staff != null && staff.id().equals(item.server().chefId());
+            var row = TicketCard.itemRow(item, service.writesAvailable() && (service.local() || owner) ? selected -> {
                 service.advanceItem(ticketId, selected);
                 if (service.local()) {
                     render(ticketId);
                 }
             } : null);
+            if (remote != null && item.server() != null) {
+                String chef = item.server().chefName();
+                row.getChildren().add(label("Responsible Chef: " + (chef == null ? "Unassigned" : chef), "metadata"));
+                if (staff != null) {
+                    var actions = new FlowPane(6, 5);
+                    var history = new Button("Preparation history");
+                    history.setOnAction(event -> showHistory(remote, item, this));
+                    actions.getChildren().add(history);
+                    if (item.status() == Status.RECEIVED && staff.role().equals("CHEF") && (chef == null || owner)) {
+                        var claim = new Button(owner ? "Release item" : "Claim Item");
+                        claim.setDisable(!remote.writesAvailable() || !owner && item.station() == null);
+                        claim.setOnAction(event -> remote.ownership(item, owner ? "RELEASED" : "CLAIMED", null, null));
+                        actions.getChildren().add(claim);
+                    }
+                    if (staff.role().equals("SUPERVISOR") && (item.status() == Status.RECEIVED || item.status() == Status.PREPARING)) {
+                        var reassign = new Button("Reassign item");
+                        reassign.setDisable(!remote.writesAvailable() || item.station() == null);
+                        reassign.setOnAction(event -> reassign(remote, item));
+                        actions.getChildren().add(reassign);
+                    }
+                    row.getChildren().add(actions);
+                }
+            }
             if (item.server() != null && item.status() == Status.RECEIVED
                     && item.server().allergyReviewStatus().equals("PENDING_ALLERGY_REVIEW")) {
                 Button approve = new Button("Approve preparation");
                 Button decline = new Button("Decline item");
-                approve.setDisable(!service.writesAvailable());
-                decline.setDisable(!service.writesAvailable());
+                boolean canReview = service.writesAvailable() && (staff == null || staff.allergyReviewer());
+                approve.setDisable(!canReview);
+                decline.setDisable(!canReview);
                 approve.setOnAction(event -> promptReview(ticketId, item, true));
                 decline.setOnAction(event -> promptReview(ticketId, item, false));
                 row.getChildren().add(new HBox(8, approve, decline));
@@ -106,6 +134,81 @@ public final class OrderDetails extends VBox {
             row.getStyleClass().add("detail-item");
             content.getChildren().add(row);
         }
+    }
+
+    static void showHistory(SpringBootKitchenService remote, Ticket.Item item, javafx.scene.Node owner) {
+        var requestedBy = remote.signedInStaff();
+        remote.preparationDetails(item, false).whenComplete((result, error) -> javafx.application.Platform.runLater(() -> {
+            if (requestedBy != remote.signedInStaff() || owner.getScene() == null) return;
+            var entries = new VBox(8);
+            if (error != null) entries.getChildren().add(label("Preparation history could not be loaded.", "metadata"));
+            else for (var element : result.getAsJsonArray("events")) {
+                var entry = element.getAsJsonObject();
+                String reason = value(entry, "reason", "");
+                entries.getChildren().add(label(value(entry, "action", "") + " · " + value(entry, "actor", "Unknown")
+                        + " · " + value(entry, "occurredAt", "") + " · v" + value(entry, "version", "")
+                        + "\n" + value(entry, "previousStatus", "") + " → " + value(entry, "nextStatus", "")
+                        + " · " + value(entry, "previousChef", "Unassigned") + " → " + value(entry, "nextChef", "Unassigned")
+                        + (reason.isEmpty() ? "" : "\n" + reason), "metadata"));
+            }
+            if (entries.getChildren().isEmpty()) entries.getChildren().add(label("No preparation history recorded.", "metadata"));
+            var dialog = new javafx.scene.control.Dialog<Void>();
+            dialog.initOwner(owner.getScene().getWindow());
+            dialog.setTitle("Preparation history");
+            var scroll = new ScrollPane(entries);
+            scroll.setFitToWidth(true);
+            scroll.setPrefViewportWidth(500);
+            scroll.setPrefViewportHeight(275);
+            dialog.getDialogPane().setContent(scroll);
+            dialog.getDialogPane().getButtonTypes().add(javafx.scene.control.ButtonType.CLOSE);
+            Runnable unsubscribe = remote.onOrdersChanged(() -> {
+                if (requestedBy != remote.signedInStaff()) dialog.close();
+            });
+            dialog.setOnHidden(event -> unsubscribe.run());
+            dialog.show();
+        }));
+    }
+
+    private record ChefChoice(java.util.UUID id, String username) {
+        @Override public String toString() { return username; }
+    }
+
+    private void reassign(SpringBootKitchenService remote, Ticket.Item item) {
+        var requestedBy = remote.signedInStaff();
+        remote.preparationDetails(item, true).whenComplete((result, error) -> javafx.application.Platform.runLater(() -> {
+            if (requestedBy != remote.signedInStaff() || getScene() == null) return;
+            var chef = new javafx.scene.control.ComboBox<ChefChoice>();
+            if (error == null) for (var element : result.getAsJsonArray("chefs")) {
+                var record = element.getAsJsonObject();
+                chef.getItems().add(new ChefChoice(java.util.UUID.fromString(value(record, "id", "")), value(record, "username", "")));
+            }
+            if (chef.getItems().isEmpty()) {
+                var alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.INFORMATION,
+                        error == null ? "No other eligible Chef is available for this station." : "Eligible Chefs could not be loaded.");
+                alert.initOwner(getScene().getWindow());
+                alert.show();
+                return;
+            }
+            chef.setPromptText("Choose an eligible Chef");
+            var reason = new javafx.scene.control.TextField();
+            reason.setPromptText("Reason for reassignment");
+            var dialog = new javafx.scene.control.Dialog<javafx.scene.control.ButtonType>();
+            dialog.initOwner(getScene().getWindow());
+            dialog.setTitle("Reassign item");
+            dialog.getDialogPane().setContent(new VBox(8, chef, reason));
+            dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK, javafx.scene.control.ButtonType.CANCEL);
+            dialog.getDialogPane().lookupButton(javafx.scene.control.ButtonType.OK).disableProperty().bind(
+                    javafx.beans.binding.Bindings.createBooleanBinding(() -> chef.getValue() == null
+                            || reason.getText().isBlank() || reason.getText().length() > 240, chef.valueProperty(), reason.textProperty()));
+            if (dialog.showAndWait().orElse(null) == javafx.scene.control.ButtonType.OK && requestedBy == remote.signedInStaff()) {
+                remote.ownership(item, "REASSIGNED", chef.getValue().id(), reason.getText().strip());
+            }
+        }));
+    }
+
+    private static String value(com.google.gson.JsonObject entry, String field, String fallback) {
+        var element = entry.get(field);
+        return element == null || element.isJsonNull() ? fallback : element.getAsString();
     }
 
     private void promptReview(long ticketId, Ticket.Item item, boolean approve) {

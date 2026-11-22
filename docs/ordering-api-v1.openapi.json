@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Rose & Roots shared ordering API",
-    "version": "1.0.0-draft.4",
+    "version": "1.0.0-draft.5",
     "description": "Review draft for Customer, Staff and Spring Boot. No endpoint in this document is declared implemented."
   },
   "servers": [
@@ -1075,6 +1075,414 @@
         }
       }
     },
+    "/kitchen/staff-session": {
+      "post": {
+        "responses": {
+          "201": {
+            "description": "Bounded personal session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "username",
+                    "role",
+                    "allergyReviewer",
+                    "expiresAt",
+                    "sessionToken"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "username": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "enum": [
+                        "CHEF",
+                        "SUPERVISOR"
+                      ]
+                    },
+                    "allergyReviewer": {
+                      "type": "boolean"
+                    },
+                    "expiresAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "sessionToken": {
+                      "type": "string",
+                      "writeOnly": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "409": {
+            "description": "Item version or operational conflict"
+          }
+        },
+        "operationId": "signInKitchenStaff",
+        "security": [
+          {
+            "workstationBearer": []
+          },
+          {
+            "staffBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "username",
+                  "password"
+                ],
+                "properties": {
+                  "username": {
+                    "type": "string",
+                    "maxLength": 48
+                  },
+                  "password": {
+                    "type": "string",
+                    "format": "password",
+                    "maxLength": 72,
+                    "writeOnly": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "responses": {
+          "204": {
+            "description": "Signed out"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "409": {
+            "description": "Item version or operational conflict"
+          }
+        },
+        "operationId": "signOutKitchenStaff",
+        "security": [
+          {
+            "kitchenStaffSession": []
+          }
+        ]
+      }
+    },
+    "/kitchen/items/{id}/ownership": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Current Kitchen ticket",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KitchenTicket"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "409": {
+            "description": "Item version or operational conflict"
+          }
+        },
+        "operationId": "changeKitchenItemOwnership",
+        "security": [
+          {
+            "kitchenStaffSession": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "required": [
+                      "action",
+                      "expectedVersion"
+                    ],
+                    "properties": {
+                      "action": {
+                        "enum": [
+                          "CLAIMED",
+                          "RELEASED"
+                        ]
+                      },
+                      "expectedVersion": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "action",
+                      "expectedVersion",
+                      "chefId",
+                      "reason"
+                    ],
+                    "properties": {
+                      "action": {
+                        "const": "REASSIGNED"
+                      },
+                      "expectedVersion": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "chefId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "reason": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 240
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/kitchen/items/{id}/preparation-history": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Append-only history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "itemId",
+                    "orderId",
+                    "events"
+                  ],
+                  "properties": {
+                    "itemId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "orderId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "action",
+                          "actor",
+                          "version",
+                          "previousChef",
+                          "nextChef",
+                          "previousStatus",
+                          "nextStatus",
+                          "reason",
+                          "occurredAt"
+                        ],
+                        "properties": {
+                          "action": {
+                            "enum": [
+                              "CLAIMED",
+                              "STARTED",
+                              "READY",
+                              "RELEASED",
+                              "REASSIGNED",
+                              "HANDOFF"
+                            ]
+                          },
+                          "actor": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "version": {
+                            "type": "integer",
+                            "minimum": 1
+                          },
+                          "previousChef": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "nextChef": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "previousStatus": {
+                            "type": "string"
+                          },
+                          "nextStatus": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "occurredAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "409": {
+            "description": "Item version or operational conflict"
+          }
+        },
+        "operationId": "getKitchenItemPreparationHistory",
+        "security": [
+          {
+            "kitchenStaffSession": []
+          },
+          {
+            "staffBearer": []
+          }
+        ]
+      }
+    },
+    "/kitchen/items/{id}/eligible-chefs": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Eligible reassignment targets for a Supervisor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "chefs"
+                  ],
+                  "properties": {
+                    "chefs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "username"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "username": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "409": {
+            "description": "Item version or operational conflict"
+          }
+        },
+        "operationId": "getKitchenItemEligibleChefs",
+        "security": [
+          {
+            "kitchenStaffSession": []
+          }
+        ]
+      }
+    },
     "/kitchen/orders": {
       "parameters": [
         {
@@ -1105,6 +1513,9 @@
         "security": [
           {
             "staffBearer": []
+          },
+          {
+            "kitchenStaffSession": []
           },
           {
             "workstationBearer": []
@@ -1235,7 +1646,7 @@
         "summary": "Change item preparation state if its safety review permits",
         "security": [
           {
-            "staffBearer": []
+            "kitchenStaffSession": []
           }
         ],
         "requestBody": {
@@ -1307,6 +1718,9 @@
         "security": [
           {
             "staffBearer": []
+          },
+          {
+            "kitchenStaffSession": []
           }
         ],
         "requestBody": {
@@ -1391,6 +1805,9 @@
         "security": [
           {
             "staffBearer": []
+          },
+          {
+            "kitchenStaffSession": []
           }
         ],
         "requestBody": {
@@ -1450,7 +1867,7 @@
       "get": {
         "operationId": "listKitchenHistory",
         "summary": "Read persisted ready, served, collected, and cancelled orders for the authenticated staff restaurant",
-        "security": [{ "staffBearer": [] }],
+        "security": [{ "staffBearer": [] }, { "kitchenStaffSession": [] }],
         "parameters": [
           { "name": "cursor", "in": "query", "schema": { "type": "string" } },
           { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 200 } }
@@ -2158,6 +2575,9 @@
             "staffBearer": []
           },
           {
+            "kitchenStaffSession": []
+          },
+          {
             "workstationBearer": []
           }
         ],
@@ -2233,6 +2653,9 @@
         "security": [
           {
             "staffBearer": []
+          },
+          {
+            "kitchenStaffSession": []
           },
           {
             "workstationBearer": []
@@ -2318,6 +2741,9 @@
         "security": [
           {
             "staffBearer": []
+          },
+          {
+            "kitchenStaffSession": []
           }
         ],
         "responses": {
@@ -2577,6 +3003,9 @@
         "security": [
           {
             "staffBearer": []
+          },
+          {
+            "kitchenStaffSession": []
           }
         ],
         "responses": {
@@ -3624,6 +4053,7 @@
           "delayed"
         ],
         "properties": {
+          "itemChefs": {"type": "object", "additionalProperties": {"type": "object", "required": ["id", "username"], "properties": {"id": {"type": "string", "format": "uuid"}, "username": {"type": "string"}}}},
           "stationCodes": { "$ref": "#/components/schemas/KitchenStationCodes" },
           "order": {
             "$ref": "#/components/schemas/Order"
@@ -4784,6 +5214,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Server-issued token with kitchen permission"
+      },
+      "kitchenStaffSession": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Thirty-minute personal Chef or Supervisor session issued over HTTPS from a provisioned Kitchen launch."
       },
       "workstationBearer": {
         "type": "http",

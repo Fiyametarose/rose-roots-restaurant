@@ -159,7 +159,34 @@ final class StaffWorkspace extends VBox {
             changes.addProperty("allergyReviewer", allergy.isSelected());
             run(() -> api.saveStaff(account.get("id").getAsString(), changes), result -> load());
         });
-        return new FlowPane(8, 5, new Label(account.get("username").getAsString() + " · " + accountRole), enabled, allergy, save);
+        var controls = new FlowPane(8, 5, new Label(account.get("username").getAsString() + " · " + accountRole), enabled, allergy, save);
+        if (!"MANAGER".equals(accountRole)) {
+            var reset = new Button("Set Kitchen password");
+            reset.setOnAction(event -> setKitchenPassword(account));
+            controls.getChildren().add(reset);
+        }
+        return controls;
+    }
+
+    private void setKitchenPassword(JsonObject account) {
+        var dialog = new javafx.scene.control.Dialog<javafx.scene.control.ButtonType>();
+        dialog.initOwner(getScene().getWindow());
+        dialog.setTitle("Set Kitchen password");
+        var secret = new PasswordField();
+        secret.setPromptText("New password (12 characters minimum)");
+        dialog.getDialogPane().setContent(new VBox(6, new Label("This ends existing sessions and retires the previous bearer credential."), secret));
+        var confirm = new javafx.scene.control.ButtonType("Set password", javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(confirm, javafx.scene.control.ButtonType.CANCEL);
+        dialog.getDialogPane().lookupButton(confirm).disableProperty().bind(secret.textProperty().length().lessThan(12));
+        if (dialog.showAndWait().orElse(null) == confirm) {
+            var changes = new JsonObject();
+            changes.addProperty("expectedVersion", account.get("version").getAsLong());
+            changes.addProperty("enabled", account.get("enabled").getAsBoolean());
+            changes.addProperty("allergyReviewer", account.get("allergyReviewer").getAsBoolean());
+            changes.addProperty("kitchenPassword", secret.getText());
+            run(() -> api.saveStaff(account.get("id").getAsString(), changes), result -> load());
+        }
+        secret.clear();
     }
 
     private <T> void run(Callable<T> task, Consumer<T> done) {

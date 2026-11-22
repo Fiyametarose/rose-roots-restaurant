@@ -277,6 +277,109 @@ class OrderingService {
     }
 
     @Transactional
+    public ObjectNode changeOwnership(Actor actor, UUID itemId, String action, UUID target, String reason, long version) {
+        UUID orderId = lockItemOrder(actor, itemId);
+        var item = itemAtVersion(itemId, version);
+        if (!item.preparation().equals("RECEIVED") && !item.preparation().equals("PREPARING")) {
+            throw conflict("INVALID_TRANSITION", "Only a queued or preparing item can change owner.");
+        }
+        UUID next;
+        switch (action) {
+            case "CLAIMED" -> {
+                if (item.chef() != null) throw conflict("ITEM_ALREADY_CLAIMED", "The item already has a responsible Chef.");
+                if (!"CHEF".equals(actor.staffRole())) throw preparationForbidden();
+                next = actor.staffId();
+            }
+            case "RELEASED" -> {
+                if (!java.util.Objects.equals(actor.staffId(), item.chef()) || item.chef() == null
+                        || !item.preparation().equals("RECEIVED")) throw preparationForbidden();
+                next = null;
+            }
+            case "REASSIGNED" -> {
+                if (!actor.prioritySupervisor()) throw preparationForbidden();
+                if (target.equals(item.chef())) throw conflict("INVALID_TRANSITION", "Choose a different Chef.");
+                next = target;
+            }
+            default -> throw new IllegalArgumentException("Unknown ownership action");
+        }
+        if (next != null) requireStation(actor.restaurantId(), next, item.station());
+        Instant time = now();
+        jdbc.sql("UPDATE accepted_order_item SET claimed_by=:chef, version=version+1, updated_by=:actor WHERE id=:id")
+                .param("chef", next).param("actor", actor.credentialId()).param("id", itemId).update();
+        preparationEvent(actor, itemId, orderId, item, action, next, item.preparation(), reason, time);
+        updateOrder(orderId, time);
+        return readOrders("WHERE o.id=:id", Map.of("id", orderId)).getFirst().ticket(time);
+    }
+
+    private void requireStation(UUID restaurant, UUID chef, UUID station) {
+        if (station == null || jdbc.sql("""
+                SELECT s.id FROM staff_account s JOIN ordering_credential c ON c.id=s.credential_id
+                JOIN kitchen_station_chef a ON a.chef_id=s.id JOIN kitchen_station k ON k.id=a.station_id
+                WHERE s.id=:chef AND c.restaurant_id=:restaurant AND k.id=:station AND k.active AND s.enabled
+                    AND s.staff_role='CHEF' AND s.available_until > now() AND c.revoked_at IS NULL AND c.expires_at > now()
+                FOR SHARE OF s,c,a,k
+                """).param("restaurant", restaurant).param("chef", chef).param("station", station)
+                .query(UUID.class).optional().isEmpty()) {
+            throw conflict("CHEF_NOT_AVAILABLE", "The item requires a Chef currently available and assigned to its active station.");
+        }
+    }
+
+    private static OrderingProblem preparationForbidden() {
+        return new OrderingProblem(403, "FORBIDDEN", "This action requires the responsible Chef or an authorized Supervisor.");
+    }
+
+    private void preparationEvent(Actor actor, UUID item, UUID order, ItemState before, String action, UUID nextChef,
+                                  String nextStatus, String reason, Instant time) {
+        jdbc.sql("""
+                INSERT INTO item_preparation_history (item_id,order_id,item_version,action,actor_staff_id,actor_credential_id,
+                    previous_chef_id,next_chef_id,previous_status,next_status,reason,occurred_at)
+                VALUES (:item,:order,:version,:action,:staff,:credential,:previousChef,:nextChef,:previous,:next,:reason,:time)
+                """).param("item", item).param("order", order).param("version", before.version() + 1).param("action", action)
+                .param("staff", actor.staffId()).param("credential", actor.credentialId()).param("previousChef", before.chef())
+                .param("nextChef", nextChef).param("previous", before.preparation()).param("next", nextStatus)
+                .param("reason", reason).param("time", utc(time)).update();
+    }
+
+    public ObjectNode preparationHistory(Actor actor, UUID item) {
+        var row = jdbc.sql("""
+                SELECT i.order_id FROM accepted_order_item i JOIN accepted_order o ON o.id=i.order_id
+                JOIN dining_session s ON s.id=o.session_id WHERE i.id=:item AND s.restaurant_id=:restaurant
+                """).param("item", item).param("restaurant", actor.restaurantId()).query(UUID.class).optional()
+                .orElseThrow(OrderingProblem::missing);
+        var events = array();
+        jdbc.sql("""
+                SELECT h.*, actor.username, previous.username AS previous_chef, next.username AS next_chef
+                FROM item_preparation_history h LEFT JOIN staff_account actor ON actor.id=h.actor_staff_id
+                LEFT JOIN staff_account previous ON previous.id=h.previous_chef_id
+                LEFT JOIN staff_account next ON next.id=h.next_chef_id
+                WHERE h.item_id=:item ORDER BY h.item_version
+                """).param("item", item).query((record, index) -> object().put("version", record.getLong("item_version"))
+                .put("action", record.getString("action")).put("actor", record.getString("username"))
+                .put("previousChef", record.getString("previous_chef")).put("nextChef", record.getString("next_chef"))
+                .put("previousStatus", record.getString("previous_status")).put("nextStatus", record.getString("next_status"))
+                .put("reason", record.getString("reason")).put("occurredAt", instant(record, "occurred_at").toString()))
+                .list().forEach(events::add);
+        return object().put("itemId", item.toString()).put("orderId", row.toString()).set("events", events);
+    }
+
+    public ObjectNode eligibleChefs(Actor actor, UUID item) {
+        var chefs = array();
+        jdbc.sql("""
+                SELECT staff.id, staff.username FROM accepted_order_item i
+                JOIN accepted_order o ON o.id=i.order_id JOIN dining_session s ON s.id=o.session_id
+                JOIN kitchen_station k ON k.id=i.station_id JOIN kitchen_station_chef a ON a.station_id=k.id
+                JOIN staff_account staff ON staff.id=a.chef_id JOIN ordering_credential c ON c.id=staff.credential_id
+                WHERE i.id=:item AND s.restaurant_id=:restaurant AND c.restaurant_id=s.restaurant_id AND k.active
+                    AND staff.enabled AND staff.staff_role='CHEF' AND staff.available_until > now()
+                    AND c.revoked_at IS NULL AND c.expires_at > now() AND staff.id IS DISTINCT FROM i.claimed_by
+                ORDER BY staff.username
+                """).param("item", item).param("restaurant", actor.restaurantId())
+                .query((row, index) -> object().put("id", row.getString(1)).put("username", row.getString(2)))
+                .list().forEach(chefs::add);
+        return object().set("chefs", chefs);
+    }
+
+    @Transactional
     public ObjectNode transition(Actor actor, UUID itemId, String next, long expectedVersion) {
         UUID orderId = lockItemOrder(actor, itemId);
         var item = itemAtVersion(itemId, expectedVersion);
@@ -287,12 +390,18 @@ class OrderingService {
                 || item.preparation().equals("PREPARING") && next.equals("READY"))) {
             throw conflict("INVALID_TRANSITION", "Only the next preparation state is permitted.");
         }
+        if (actor.staffId() == null || !actor.staffId().equals(item.chef()) || !"CHEF".equals(actor.staffRole())) {
+            throw preparationForbidden();
+        }
+        requireStation(actor.restaurantId(), actor.staffId(), item.station());
         Instant now = now();
         jdbc.sql("""
                 UPDATE accepted_order_item SET preparation_status = :next, version = version + 1, updated_by = :actor,
                     preparation_started_at = CASE WHEN :next = 'PREPARING' THEN :time ELSE preparation_started_at END
                 WHERE id = :id
                 """).param("next", next).param("actor", actor.credentialId()).param("id", itemId).param("time", utc(now)).update();
+        preparationEvent(actor, itemId, orderId, item, next.equals("PREPARING") ? "STARTED" : "READY",
+                item.chef(), next, null, now);
         updateOrder(orderId, now);
         return readOrders("WHERE o.id = :id", Map.of("id", orderId)).getFirst().ticket(now);
     }
@@ -320,12 +429,16 @@ class OrderingService {
         Instant now = now();
         jdbc.sql("""
                 UPDATE accepted_order_item SET preparation_status = :prep, allergy_review_status = :review,
+                    claimed_by = CASE WHEN :prep = 'CANCELLED' THEN NULL ELSE claimed_by END,
                     version = version + 1, updated_by = :actor WHERE id = :id
                 """).param("prep", approve ? "RECEIVED" : "CANCELLED")
                 .param("review", approve ? "APPROVED_FOR_PREPARATION" : "DECLINED")
                 .param("actor", actor.credentialId()).param("id", itemId).update();
         long orderVersion = updateOrder(orderId, now);
         if (!approve) Payments.advanceBill(jdbc, sessionId);
+        if (!approve && item.chef() != null) {
+            preparationEvent(actor, itemId, orderId, item, "RELEASED", null, "CANCELLED", "Allergy decline", now);
+        }
         jdbc.sql("""
                 INSERT INTO order_item_allergy_review (item_id, previous_version, resulting_version,
                     order_version, reviewer_id, decision, reason, reviewed_at)
@@ -348,10 +461,11 @@ class OrderingService {
     private ItemState itemAtVersion(UUID itemId, long expectedVersion) {
         var item = jdbc.sql("""
                 SELECT preparation_status, allergy_review_status, version,
-                    jsonb_array_length(allergy_risk->'ingredientMatches') > 0
+                    jsonb_array_length(allergy_risk->'ingredientMatches') > 0, claimed_by, station_id
                 FROM accepted_order_item WHERE id = :id
                 """).param("id", itemId)
-                .query((row, index) -> new ItemState(row.getString(1), row.getString(2), row.getLong(3), row.getBoolean(4)))
+                .query((row, index) -> new ItemState(row.getString(1), row.getString(2), row.getLong(3), row.getBoolean(4),
+                        row.getObject(5, UUID.class), row.getObject(6, UUID.class)))
                 .single();
         if (item.version() != expectedVersion) {
             throw conflict("VERSION_CONFLICT", "The item version changed. Reload the ticket.");
@@ -383,6 +497,13 @@ class OrderingService {
             throw conflict("REVIEW_REQUIRED", "Every remaining item must be ready and cleared before handoff.");
         }
         Instant now = now();
+        jdbc.sql("""
+                INSERT INTO item_preparation_history (item_id,order_id,item_version,action,actor_staff_id,actor_credential_id,
+                    previous_chef_id,next_chef_id,previous_status,next_status,occurred_at)
+                SELECT id,order_id,version+1,'HANDOFF',:staff,:actor,claimed_by,claimed_by,preparation_status,:target,:time
+                FROM accepted_order_item WHERE order_id=:id AND preparation_status='READY'
+                """).param("staff", actor.staffId()).param("actor", actor.credentialId()).param("target", target)
+                .param("time", utc(now)).param("id", orderId).update();
         jdbc.sql("""
                 UPDATE accepted_order_item SET preparation_status = :status, version = version + 1, updated_by = :actor
                 WHERE order_id = :id AND preparation_status = 'READY'
@@ -419,7 +540,8 @@ class OrderingService {
         return version;
     }
 
-    private record ItemState(String preparation, String review, long version, boolean knownIngredientConflict) {}
+    private record ItemState(String preparation, String review, long version, boolean knownIngredientConflict,
+                             UUID chef, UUID station) {}
 
     @Transactional
     public ObjectNode changePriority(Actor staff, String manager, UUID order, boolean rush, boolean enabled,
@@ -458,13 +580,14 @@ class OrderingService {
     private record PriorityState(String status, long version) {}
 
     private record OrderView(ObjectNode order, String destination, Instant delayAt, long sequence, String completedAt,
-                             boolean rush, Boolean delayedOverride, JsonNode stationCodes) {
+                             boolean rush, Boolean delayedOverride, JsonNode stationCodes, JsonNode itemChefs) {
         ObjectNode ticket(Instant now) {
             String status = order.path("status").asText();
             boolean active = status.equals("RECEIVED") || status.equals("PREPARING");
             ObjectNode ticket = object().put("serviceDestination", destination).put("priority", rush ? "RUSH" : "NORMAL")
                     .put("delayed", active && (delayedOverride == null ? !delayAt.isAfter(now) : delayedOverride));
             if (!stationCodes.isEmpty()) ticket.set("stationCodes", stationCodes);
+            if (!itemChefs.isEmpty()) ticket.set("itemChefs", itemChefs);
             return ticket.set("order", order);
         }
     }
@@ -535,6 +658,9 @@ class OrderingService {
                     o.rush, o.delayed_override,
                     (SELECT jsonb_object_agg(i.id, station.code) FROM accepted_order_item i
                      JOIN kitchen_station station ON station.id = i.station_id WHERE i.order_id = o.id) AS station_codes,
+                    (SELECT jsonb_object_agg(i.id, jsonb_build_object('id', chef.id, 'username', chef.username))
+                     FROM accepted_order_item i JOIN staff_account chef ON chef.id=i.claimed_by
+                     WHERE i.order_id=o.id) AS item_chefs,
                     (SELECT jsonb_agg(jsonb_build_object(
                         'id', i.id, 'pricing', i.pricing, 'allergy', i.allergy,
                         'preparationInstructions', i.instructions, 'preparationStatus', i.preparation_status,
@@ -560,9 +686,11 @@ class OrderingService {
                     ? "Table " + row.getString("table_number") : row.getString("pickup_reference");
             var completed = row.getObject("completed_at", OffsetDateTime.class);
             String stationCodes = row.getString("station_codes");
+            String itemChefs = row.getString("item_chefs");
             return new OrderView(order, destination, instant(row, "delay_at"), row.getLong("sequence"),
                     completed == null ? null : completed.toInstant().toString(), row.getBoolean("rush"),
-                    row.getObject("delayed_override", Boolean.class), stationCodes == null ? object() : parse(stationCodes));
+                    row.getObject("delayed_override", Boolean.class), stationCodes == null ? object() : parse(stationCodes),
+                    itemChefs == null ? object() : parse(itemChefs));
         }).list();
     }
 

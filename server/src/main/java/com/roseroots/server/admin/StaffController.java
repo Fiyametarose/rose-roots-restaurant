@@ -1,5 +1,6 @@
 package com.roseroots.server.admin;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.security.Principal;
 import java.util.List;
 import java.util.UUID;
@@ -34,7 +35,10 @@ class StaffController {
 
     @PatchMapping("/{id}")
     ResponseEntity<StaffAccounts.Account> update(@PathVariable("id") UUID id, @RequestBody StaffAccounts.Update input,
-                                                 Principal manager) {
+                                                 Principal manager, HttpServletRequest request) {
+        if (input.kitchenPassword() != null && !request.isSecure()) {
+            return ResponseEntity.status(403).cacheControl(CacheControl.noStore()).build();
+        }
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(accounts.update(id, input, manager.getName()));
     }
 }

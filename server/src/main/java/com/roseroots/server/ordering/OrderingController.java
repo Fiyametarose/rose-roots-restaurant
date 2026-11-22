@@ -124,6 +124,32 @@ class OrderingController {
                 integer(body, "expectedVersion", 1, MAX_SAFE)));
     }
 
+    @PostMapping(path = "/kitchen/items/{id}/ownership", consumes = JSON_MEDIA)
+    ResponseEntity<String> ownership(@AuthenticationPrincipal Actor actor, @PathVariable("id") String item,
+                                     HttpServletRequest request) {
+        var input = body(request);
+        String action = choice(input, "action", "CLAIMED", "RELEASED", "REASSIGNED");
+        boolean reassign = action.equals("REASSIGNED");
+        if (reassign) fields(input, "action", "expectedVersion", "chefId", "reason");
+        else fields(input, "action", "expectedVersion");
+        String reason = reassign ? text(input, "reason", 240).strip() : null;
+        if (reassign && (reason.isBlank() || reason.chars().anyMatch(Character::isISOControl))) {
+            throw OrderingProblem.bad("Enter a reason for reassignment.");
+        }
+        return response(200, ordering.changeOwnership(actor, id(item), action, reassign ? id(input, "chefId") : null,
+                reason, integer(input, "expectedVersion", 1, MAX_SAFE)));
+    }
+
+    @GetMapping("/kitchen/items/{id}/preparation-history")
+    ResponseEntity<String> preparationHistory(@AuthenticationPrincipal Actor actor, @PathVariable("id") String item) {
+        return response(200, ordering.preparationHistory(actor, id(item)));
+    }
+
+    @GetMapping("/kitchen/items/{id}/eligible-chefs")
+    ResponseEntity<String> eligibleChefs(@AuthenticationPrincipal Actor actor, @PathVariable("id") String item) {
+        return response(200, ordering.eligibleChefs(actor, id(item)));
+    }
+
     @PostMapping(path = "/kitchen/orders/{id}/handoff", consumes = JSON_MEDIA)
     ResponseEntity<String> handoff(@AuthenticationPrincipal Actor actor, @PathVariable("id") String order,
                                    HttpServletRequest request) {
