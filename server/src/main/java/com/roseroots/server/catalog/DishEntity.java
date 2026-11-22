@@ -21,8 +21,7 @@ class DishEntity {
     @JdbcTypeCode(SqlTypes.JSON) List<String> ingredients;
     @JdbcTypeCode(SqlTypes.JSON) List<Allergen> allergens;
     @JdbcTypeCode(SqlTypes.JSON) List<Diet> dietaryTags;
-    Integer prepMinutes;
-    String kitchenStation;
+    long editVersion = 1;
     @Enumerated(EnumType.STRING) Availability availability;
     boolean archived;
     @JdbcTypeCode(SqlTypes.JSON) List<Customization> customizationGroups;
@@ -43,8 +42,6 @@ class DishEntity {
         ingredients = input.ingredients().stream().map(String::strip).distinct().toList();
         allergens = input.allergens().stream().distinct().toList();
         dietaryTags = input.dietaryTags().stream().distinct().toList();
-        prepMinutes = input.prepMinutes();
-        kitchenStation = optional(input.kitchenStation());
         availability = input.availability();
         customizationGroups = List.copyOf(input.customizationGroups());
         imageReference = input.imageReference() == null || input.imageReference().isBlank()
@@ -53,9 +50,14 @@ class DishEntity {
     }
 
     Dish toView() {
+        return toView(null, false);
+    }
+
+    Dish toView(Preparation preparation, boolean includeProfile) {
         return new Dish(id, categoryId, name, description, cuisine, price, servingSize, ingredients, allergens,
-                dietaryTags, prepMinutes, kitchenStation, availability, archived, customizationGroups,
-                imageReference, displayOrder, customerSourceId, sourceDetails);
+                dietaryTags, preparation == null ? null : (preparation.durationSeconds() + 59) / 60,
+                preparation == null ? null : preparation.stationName(), availability, archived, customizationGroups,
+                imageReference, displayOrder, customerSourceId, sourceDetails, editVersion, includeProfile ? preparation : null);
     }
 
     private static String optional(String value) {

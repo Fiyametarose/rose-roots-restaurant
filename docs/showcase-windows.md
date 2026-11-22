@@ -23,7 +23,7 @@ The showcase uses the packaged Windows JavaFX Customer and Kitchen apps, the exi
    ```
 
    Use each label's own credential for `Terminal2` and `Terminal3`. The installer stores the configuration in the Windows user's local application data and protects secrets using Windows DPAPI and file permissions. The optional Compose password file is readable only by the installation account and Windows SYSTEM so Docker can mount it. Secrets are excluded from the shortcuts and distributions. Running Install again with the same role and name preserves settings and credentials.
-7. In **Kitchen Configuration**, assign the two Chefs to the active stations used by the dishes being shown, set availability through the end of the showcase, and check each selected dish's station, lower/upper preparation durations, and any option workload. Configure only the dedicated showcase database. Use real orders and confirm cash only after genuine collection in the demo.
+7. In **Kitchen Configuration**, assign the two Chefs to active stations and set availability through the end of the showcase. In **Edit Dish**, check each selected dish's station, lower and upper preparation durations, and any option workload. Configure only the dedicated showcase database. Use real orders and confirm cash only after genuine collection in the demo.
 
 ### Initial Admin HTTPS launch
 

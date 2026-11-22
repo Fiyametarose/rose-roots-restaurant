@@ -189,17 +189,18 @@ class OrderingService {
             throw unusableQuote();
         }
         UUID orderId = UUID.randomUUID();
-        int prepMinutes = current.lines().stream().mapToInt(OrderingPricing.Line::prepMinutes).max().orElseThrow();
+        var profiles = PreparationProfiles.load(jdbc, current.lines());
+        var delay = current.lines().stream().anyMatch(line -> !profiles.containsKey(line.menuItemId())) ? null
+                : utc(acceptedAt.plusSeconds(profiles.values().stream().mapToInt(PreparationProfiles.Profile::lower).max().orElseThrow()));
         jdbc.sql("""
                 INSERT INTO accepted_order
                     (id, session_id, quote_id, accepted_at, status, visit_allergy, subtotal_minor, payable_minor, delay_at)
                 VALUES (:id, :session, :quote, :accepted, 'RECEIVED', CAST(:allergy AS jsonb), :subtotal, :subtotal, :delay)
                 """).param("id", orderId).param("session", sessionId).param("quote", quoteId)
                 .param("accepted", utc(acceptedAt)).param("allergy", draft.get("visitAllergy").toString())
-                .param("subtotal", current.subtotal()).param("delay", utc(acceptedAt.plus(prepMinutes, ChronoUnit.MINUTES)))
+                .param("subtotal", current.subtotal()).param("delay", delay)
                 .update();
         int position = 0;
-        var profiles = PreparationProfiles.load(jdbc, current.lines());
         for (var line : current.lines()) {
             var profile = profiles.get(line.menuItemId());
             var workload = profile == null ? null : profile.workload(line);
@@ -591,7 +592,7 @@ class OrderingService {
             String status = order.path("status").asText();
             boolean active = status.equals("RECEIVED") || status.equals("PREPARING");
             ObjectNode ticket = object().put("serviceDestination", destination).put("priority", rush ? "RUSH" : "NORMAL")
-                    .put("delayed", active && (delayedOverride == null ? !delayAt.isAfter(now) : delayedOverride));
+                    .put("delayed", active && (delayedOverride == null ? delayAt != null && !delayAt.isAfter(now) : delayedOverride));
             if (!stationCodes.isEmpty()) ticket.set("stationCodes", stationCodes);
             if (!itemChefs.isEmpty()) ticket.set("itemChefs", itemChefs);
             if (handoff != null) ticket.set("handoff", handoff);
@@ -702,7 +703,7 @@ class OrderingService {
                     .put("completedAt", completed.toInstant().toString());
             String stationCodes = row.getString("station_codes");
             String itemChefs = row.getString("item_chefs");
-            return new OrderView(order, destination, instant(row, "delay_at"), row.getLong("sequence"),
+            return new OrderView(order, destination, row.getObject("delay_at", OffsetDateTime.class) == null ? null : instant(row, "delay_at"), row.getLong("sequence"),
                     completed == null ? null : completed.toInstant().toString(), row.getBoolean("rush"),
                     row.getObject("delayed_override", Boolean.class), stationCodes == null ? object() : parse(stationCodes),
                     itemChefs == null ? object() : parse(itemChefs), handoff);

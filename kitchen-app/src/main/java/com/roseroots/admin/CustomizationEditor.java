@@ -16,19 +16,27 @@ import static com.roseroots.admin.CatalogWorkspace.*;
 final class CustomizationEditor extends VBox {
     private final VBox groups = new VBox(8);
 
-    CustomizationEditor(List<JsonObject> existing) {
+    CustomizationEditor(List<JsonObject> existing, String dishId, List<JsonObject> workloads) {
         super(8);
         for (var group : existing) {
-            groups.getChildren().add(new Group(group));
+            groups.getChildren().add(new Group(group, dishId, workloads));
         }
         getChildren().addAll(label("Customization & extras", "field-label"), groups,
-                button("Add Option Group", () -> groups.getChildren().add(new Group(null))));
+                button("Add Option Group", () -> groups.getChildren().add(new Group(null, "", List.of()))));
     }
 
     JsonArray payload() {
         var result = new JsonArray();
         for (var node : groups.getChildren()) {
             result.add(((Group) node).payload());
+        }
+        return result;
+    }
+
+    JsonArray workloads(JsonArray payload) {
+        var result = new JsonArray();
+        for (int index = 0; index < payload.size(); index++) {
+            ((Group) groups.getChildren().get(index)).appendWorkloads(payload.get(index).getAsJsonObject(), result);
         }
         return result;
     }
@@ -40,8 +48,9 @@ final class CustomizationEditor extends VBox {
         private final TextField minimum;
         private final TextField maximum;
         private final TextArea choices = new TextArea();
+        private final TextArea workload = new TextArea();
 
-        Group(JsonObject original) {
+        Group(JsonObject original, String dishId, List<JsonObject> workloads) {
             this.original = original;
             name = new TextField(text(original, "name"));
             minimum = new TextField(original == null ? "0" : text(original, "minimum"));
@@ -51,13 +60,50 @@ final class CustomizationEditor extends VBox {
             choices.setText(String.join("\n", rows(original, "choices").stream()
                     .map(Group::choiceText).toList()));
             choices.setPromptText("Extra injera | 40.00");
+            workload.setPrefRowCount(2);
+            workload.setPromptText("Choice name | lower seconds | upper seconds");
+            if (original != null) {
+                String group = canonical(text(original, "id"), dishId + "/group/");
+                var lines = new java.util.ArrayList<String>();
+                for (var option : rows(original, "choices")) {
+                    String id = canonical(text(option, "id"), group + "/option/");
+                    workloads.stream().filter(row -> group.equals(text(row, "groupId")) && id.equals(text(row, "optionId")))
+                            .findFirst().ifPresent(row -> lines.add(text(option, "name") + " | "
+                                    + text(row, "lowerSeconds") + " | " + text(row, "upperSeconds")));
+                }
+                workload.setText(String.join("\n", lines));
+            }
+            var advanced = new TitledPane("Advanced option workload", content(
+                    field("Additional seconds per item (choice name | lower | upper)", workload)));
+            advanced.setExpanded(false);
             setText(original == null ? "New option group" : text(original, "name"));
             name.textProperty().addListener((obs, before, after) -> setText(after.isBlank() ? "Option group" : after));
             setExpanded(original == null);
             setContent(content(field("Group name", name), field("Type", selection),
                     field("Minimum selections", minimum), field("Maximum selections", maximum),
                     field("Choices (name | price adjustment | optional allergen codes)", choices),
+                    advanced,
                     button("Remove Group", () -> groups.getChildren().remove(this))));
+        }
+
+        void appendWorkloads(JsonObject group, JsonArray result) {
+            var seen = new java.util.HashSet<String>();
+            for (var line : workload.getText().lines().filter(value -> !value.isBlank()).toList()) {
+                var parts = line.split("\\|", -1);
+                if (parts.length != 3 || !seen.add(parts[0].strip())) {
+                    throw new IllegalArgumentException("Enter each option workload once as Choice name | lower | upper.");
+                }
+                var option = rows(group, "choices").stream().filter(row -> text(row, "name").equals(parts[0].strip()))
+                        .findFirst().orElseThrow(() -> new IllegalArgumentException("Workload must name an option in this group."));
+                int lower = integer(parts[1], 0, 86400, "Option lower workload");
+                int upper = integer(parts[2], lower, 86400, "Option upper workload");
+                var row = new JsonObject();
+                row.addProperty("groupId", text(group, "id"));
+                row.addProperty("optionId", text(option, "id"));
+                row.addProperty("lowerSeconds", lower);
+                row.addProperty("upperSeconds", upper);
+                result.add(row);
+            }
         }
 
         JsonObject payload() {
@@ -112,5 +158,10 @@ final class CustomizationEditor extends VBox {
             return allergens == null || allergens.isEmpty() ? base : base + " | " + allergens.asList().stream()
                     .map(com.google.gson.JsonElement::getAsString).collect(java.util.stream.Collectors.joining(", "));
         }
+    }
+
+    private static String canonical(String value, String namespace) {
+        return value.matches("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}") ? value
+                : UUID.nameUUIDFromBytes((namespace + value).getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
     }
 }

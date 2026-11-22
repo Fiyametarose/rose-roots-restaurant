@@ -26,13 +26,16 @@ public class CatalogService {
     private final DishAuditRepository audit;
     private final String currency;
     private final MenuImageService images;
+    private final DishPreparation preparation;
 
     CatalogService(CategoryRepository categories, DishRepository dishes, DishAuditRepository audit, MenuImageService images,
+                   DishPreparation preparation,
                    @Value("${rose.catalog.currency}") String currency) {
         this.categories = categories;
         this.dishes = dishes;
         this.audit = audit;
         this.images = images;
+        this.preparation = preparation;
         this.currency = Currency.getInstance(currency).getCurrencyCode();
     }
 
@@ -43,11 +46,13 @@ public class CatalogService {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Snapshot snapshot(boolean published) {
         var tree = tree();
-        var items = dishes.findAll().stream()
+        var visible = dishes.findAll().stream()
                 .filter(item -> !published || !item.archived && pathHasStatus(item.categoryId, tree, true))
                 .sorted(Comparator.comparingInt((DishEntity item) -> item.displayOrder)
                         .thenComparing(item -> item.name, String.CASE_INSENSITIVE_ORDER).thenComparing(item -> item.id))
-                .map(DishEntity::toView).toList();
+                .toList();
+        var profiles = preparation.read(visible.stream().map(item -> item.id).toList(), !published);
+        var items = visible.stream().map(item -> item.toView(profiles.get(item.id), !published)).toList();
         var counts = items.stream().collect(Collectors.groupingBy(Dish::categoryId, Collectors.counting()));
         var sections = tree.values().stream()
                 .filter(category -> !published || pathHasStatus(category.id, tree, true))
@@ -101,10 +106,19 @@ public class CatalogService {
         categories.lockCatalog();
         boolean create = id == null || sourceId != null;
         var dish = create ? new DishEntity() : findDish(id);
+        if (!create && (input.expectedVersion() != null && input.expectedVersion() != dish.editVersion
+                || input.preparation() != null && input.expectedVersion() == null)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Reload this dish before saving its preparation settings.");
+        }
         if (sourceId == null && dish.customerSourceId == null
-                && (input.servingSize() == null || input.servingSize().isBlank()
-                || input.kitchenStation() == null || input.kitchenStation().isBlank() || input.prepMinutes() == null)) {
-            throw bad("Serving size, kitchen station and preparation duration are required.");
+                && (input.servingSize() == null || input.servingSize().isBlank())) {
+            throw bad("Serving size is required.");
+        }
+        if (create && sourceId == null && input.preparation() == null) {
+            throw bad("A preparation station and base duration are required for a new dish.");
+        }
+        if (sourceId == null && input.preparation() == null && (input.kitchenStation() != null || input.prepMinutes() != null)) {
+            throw bad("Use the dish preparation profile to set station and duration.");
         }
         var tree = tree();
         findCategory(input.categoryId(), tree);
@@ -114,17 +128,20 @@ public class CatalogService {
         validateCustomizations(input.customizationGroups());
         images.validateReference(input.imageReference(), dish.imageReference);
         Dish before = create ? null : dish.toView();
+        var current = create ? null : preparation.read(List.of(dish.id), true).get(dish.id);
         dish.id = id == null ? UUID.randomUUID() : id;
         dish.apply(input);
+        if (!create) dish.editVersion++;
         if (sourceId != null) {
             dish.customerSourceId = sourceId;
             dish.sourceDetails = sourceDetails;
         }
-        dishes.save(dish);
+        dishes.saveAndFlush(dish);
+        var profile = preparation.save(dish.id, input.preparation(), dish.customizationGroups, current, actor);
         if (before != null) {
             recordChange(before, dish, actor, null);
         }
-        return dish.toView();
+        return dish.toView(profile, true);
     }
 
     @Transactional
@@ -144,8 +161,9 @@ public class CatalogService {
         if (update.archived() != null) {
             dish.archived = update.archived();
         }
+        dish.editVersion++;
         recordChange(before, dish, actor, update.reason() == null ? null : update.reason().strip());
-        return dish.toView();
+        return dish.toView(preparation.read(List.of(id), true).get(id), true);
     }
 
     /** Order acceptance must copy the returned price and details into its own immutable snapshot. */

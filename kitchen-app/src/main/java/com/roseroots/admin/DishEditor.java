@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import java.util.Arrays;
 import java.util.List;
 import javafx.scene.control.CheckBox;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.FlowPane;
@@ -13,7 +14,11 @@ import static com.roseroots.admin.CatalogControls.*;
 import static com.roseroots.admin.CatalogWorkspace.*;
 
 final class DishEditor extends VBox {
-    DishEditor(CatalogWorkspace workspace, JsonObject dish) {
+    private record Station(String id, String name, boolean active) {
+        @Override public String toString() { return name + (active ? "" : " (inactive)"); }
+    }
+
+    DishEditor(CatalogWorkspace workspace, JsonObject dish, List<JsonObject> stations) {
         super(14);
         var name = input(dish, "name");
         var description = new TextArea(text(dish, "description"));
@@ -24,14 +29,22 @@ final class DishEditor extends VBox {
         cuisine.setValue(dish == null ? null : cuisineName(text(dish, "cuisine")));
         var price = input(dish, "price");
         var serving = input(dish, "servingSize");
-        var station = input(dish, "kitchenStation");
-        var duration = input(dish, "prepMinutes");
+        var profile = dish != null && dish.get("preparation") instanceof JsonObject saved ? saved : null;
+        var station = new ComboBox<Station>();
+        station.setPromptText("Unconfigured");
+        station.setId("dish-preparation-station");
+        station.getItems().setAll(stations.stream().map(value -> new Station(text(value, "id"),
+                text(value, "name"), value.get("active").getAsBoolean())).toList());
+        station.setValue(station.getItems().stream().filter(item -> item.id().equals(text(profile, "stationId")))
+                .findFirst().orElse(null));
+        var duration = input(profile, "durationSeconds");
+        duration.setId("dish-preparation-base");
+        var upper = input(profile, "upperDurationSeconds");
+        upper.setId("dish-preparation-upper");
         var order = new TextField(dish == null ? "10" : text(dish, "displayOrder"));
         boolean imported = !text(dish, "customerSourceId").isEmpty();
         if (imported) {
-            for (var unknown : List.of(serving, station, duration)) {
-                unknown.setPromptText("Unknown — manager review");
-            }
+            serving.setPromptText("Unknown — manager review");
         }
         var available = options("Available", "Out of stock");
         available.setValue(dish == null || text(dish, "availability").equals("AVAILABLE") ? "Available" : "Out of stock");
@@ -40,7 +53,8 @@ final class DishEditor extends VBox {
         ingredients.setPromptText("One ingredient per line");
         var allergens = checkboxes(strings(dish, "allergens"), "NUTS", "MILK", "EGGS", "WHEAT", "SOY", "FISH", "SHELLFISH");
         var dietary = checkboxes(strings(dish, "dietaryTags"), "VEGETARIAN", "VEGAN", "GLUTEN_FREE", "DAIRY_FREE", "FASTING_FRIENDLY");
-        var customizations = new CustomizationEditor(rows(dish, "customizationGroups"));
+        var customizations = new CustomizationEditor(rows(dish, "customizationGroups"),
+                text(dish, "id"), rows(profile, "options"));
         var details = panel("Dish Details", content(
                 field("Item name", name),
                 field("Category / subcategory", category),
@@ -48,8 +62,9 @@ final class DishEditor extends VBox {
                 field("Cuisine", cuisine),
                 field("Price (" + workspace.currency() + ")", price),
                 field("Serving size", serving),
-                field("Kitchen station", station),
-                field("Preparation duration (minutes)", duration),
+                field("Preparation station", station),
+                field("Base preparation duration (seconds)", duration),
+                field("Upper preparation duration (seconds, optional)", upper),
                 field("Display order", order),
                 field("Availability", available)));
         var photo = new DishPhotoPane(workspace, dish);
@@ -71,18 +86,29 @@ final class DishEditor extends VBox {
                 payload.addProperty("price", money(price.getText()));
                 payload.addProperty("servingSize", imported ? serving.getText().strip()
                         : required(serving.getText(), "Enter a serving size."));
-                payload.addProperty("kitchenStation", imported ? station.getText().strip()
-                        : required(station.getText(), "Enter a kitchen station."));
-                if (!imported || !duration.getText().isBlank()) {
-                    payload.addProperty("prepMinutes", integer(duration.getText(), 1, 1440, "Preparation duration"));
-                }
                 payload.addProperty("displayOrder", integer(order.getText(), 0, Integer.MAX_VALUE, "Display order"));
                 payload.addProperty("availability", available.getValue().equals("Available") ? "AVAILABLE" : "SOLD_OUT");
                 payload.add("ingredients", array(ingredients.getText().lines().map(String::strip)
                         .filter(value -> !value.isEmpty()).toList()));
                 payload.add("allergens", selections(allergens));
                 payload.add("dietaryTags", selections(dietary));
-                payload.add("customizationGroups", customizations.payload());
+                var groups = customizations.payload();
+                payload.add("customizationGroups", groups);
+                var workloads = customizations.workloads(groups);
+                if (dish != null) payload.addProperty("expectedVersion", dish.get("version").getAsLong());
+                if (dish == null || profile != null || station.getValue() != null || !duration.getText().isBlank()
+                        || !upper.getText().isBlank() || !workloads.isEmpty()) {
+                    if (station.getValue() == null) throw new IllegalArgumentException("Choose a preparation station.");
+                    var preparation = new JsonObject();
+                    preparation.addProperty("stationId", station.getValue().id());
+                    int base = integer(duration.getText(), 1, 86400, "Base preparation duration");
+                    preparation.addProperty("durationSeconds", base);
+                    if (!upper.getText().isBlank()) {
+                        preparation.addProperty("upperDurationSeconds", integer(upper.getText(), base, 86400, "Upper preparation duration"));
+                    }
+                    preparation.add("options", workloads);
+                    payload.add("preparation", preparation);
+                }
                 if (!photo.retainedReference().isEmpty()) {
                     payload.addProperty("imageReference", photo.retainedReference());
                 }

@@ -8,7 +8,6 @@ import java.util.function.Consumer;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
-import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
@@ -21,7 +20,7 @@ final class KitchenConfigurationWorkspace extends VBox {
         @Override public String toString() { return label; }
     }
 
-    private record Data(List<Choice> stations, List<Choice> chefs, List<Choice> menu, List<JsonObject> profiles) {}
+    private record Data(List<Choice> stations, List<Choice> chefs) {}
 
     private final AdminApi api;
     private final Runnable expired;
@@ -44,16 +43,13 @@ final class KitchenConfigurationWorkspace extends VBox {
 
     private void load() {
         run(() -> new Data(choices(api.adminRows("stations"), "name"),
-                choices(api.adminRows("chef-availability"), "username"),
-                choices(api.catalog().getAsJsonArray("items"), "name"),
-                objects(api.adminRows("prep-times"))), data -> {
+                choices(api.adminRows("chef-availability"), "username")), data -> {
             var stationRows = new VBox(8);
             data.stations().forEach(station -> stationRows.getChildren().add(station(station, data.chefs())));
             var chefRows = new VBox(8);
             data.chefs().forEach(chef -> chefRows.getChildren().add(chef(chef)));
             if (data.chefs().isEmpty()) chefRows.getChildren().add(new Label("Create Chef accounts in Staff & Security."));
-            content.getChildren().setAll(section("Stations", stationRows), section("Chef availability", chefRows),
-                    section("Menu preparation profiles", profile(data)));
+            content.getChildren().setAll(section("Stations", stationRows), section("Chef availability", chefRows));
         });
     }
 
@@ -109,41 +105,6 @@ final class KitchenConfigurationWorkspace extends VBox {
             save("chef-availability/" + chef.id(), body);
         });
         return new FlowPane(8, 5, new Label(chef.label()), new Label(availability), minutes, save);
-    }
-
-    private Node profile(Data data) {
-        var dish = new ComboBox<Choice>();
-        dish.setPromptText("Menu item");
-        dish.getItems().setAll(data.menu());
-        var station = new ComboBox<Choice>();
-        station.setPromptText("Preparation station");
-        station.getItems().setAll(data.stations());
-        var seconds = new TextField();
-        seconds.setPromptText("Duration in seconds");
-        var save = new Button("Save profile");
-        save.disableProperty().bind(dish.valueProperty().isNull().or(station.valueProperty().isNull()));
-        dish.setOnAction(event -> {
-            var existing = current(data, dish.getValue());
-            seconds.setText(existing == null ? "" : existing.get("durationSeconds").getAsString());
-            station.setValue(existing == null ? null : data.stations().stream()
-                    .filter(choice -> choice.id().equals(existing.get("stationId").getAsString())).findFirst().orElse(null));
-        });
-        save.setOnAction(event -> {
-            Integer duration = number(seconds, 1, 86400, "seconds");
-            if (duration == null) return;
-            var existing = current(data, dish.getValue());
-            var body = existing == null ? new JsonObject() : version(existing);
-            if (existing == null) body.addProperty("expectedVersion", 0);
-            body.addProperty("stationId", station.getValue().id());
-            body.addProperty("durationSeconds", duration);
-            save("prep-times/" + dish.getValue().id(), body);
-        });
-        return new FlowPane(8, 5, dish, station, seconds, save);
-    }
-
-    private static JsonObject current(Data data, Choice dish) {
-        return dish == null ? null : data.profiles().stream()
-                .filter(profile -> dish.id().equals(profile.get("menuItemId").getAsString())).findFirst().orElse(null);
     }
 
     private void save(String endpoint, JsonObject body) {

@@ -31,11 +31,6 @@ class KitchenConfigurationController {
     record StationEdit(Boolean active, Integer parallelSlots, Long expectedVersion, Set<UUID> chefIds) {}
     record Chef(UUID id, String username, boolean enabled, OffsetDateTime availableUntil, long version) {}
     record Availability(Integer minutes, Long expectedVersion) {}
-    record ProfileInput(UUID stationId, Integer durationSeconds, Long expectedVersion) {}
-    record PrepTime(UUID menuItemId, UUID stationId, int durationSeconds, long version) {}
-    record OptionWork(UUID groupId, UUID optionId, int lowerSeconds, int upperSeconds) {}
-    record EstimateWorkload(int upperDurationSeconds, long expectedVersion, List<OptionWork> options) {}
-
     private static final String STATIONS = """
             SELECT s.*, ARRAY(SELECT chef_id FROM kitchen_station_chef WHERE station_id = s.id ORDER BY chef_id) AS assignments,
                 (SELECT count(*) FROM kitchen_station_chef a JOIN staff_account c ON c.id = a.chef_id
@@ -101,71 +96,6 @@ class KitchenConfigurationController {
         return ok(chef);
     }
 
-    @GetMapping("/prep-times")
-    ResponseEntity<List<PrepTime>> prepTimes() {
-        return ok(jdbc.sql("SELECT * FROM kitchen_prep_profile ORDER BY menu_item_id")
-                .query(KitchenConfigurationController::profile).list());
-    }
-
-    @PatchMapping("/prep-times/{id}")
-    @Transactional
-    public ResponseEntity<PrepTime> updateProfile(@PathVariable("id") UUID menu, @RequestBody ProfileInput input, Principal manager) {
-        if (input.stationId() == null || input.durationSeconds() == null || input.durationSeconds() < 1
-                || input.durationSeconds() > 86400 || input.expectedVersion() == null || input.expectedVersion() < 0) {
-            throw bad("Specify a station, preparation duration in seconds, and the current version.");
-        }
-        boolean exists = jdbc.sql("""
-                SELECT EXISTS(SELECT 1 FROM catalog_item WHERE id = :menu AND NOT archived)
-                   AND EXISTS(SELECT 1 FROM kitchen_station WHERE id = :station)
-                """).param("menu", menu).param("station", input.stationId()).query(Boolean.class).single();
-        if (!exists) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Catalog item or station unavailable.");
-        var statement = input.expectedVersion() == 0 ? jdbc.sql("""
-                INSERT INTO kitchen_prep_profile(menu_item_id, station_id, duration_seconds)
-                VALUES (:menu,:station,:seconds) ON CONFLICT DO NOTHING RETURNING *
-                """) : jdbc.sql("""
-                UPDATE kitchen_prep_profile SET station_id = :station, duration_seconds = :seconds, version = version + 1,
-                    upper_duration_seconds = CASE WHEN station_id = :station AND duration_seconds = :seconds
-                        THEN upper_duration_seconds ELSE NULL END
-                WHERE menu_item_id = :menu AND version = :expected RETURNING *
-                """).param("expected", input.expectedVersion());
-        var profile = statement.param("menu", menu).param("station", input.stationId()).param("seconds", input.durationSeconds())
-                .query(KitchenConfigurationController::profile).optional().orElseThrow(KitchenConfigurationController::stale);
-        audit("PREP_PROFILE", menu, profile.version(), manager);
-        return ok(profile);
-    }
-
-    @PatchMapping("/prep-times/{id}/estimate-workload")
-    @Transactional
-    public ResponseEntity<PrepTime> calibrate(@PathVariable("id") UUID menu, @RequestBody EstimateWorkload input, Principal manager) {
-        if (input.expectedVersion() < 1 || input.upperDurationSeconds() < 1 || input.upperDurationSeconds() > 86400
-                || input.options() == null || input.options().size() > 900) {
-            throw bad("Supply a measured upper duration, profile version and option workload list.");
-        }
-        var keys = new java.util.HashSet<java.util.Map.Entry<UUID, UUID>>();
-        for (var option : input.options()) {
-            if (option == null || option.groupId() == null || option.optionId() == null || option.lowerSeconds() < 0
-                    || option.upperSeconds() < option.lowerSeconds() || option.upperSeconds() > 86400
-                    || !keys.add(java.util.Map.entry(option.groupId(), option.optionId()))) {
-                throw bad("Option workload IDs must be unique and their measured durations valid.");
-            }
-        }
-        var profile = jdbc.sql("""
-                UPDATE kitchen_prep_profile SET upper_duration_seconds = :upper, version = version + 1
-                WHERE menu_item_id = :menu AND version = :expected AND duration_seconds <= :upper RETURNING *
-                """).param("upper", input.upperDurationSeconds()).param("menu", menu).param("expected", input.expectedVersion())
-                .query(KitchenConfigurationController::profile).optional().orElseThrow(KitchenConfigurationController::stale);
-        jdbc.sql("DELETE FROM kitchen_option_workload WHERE menu_item_id = :menu").param("menu", menu).update();
-        for (var option : input.options()) {
-            jdbc.sql("""
-                    INSERT INTO kitchen_option_workload(menu_item_id, group_id, option_id, lower_seconds, upper_seconds)
-                    VALUES (:menu, :group, :option, :low, :high)
-                    """).param("menu", menu).param("group", option.groupId()).param("option", option.optionId())
-                    .param("low", option.lowerSeconds()).param("high", option.upperSeconds()).update();
-        }
-        audit("PREP_PROFILE", menu, profile.version(), manager);
-        return ok(profile);
-    }
-
     private void audit(String entity, UUID id, long version, Principal actor) {
         jdbc.sql("""
                 INSERT INTO kitchen_configuration_audit(entity, entity_id, version, manager_username)
@@ -187,11 +117,6 @@ class KitchenConfigurationController {
     private static Chef chef(ResultSet row, int index) throws SQLException {
         return new Chef(row.getObject("id", UUID.class), row.getString("username"), row.getBoolean("enabled"),
                 row.getObject("available_until", OffsetDateTime.class), row.getLong("version"));
-    }
-
-    private static PrepTime profile(ResultSet row, int index) throws SQLException {
-        return new PrepTime(row.getObject("menu_item_id", UUID.class), row.getObject("station_id", UUID.class),
-                row.getInt("duration_seconds"), row.getLong("version"));
     }
 
     private static <T> ResponseEntity<T> ok(T data) { return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(data); }

@@ -7,7 +7,6 @@ import com.roseroots.server.catalog.CatalogData.Allergen;
 import com.roseroots.server.catalog.CatalogData.Dish;
 import com.roseroots.server.catalog.CatalogService;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -29,7 +28,7 @@ class OrderingPricing {
             "TREE_NUTS", "SOY", "FISH", "SHELLFISH", "NUTS_UNSPECIFIED");
 
     record Line(UUID menuItemId, ObjectNode pricing, JsonNode allergy, String instructions,
-                ObjectNode risk, int prepMinutes, boolean ingredientsKnown) {}
+                ObjectNode risk, boolean ingredientsKnown) {}
 
     record Price(List<Line> lines, long subtotal) {
         ObjectNode snapshot() {
@@ -111,7 +110,7 @@ class OrderingPricing {
                 violations.add(object().put("pointer", "/lines/" + lines.size()).put("code", "ALLERGEN_CONFLICT")
                         .put("message", "Declared allergens in this configuration: " + String.join(", ", names) + "."));
             }
-            lines.add(new Line(itemId, pricing, allergy, instructions, risk, dish.prepMinutes(),
+            lines.add(new Line(itemId, pricing, allergy, instructions, risk,
                     dish.ingredients() != null && dish.ingredients().stream().anyMatch(value -> !value.isBlank())));
         }
         if (!violations.isEmpty()) {
@@ -145,7 +144,7 @@ class OrderingPricing {
         }
         ArrayNode result = array();
         for (var group : dish.customizationGroups()) {
-            UUID groupId = catalogId(group.id(), dish.id() + "/group/");
+            UUID groupId = com.roseroots.server.catalog.CatalogData.orderingId(group.id(), dish.id() + "/group/");
             Set<UUID> selected = choicesByGroup.getOrDefault(groupId, Set.of());
             if (selected.size() < group.minimum() || selected.size() > group.maximum()) {
                 throw invalidSelection("A customization group does not meet its selection limits.");
@@ -153,7 +152,7 @@ class OrderingPricing {
             choicesByGroup.remove(groupId);
             int matched = 0;
             for (var choice : group.choices()) {
-                UUID optionId = catalogId(choice.id(), groupId + "/option/");
+                UUID optionId = com.roseroots.server.catalog.CatalogData.orderingId(choice.id(), groupId + "/option/");
                 if (selected.contains(optionId)) {
                     result.add(object().put("groupId", groupId.toString()).put("optionId", optionId.toString())
                             .put("name", choice.name()).put("unitAdjustmentMinor", minor(choice.priceAdjustment())));
@@ -168,14 +167,6 @@ class OrderingPricing {
             throw invalidSelection("The selected customization groups are invalid.");
         }
         return result;
-    }
-
-    // Catalog IDs that already satisfy the v1 contract keep their existing identity.
-    private static UUID catalogId(String value, String namespace) {
-        if (value.matches("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}")) {
-            return UUID.fromString(value);
-        }
-        return UUID.nameUUIDFromBytes((namespace + value).getBytes(StandardCharsets.UTF_8));
     }
 
     private static JsonNode declaration(JsonNode node) {
@@ -206,9 +197,9 @@ class OrderingPricing {
         var reported = dish.sourceDetails() == null || dish.sourceDetails().reportedChoiceAllergens() == null
                 ? java.util.Map.<String, List<Allergen>>of() : dish.sourceDetails().reportedChoiceAllergens();
         for (var group : dish.customizationGroups()) {
-            UUID groupId = catalogId(group.id(), dish.id() + "/group/");
+            UUID groupId = com.roseroots.server.catalog.CatalogData.orderingId(group.id(), dish.id() + "/group/");
             for (var choice : group.choices()) {
-                UUID optionId = catalogId(choice.id(), groupId + "/option/");
+                UUID optionId = com.roseroots.server.catalog.CatalogData.orderingId(choice.id(), groupId + "/option/");
                 if (selected.contains(groupId + "/" + optionId)) {
                     known.addAll(choice.allergens());
                     known.addAll(reported.getOrDefault(choice.id(), List.of()));

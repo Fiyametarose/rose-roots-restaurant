@@ -542,20 +542,82 @@ class OrderingPostgresTest {
             var live = json(manager.send(request("/admin/stations", null).GET().build(),
                     HttpResponse.BodyHandlers.ofString()), 200);
             assertEquals(1, live.get(0).path("qualifiedAvailableChefs").asInt());
-            var profile = object().put("stationId", station).put("durationSeconds", 420).put("expectedVersion", 0);
-            assertEquals(1, configWrite(manager, csrf, "/prep-times/" + menu, profile, 200).path("version").asLong());
+            var catalog = json(manager.send(request("/admin/catalog", null).GET().build(), HttpResponse.BodyHandlers.ofString()), 200);
+            var edit = (ObjectNode) catalog.path("items").valueStream().filter(row -> menu.toString().equals(row.path("id").asText()))
+                    .findFirst().orElseThrow().deepCopy();
+            assertTrue(edit.path("preparation").isNull());
+            var profile = object().put("stationId", station).put("durationSeconds", 420).put("upperDurationSeconds", 480);
+            profile.putArray("options");
+            edit.set("preparation", profile);
+            edit.put("expectedVersion", edit.path("version").asLong());
+            String route = "/menu-items/" + menu;
+            var saved = configWrite(manager, csrf, route, edit, 200);
+            assertEquals(1, saved.at("/preparation/version").asLong());
             String order = submitNew(terminal, session, menu);
             String item = get(terminal, "/orders/" + order, 200).at("/lines/0/id").asText();
             assertEquals("BEVERAGES", ticket(order).path("stationCodes").path(item).asText());
             assertFalse(get(terminal, "/orders/" + order, 200).has("stationCodes"));
-            profile.put("stationId", stations.get(1).path("id").asText()).put("durationSeconds", 600).put("expectedVersion", 1);
-            assertEquals(2, configWrite(manager, csrf, "/prep-times/" + menu, profile, 200).path("version").asLong());
+            profile.put("stationId", stations.get(1).path("id").asText()).put("durationSeconds", 600).put("upperDurationSeconds", 660);
+            configWrite(manager, csrf, route, edit, 409);
+            edit.put("expectedVersion", saved.path("version").asLong());
+            assertEquals(2, configWrite(manager, csrf, route, edit, 200).at("/preparation/version").asLong());
             assertEquals("BEVERAGES", ticket(order).path("stationCodes").path(item).asText());
+            String later = submitNew(terminal, session, menu);
+            String laterItem = get(terminal, "/orders/" + later, 200).at("/lines/0/id").asText();
+            assertNotEquals("BEVERAGES", ticket(later).path("stationCodes").path(laterItem).asText());
             patch(item, "PREPARING", 1, 200);
             assertTrue(db.sql("""
                     SELECT planned_duration_seconds = 420 AND preparation_started_at IS NOT NULL
                     FROM accepted_order_item WHERE id = CAST(:id AS uuid)
                     """).param("id", item).query(Boolean.class).single());
+        }
+    }
+
+    @Test
+    void dishAndPreparationSaveAtomicallyAndValidateOptionWorkloads() throws Exception {
+        try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
+            managerLogin(manager);
+            String csrf = manager.send(request("/admin/csrf", null).GET().build(), HttpResponse.BodyHandlers.ofString()).body();
+            UUID station = db.sql("SELECT id FROM kitchen_station WHERE code='HOT'").query(UUID.class).single();
+            UUID category = db.sql("SELECT category_id FROM catalog_item WHERE id=:id")
+                    .param("id", dish()).query(UUID.class).single();
+            var dish = object().put("name", "Transactional profile tea").put("description", "Measured preparation")
+                    .put("categoryId", category.toString()).put("cuisine", "INTERNATIONAL").put("displayOrder", 1)
+                    .put("price", 220).put("servingSize", "250 ml").put("availability", "AVAILABLE");
+            dish.putArray("ingredients").add("Tea");
+            dish.putArray("allergens");
+            dish.putArray("dietaryTags");
+            var group = dish.putArray("customizationGroups").addObject().put("id", "finish").put("name", "Finish")
+                    .put("selection", "EXTRA").put("minimum", 0).put("maximum", 1);
+            group.putArray("choices").addObject().put("id", "honey").put("name", "Honey").put("priceAdjustment", 20);
+            var profile = dish.putObject("preparation").put("stationId", UUID.randomUUID().toString())
+                    .put("durationSeconds", 180).put("upperDurationSeconds", 120);
+            var workload = profile.putArray("options").addObject().put("groupId", "finish").put("optionId", "honey")
+                    .put("lowerSeconds", 15).put("upperSeconds", 25);
+            for (int invalid = 0; invalid < 3; invalid++) {
+                assertEquals(400, manager.send(managerPost("/admin/menu-items", csrf, dish), HttpResponse.BodyHandlers.discarding()).statusCode());
+                if (invalid == 0) profile.put("upperDurationSeconds", 240);
+                if (invalid == 1) {
+                    profile.put("stationId", station.toString());
+                    workload.put("optionId", "unknown");
+                }
+            }
+            assertEquals(0L, db.sql("SELECT count(*) FROM catalog_item WHERE name='Transactional profile tea'").query(Long.class).single());
+            workload.put("optionId", "honey");
+            var saved = json(manager.send(managerPost("/admin/menu-items", csrf, dish), HttpResponse.BodyHandlers.ofString()), 201);
+            assertEquals(1L, saved.at("/preparation/version").asLong());
+            assertEquals(15, saved.at("/preparation/options/0/lowerSeconds").asInt());
+            String id = saved.path("id").asText();
+            dish.put("expectedVersion", saved.path("version").asLong()).put("price", 999);
+            workload.put("upperSeconds", 10);
+            configWrite(manager, csrf, "/menu-items/" + id, dish, 400);
+            assertEquals(220, db.sql("SELECT price FROM catalog_item WHERE id=CAST(:id AS uuid)")
+                    .param("id", id).query(java.math.BigDecimal.class).single().intValueExact());
+            assertEquals(25, db.sql("SELECT upper_seconds FROM kitchen_option_workload WHERE menu_item_id=CAST(:id AS uuid)")
+                    .param("id", id).query(Integer.class).single());
+            var route = "/menu-items/" + id + "/trading";
+            assertTrue(configWrite(manager, csrf, route, object().put("archived", true), 200).path("archived").asBoolean());
+            assertFalse(configWrite(manager, csrf, route, object().put("archived", false), 200).path("archived").asBoolean());
         }
     }
 
@@ -1430,6 +1492,20 @@ class OrderingPostgresTest {
             assertEquals(4, get(terminalToken, path, 200).path("maximumMinutes").asInt());
             patch(item, "READY", 2, 200);
             assertEquals(0, get(terminalToken, path, 200).path("maximumMinutes").asInt());
+            int priorDraftMinutes = json(send(terminalToken, "POST", "/wait-estimates", input, null), 200)
+                    .path("maximumMinutes").asInt();
+            var menuRows = json(manager.send(request("/admin/catalog", null).GET().build(),
+                    HttpResponse.BodyHandlers.ofString()), 200).path("items");
+            var edit = (ObjectNode) menuRows.valueStream().filter(row -> menu.toString().equals(row.path("id").asText()))
+                    .findFirst().orElseThrow().deepCopy();
+            edit.put("expectedVersion", edit.path("version").asLong());
+            var revised = (ObjectNode) edit.path("preparation");
+            revised.put("durationSeconds", 300).put("upperDurationSeconds", 420);
+            configWrite(manager, csrf, "/menu-items/" + menu, edit, 200);
+            int newDraftMinutes = json(send(terminalToken, "POST", "/wait-estimates", input, null), 200)
+                    .path("maximumMinutes").asInt();
+            assertTrue(newDraftMinutes > priorDraftMinutes);
+            assertEquals(3, get(terminalToken, laterEstimate, 200).path("maximumMinutes").asInt());
             input.withObject("/visitAllergy").put("kind", "DISCLOSED").putArray("allergens").add("SOY");
             assertEquals("ALLERGY_REVIEW", json(send(terminalToken, "POST", "/wait-estimates", input, null), 200).path("reason").asText());
         } finally {

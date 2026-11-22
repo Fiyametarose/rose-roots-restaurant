@@ -56,13 +56,17 @@ final class CatalogWorkspace extends VBox {
     private void load(JsonObject dish) {
         body.setDisable(true);
         message.setText("Loading catalog…");
-        AdminWorkspace.background(api::catalog, (data, failure) -> {
+        record Loaded(JsonObject catalog, List<JsonObject> stations) {}
+        AdminWorkspace.background(() -> new Loaded(api.catalog(), section == AdminSection.DISH
+                ? api.adminRows("stations").asList().stream().map(entry -> entry.getAsJsonObject()).toList() : List.of()),
+                (loaded, failure) -> {
             if (failure != null) {
                 body.setDisable(false);
                 body.getChildren().setAll(button("Retry", () -> load(dish)));
                 explain(failure);
                 return;
             }
+            var data = loaded.catalog();
             currency = text(data, "currency");
             categories = rows(data, "categories");
             items = rows(data, "items");
@@ -77,7 +81,7 @@ final class CatalogWorkspace extends VBox {
                 case CATEGORIES -> categories();
                 case PRICES -> prices();
                 case DISH -> new DishEditor(this, items.stream()
-                        .filter(item -> text(item, "id").equals(text(dish, "id"))).findFirst().orElse(dish));
+                        .filter(item -> text(item, "id").equals(text(dish, "id"))).findFirst().orElse(dish), loaded.stations());
                 default -> throw new IllegalStateException("Unexpected catalog section");
             };
             body.getChildren().setAll(screen);

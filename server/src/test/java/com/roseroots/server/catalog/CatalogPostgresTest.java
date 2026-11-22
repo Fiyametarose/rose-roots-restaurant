@@ -115,6 +115,7 @@ class CatalogPostgresTest {
             write(client, 400, "POST", "/admin/menu-items", dish);
             dish.put("price", 210.25);
             itemId = write(client, 201, "POST", "/admin/menu-items", dish).get("id").asString();
+            dish.remove("preparation");
             assertTrue(publicMenu(client).toString().contains(itemId));
 
             var catalog = server.getBean(CatalogService.class);
@@ -206,6 +207,7 @@ class CatalogPostgresTest {
             assertEquals(150, ImageIO.read(new ByteArrayInputStream(photo(client, photoPath))).getHeight());
             var dish = dish().put("name", "Photographed dish").put("imageReference", photoPath);
             dishId = write(client, 201, "POST", "/admin/menu-items", dish).get("id").asString();
+            dish.remove("preparation");
             assertEquals(415, upload(client, new byte[]{1}, true).statusCode());
             assertTrue(publicMenu(client).toString().contains(photoPath));
             replacement = json(201, upload(client, image("jpeg", 48, 32), true)).get("imageReference").asString();
@@ -229,8 +231,9 @@ class CatalogPostgresTest {
             assertArrayEquals(savedBytes, photo(client, replacement));
             assertTrue(publicMenu(client).toString().contains(replacement));
             login(client, "manager-test", 204);
-            write(client, 200, "PATCH", "/admin/menu-items/" + dishId,
-                    dish().put("name", "Photographed dish").putNull("imageReference"));
+            var edit = dish().put("name", "Photographed dish").putNull("imageReference");
+            edit.remove("preparation");
+            write(client, 200, "PATCH", "/admin/menu-items/" + dishId, edit);
             assertFalse(publicMenu(client).toString().contains(replacement));
         }
         try (var connection = DriverManager.getConnection(schemaUrl(), DB_USER, DB_PASSWORD);
@@ -379,11 +382,13 @@ class CatalogPostgresTest {
     private static ObjectNode dish() {
         var item = JSON.createObjectNode().put("categoryId", DRINKS).put("name", "Honey Ginger Tea")
                 .put("description", "Freshly brewed ginger tea").put("cuisine", "INTERNATIONAL").put("price", 210.25)
-                .put("servingSize", "250 ml").put("prepMinutes", 6).put("kitchenStation", "Beverages")
+                .put("servingSize", "250 ml")
                 .put("availability", "AVAILABLE").put("displayOrder", 10);
         item.putArray("ingredients").add("Ginger");
         item.putArray("allergens");
         item.putArray("dietaryTags").add("VEGETARIAN");
+        item.putObject("preparation").put("stationId", "0f2f27d8-1680-4e72-92a6-e73e5f08bb13")
+                .put("durationSeconds", 360).putArray("options");
         var extra = item.putArray("customizationGroups").addObject().put("id", "sweetener").put("name", "Sweetener")
                 .put("selection", "EXTRA").put("minimum", 0).put("maximum", 1);
         extra.putArray("choices").addObject().put("id", "honey").put("name", "Honey").put("priceAdjustment", 10);
