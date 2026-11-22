@@ -99,17 +99,19 @@ class KitchenConfigurationController {
                 || input.expectedVersion() == null || input.expectedVersion() < 1) {
             throw bad("Specify 0 to 720 minutes of availability and the current account version.");
         }
+        if (input.minutes() != 0) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Staff start their own shifts.");
         jdbc.sql("""
-                UPDATE staff_account SET available_until = CASE WHEN :minutes = 0 THEN NULL
-                    ELSE now() + make_interval(mins => :minutes) END, version = version + 1
+                UPDATE staff_account SET available_until = now(), version = version + 1
                 WHERE id = :id AND staff_role = 'CHEF' AND enabled AND NOT password_reset_required AND version = :expected
-                    AND (:minutes = 0 OR EXISTS(SELECT 1 FROM ordering_credential auth
-                        WHERE auth.id=staff_account.credential_id AND auth.revoked_at IS NULL AND auth.expires_at > now()))
                 RETURNING version
-                """).param("id", id).param("minutes", input.minutes()).param("expected", input.expectedVersion())
+                """).param("id", id).param("expected", input.expectedVersion())
                 .query(Long.class).optional().orElseThrow(KitchenConfigurationController::stale);
         var chef = jdbc.sql(CHEFS + " AND c.id=:id").param("id", id).query(KitchenConfigurationController::chef).single();
         audit("CHEF_AVAILABILITY", id, chef.version(), manager);
+        jdbc.sql("""
+                INSERT INTO staff_duty_audit(staff_id,actor,action,version,shift_ends_at)
+                SELECT id,:actor,'EMERGENCY_END',version,available_until FROM staff_account WHERE id=:id
+                """).param("id", id).param("actor", manager.getName()).update();
         return ok(chef);
     }
 

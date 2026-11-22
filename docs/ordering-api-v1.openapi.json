@@ -2436,7 +2436,7 @@
       ],
       "get": {
         "operationId": "listKitchenAssistance",
-        "description": "Current and completed requests scoped to the staff restaurant.",
+        "description": "Current and completed requests scoped to the staff restaurant. Personal Waiter queues include their owned requests and their table coverage. Shared workstation access is read-only.",
         "security": [
           {
             "staffBearer": []
@@ -2516,16 +2516,10 @@
       ],
       "patch": {
         "operationId": "transitionAssistance",
-        "description": "Advance one state from SUBMITTED to ACKNOWLEDGED to IN_PROGRESS to COMPLETED. Requires the current request version. Staff identity is derived from its bearer.",
+        "description": "A personally authenticated on-duty Waiter with visit coverage may claim an unassigned Submitted request by acknowledging it, then advance their own request to IN_PROGRESS and COMPLETED. Requires the current request version.",
         "security": [
           {
-            "staffBearer": []
-          },
-          {
             "kitchenStaffSession": []
-          },
-          {
-            "workstationBearer": []
           }
         ],
         "requestBody": {
@@ -4600,6 +4594,11 @@
           "updatedAt": {
             "$ref": "#/components/schemas/Timestamp"
           },
+          "ownerStaffId": {
+            "description": "Current owner on Kitchen responses only. Absent from Customer responses.",
+            "type": ["string", "null"],
+            "format": "uuid"
+          },
           "version": {
             "type": "integer",
             "minimum": 1,
@@ -5050,7 +5049,7 @@
       "workstationBearer": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Revocable, restaurant-scoped Kitchen workstation credential over HTTPS. Authorizes only the active ticket feed and Assistance read/transition operations."
+        "description": "Revocable, restaurant-scoped Kitchen workstation credential over HTTPS. Authorizes the active ticket feed, Assistance read access and entry to personal staff sign-in."
       },
       "adminBearer": {
         "type": "http",

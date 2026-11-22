@@ -32,6 +32,44 @@ public final class ConnectedAssistanceView extends VBox {
     private boolean fetching;
     private boolean stopped;
     private int failures;
+    private SpringBootKitchenService.StaffSession shownStaff;
+    private boolean shownDuty;
+    private record Waiter(UUID id, String username) {
+        @Override public String toString() { return username; }
+    }
+
+    private void chooseWaiter(ConnectedAssistanceRequest row, SpringBootKitchenService.StaffSession actor) {
+        rest.eligibleWaiters(row).whenComplete((values, failure) -> Platform.runLater(() -> {
+            if (stopped || rest.signedInStaff() != actor || getScene() == null) return;
+            if (failure != null || values.isEmpty()) {
+                status.setText("No eligible on-duty Waiter could be loaded.");
+                return;
+            }
+            var dialog = new javafx.scene.control.Dialog<javafx.scene.control.ButtonType>();
+            dialog.initOwner(getScene().getWindow());
+            dialog.setTitle("Reassign assistance");
+            var waiters = new javafx.scene.control.ComboBox<Waiter>();
+            values.forEach(value -> {
+                var record = value.getAsJsonObject();
+                waiters.getItems().add(new Waiter(UUID.fromString(record.get("id").getAsString()), record.get("username").getAsString()));
+            });
+            waiters.getSelectionModel().selectFirst();
+            var reason = new javafx.scene.control.TextField();
+            reason.setPromptText("Reassignment reason");
+            dialog.getDialogPane().setContent(new VBox(8, new Label("On-duty Waiter"), waiters, reason));
+            var ok = javafx.scene.control.ButtonType.OK;
+            dialog.getDialogPane().getButtonTypes().setAll(ok, javafx.scene.control.ButtonType.CANCEL);
+            dialog.getDialogPane().lookupButton(ok).disableProperty().bind(reason.textProperty().isEmpty());
+            if (dialog.showAndWait().orElse(null) == ok && rest.signedInStaff() == actor) {
+                rest.reassignAssistance(row, waiters.getValue().id(), reason.getText().strip())
+                        .whenComplete((ignored, error) -> Platform.runLater(() -> {
+                            if (stopped) return;
+                            status.setText(error == null ? "Assistance reassigned." : "Could not reassign. Check the latest status.");
+                            if (!fetching) { next.stop(); read(); }
+                        }));
+            }
+        }));
+    }
 
     public ConnectedAssistanceView(SpringBootKitchenService rest, IntConsumer activeCount) {
         this.rest = rest;
@@ -55,8 +93,19 @@ public final class ConnectedAssistanceView extends VBox {
     private void read() {
         if (stopped) return;
         fetching = true;
+        var actor = rest.signedInStaff();
         rest.assistanceRequests().whenComplete((requests, failure) ->
-                Platform.runLater(() -> received(requests, failure)));
+                Platform.runLater(() -> {
+                    if (stopped) return;
+                    if (actor != rest.signedInStaff()) {
+                        queued = null;
+                        snapshot = List.of();
+                        render();
+                        read();
+                        return;
+                    }
+                    received(requests, failure);
+                }));
     }
 
     private void received(List<ConnectedAssistanceRequest> requests, Throwable failure) {
@@ -73,7 +122,8 @@ public final class ConnectedAssistanceView extends VBox {
                     : "The queued action was not sent. Assistance is reconnecting.");
             render();
         } else {
-            boolean changed = failures > 0 || !snapshot.equals(requests) || rows.getChildren().isEmpty();
+            boolean changed = failures > 0 || !snapshot.equals(requests) || rows.getChildren().isEmpty()
+                    || shownStaff != rest.signedInStaff() || shownDuty != rest.waiterOnDuty();
             failures = 0;
             snapshot = requests;
             if (action != null) {
@@ -109,8 +159,16 @@ public final class ConnectedAssistanceView extends VBox {
         next.stop();
         rows.setDisable(true);
         status.setText("Saving assistance status…");
+        var actor = rest.signedInStaff();
         rest.advanceAssistance(request).whenComplete((updated, failure) -> Platform.runLater(() -> {
             if (stopped) return;
+            if (actor != rest.signedInStaff()) {
+                snapshot = List.of();
+                rows.setDisable(false);
+                render();
+                read();
+                return;
+            }
             if (failure == null) {
                 snapshot = snapshot.stream().map(row -> row.id().equals(updated.id()) ? updated : row).toList();
                 status.setText("Assistance status saved.");
@@ -126,6 +184,8 @@ public final class ConnectedAssistanceView extends VBox {
 
     private void render() {
         rows.getChildren().clear();
+        shownStaff = rest.signedInStaff();
+        shownDuty = rest.waiterOnDuty();
         activeCount.accept((int) snapshot.stream().filter(row -> row.status() != State.COMPLETED).count());
         snapshot.stream().sorted(Comparator.comparing((ConnectedAssistanceRequest row) -> row.status() == State.COMPLETED)
                 .thenComparing(ConnectedAssistanceRequest::updatedAt, Comparator.reverseOrder()))
@@ -137,12 +197,25 @@ public final class ConnectedAssistanceView extends VBox {
                                     .format(request.updatedAt()), "metadata"));
                     card.getStyleClass().addAll("ticket", "assistance-card");
                     if (!request.note().isBlank()) card.getChildren().add(label(request.note(), "customer-note"));
-                    if (request.status() != State.COMPLETED) {
+                    if (request.status() != State.COMPLETED && shownStaff != null
+                            && shownDuty
+                            && (shownStaff.id().equals(request.ownerStaffId())
+                               || request.ownerStaffId() == null && request.status() == State.SUBMITTED)) {
                         var action = new Button(request.status().action);
                         action.setId("assistance-action-" + request.id());
                         action.setDisable(queued != null);
                         action.setOnAction(event -> advance(request));
                         card.getChildren().add(action);
+                    }
+                    if (request.status() != State.COMPLETED && shownStaff != null && "SUPERVISOR".equals(shownStaff.role())) {
+                        var reassign = new Button("Reassign");
+                        var actor = shownStaff;
+                        reassign.setOnAction(event -> chooseWaiter(request, actor));
+                        card.getChildren().add(reassign);
+                    }
+                    if (request.status() != State.COMPLETED && request.ownerStaffId() != null) {
+                        card.getChildren().add(label(shownStaff != null && shownStaff.id().equals(request.ownerStaffId())
+                                ? "Assigned to you" : "Assigned to a Waiter", "metadata"));
                     }
                     rows.getChildren().add(card);
                 });

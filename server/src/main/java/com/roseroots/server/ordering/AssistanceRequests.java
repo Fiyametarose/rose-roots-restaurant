@@ -77,7 +77,8 @@ class AssistanceRequests {
         boolean kitchen = session == null;
         if (!kitchen) ordering.ownedSession(actor, session, false);
         UUID scope = kitchen ? actor.restaurantId() : session;
-        String cursorScope = (kitchen ? "ak:" : "as:") + scope;
+        boolean waiter = kitchen && "WAITER".equals(actor.staffRole());
+        String cursorScope = (kitchen ? "ak:" : "as:") + scope + (waiter ? "/" + actor.staffId() : "");
         String condition = kitchen ? "s.restaurant_id = :scope" : "a.session_id = :scope";
         OrderingService.Cursor bounds = cursor == null
                 ? new OrderingService.Cursor(0, jdbc.sql("""
@@ -85,12 +86,18 @@ class AssistanceRequests {
                         JOIN dining_session s ON s.id = a.session_id WHERE
                         """ + condition).param("scope", scope).query(Long.class).single())
                 : OrderingService.decodeCursor(cursor, cursorScope);
-        var rows = jdbc.sql(ROWS + "WHERE " + condition + " " + """
+        String area = waiter ? """
+                AND (a.owner_staff_id=:staff OR NOT EXISTS(SELECT 1 FROM waiter_table_assignment WHERE staff_id=:staff)
+                    OR EXISTS(SELECT 1 FROM waiter_table_assignment WHERE staff_id=:staff AND table_id=s.table_id))
+                """ : "";
+        var query = jdbc.sql(ROWS + "WHERE " + condition + " " + area + """
                  AND a.sequence > :after AND a.sequence <= :through ORDER BY a.sequence LIMIT :limit
                 """).param("scope", scope).param("after", bounds.after()).param("through", bounds.through())
-                .param("limit", limit + 1).query(AssistanceRequests::row).list();
+                .param("limit", limit + 1);
+        if (waiter) query.param("staff", actor.staffId());
+        var rows = query.query(AssistanceRequests::row).list();
         var entries = array();
-        rows.stream().limit(limit).forEach(row -> entries.add(row.json()));
+        rows.stream().limit(limit).forEach(row -> entries.add(kitchen ? row.staffJson() : row.json()));
         return object().put("nextCursor", rows.size() > limit
                         ? OrderingService.encodeCursor(cursorScope, rows.get(limit - 1).sequence(), bounds.through()) : null)
                 .set("requests", entries);
@@ -102,6 +109,11 @@ class AssistanceRequests {
         if (row.version() != expectedVersion) {
             throw conflict("VERSION_CONFLICT", "The assistance request changed. Reload the queue.");
         }
+        StaffDuty.requireWaiter(jdbc, actor.staffId(), actor.restaurantId(), UUID.fromString(row.session()));
+        if (row.owner() != null && !row.owner().equals(actor.staffId())
+                || row.owner() == null && !row.status().equals("SUBMITTED")) {
+            throw conflict("ASSISTANCE_OWNERSHIP_REQUIRED", "This request needs its assigned Waiter or Supervisor reassignment.");
+        }
         int step = STATES.indexOf(row.status()) + 1;
         if (step >= STATES.size() || !STATES.get(step).equals(next)) {
             throw conflict("INVALID_TRANSITION", "Advance assistance one state at a time.");
@@ -109,14 +121,51 @@ class AssistanceRequests {
         OffsetDateTime stamp = now();
         if (stamp.isBefore(row.updatedAt())) stamp = row.updatedAt();
         jdbc.sql("""
-                UPDATE assistance_request SET status = :status, version = version + 1, updated_at = :now WHERE id = :id
-                """).param("status", next).param("now", stamp).param("id", id).update();
+                UPDATE assistance_request SET status = :status, version = version + 1, updated_at = :now, owner_staff_id=:staff WHERE id = :id
+                """).param("status", next).param("now", stamp).param("id", id).param("staff", actor.staffId()).update();
         jdbc.sql("""
-                INSERT INTO assistance_transition (request_id, staff_credential_id, from_status, to_status, version, occurred_at)
-                VALUES (:id, :actor, :previous, :status, :version, :now)
+                INSERT INTO assistance_transition (request_id, staff_credential_id, from_status, to_status, version, occurred_at, actor_staff_id)
+                VALUES (:id, :actor, :previous, :status, :version, :now, :staff)
                 """).param("id", id).param("actor", actor.credentialId()).param("previous", row.status())
-                .param("status", next).param("version", row.version() + 1).param("now", stamp).update();
-        return request(id, actor.restaurantId(), false).json();
+                .param("status", next).param("version", row.version() + 1).param("now", stamp).param("staff", actor.staffId()).update();
+        return request(id, actor.restaurantId(), false).staffJson();
+    }
+
+    com.fasterxml.jackson.databind.JsonNode eligibleWaiters(Actor actor, UUID id) {
+        var row = request(id, actor.restaurantId(), false);
+        var result = array();
+        jdbc.sql("""
+                SELECT a.id,a.username FROM staff_account a JOIN ordering_credential c ON c.id=a.credential_id
+                JOIN dining_session s ON s.id=:session AND s.restaurant_id=c.restaurant_id
+                WHERE c.restaurant_id=:restaurant AND a.staff_role='WAITER' AND a.enabled
+                  AND NOT a.password_reset_required AND a.available_until>now()
+                  AND c.revoked_at IS NULL AND c.expires_at>now()
+                  AND (NOT EXISTS(SELECT 1 FROM waiter_table_assignment WHERE staff_id=a.id)
+                    OR EXISTS(SELECT 1 FROM waiter_table_assignment WHERE staff_id=a.id AND table_id=s.table_id))
+                ORDER BY a.username
+                """).param("session", UUID.fromString(row.session())).param("restaurant", actor.restaurantId())
+                .query((r, i) -> object().put("id",r.getString(1)).put("username",r.getString(2)))
+                .list().stream().filter(w -> row.owner() == null || !row.owner().toString().equals(w.path("id").asText()))
+                .forEach(result::add);
+        return result;
+    }
+
+    @Transactional
+    public ObjectNode reassign(Actor actor, UUID id, UUID waiter, long version, String reason) {
+        var row = request(id, actor.restaurantId(), true);
+        if (row.version() != version) throw conflict("VERSION_CONFLICT", "Reload the request.");
+        if (row.status().equals("COMPLETED") || waiter.equals(row.owner())) {
+            throw conflict("INVALID_TRANSITION", "Select another Waiter for an unfinished request.");
+        }
+        StaffDuty.requireWaiter(jdbc, waiter, actor.restaurantId(), UUID.fromString(row.session()));
+        jdbc.sql("UPDATE assistance_request SET owner_staff_id=:waiter, version=version+1, updated_at=now() WHERE id=:id")
+                .param("id", id).param("waiter", waiter).update();
+        jdbc.sql("""
+                INSERT INTO assistance_reassignment(request_id,version,supervisor_id,previous_waiter_id,waiter_id,reason)
+                VALUES (:id,:version,:supervisor,:previous,:waiter,:reason)
+                """).param("id", id).param("version", version+1).param("supervisor", actor.staffId())
+                .param("previous", row.owner()).param("waiter", waiter).param("reason", reason).update();
+        return request(id, actor.restaurantId(), false).staffJson();
     }
 
     private Request request(UUID id, UUID restaurant, boolean lock) {
@@ -131,12 +180,14 @@ class AssistanceRequests {
                 mode.equals("DINE_IN") ? "Table " + row.getString("table_number") : row.getString("pickup_reference"),
                 row.getString("type"), row.getString("note"), row.getString("status"),
                 row.getObject("submitted_at", OffsetDateTime.class), row.getObject("updated_at", OffsetDateTime.class),
-                row.getLong("version"), row.getLong("sequence"), row.getBytes("input_sha256"));
+                row.getLong("version"), row.getLong("sequence"), row.getBytes("input_sha256"), row.getObject("owner_staff_id", UUID.class));
     }
 
     private record Request(String id, String session, String mode, String destination, String type, String note,
                            String status, OffsetDateTime submittedAt, OffsetDateTime updatedAt, long version,
-                           long sequence, byte[] fingerprint) {
+                           long sequence, byte[] fingerprint, UUID owner) {
+        ObjectNode staffJson() { return json().put("ownerStaffId", owner == null ? null : owner.toString()); }
+
         ObjectNode json() {
             return object().put("id", id).put("sessionId", session).put("mode", mode)
                     .put("serviceDestination", destination).put("type", type).put("note", note).put("status", status)

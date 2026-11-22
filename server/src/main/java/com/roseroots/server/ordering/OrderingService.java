@@ -481,14 +481,15 @@ class OrderingService {
             throw new OrderingProblem(403, "FORBIDDEN", "Handoff requires a personal Waiter session.");
         }
         var current = jdbc.sql("""
-                SELECT o.status, o.version, s.mode FROM accepted_order o JOIN dining_session s ON s.id = o.session_id
+                SELECT o.status, o.version, s.mode, s.id AS session_id FROM accepted_order o JOIN dining_session s ON s.id = o.session_id
                 WHERE o.id = :id AND s.restaurant_id = :restaurant FOR UPDATE OF o
                 """).param("id", orderId).param("restaurant", actor.restaurantId())
-                .query((row, index) -> new HandoffState(row.getString(1), row.getLong(2), row.getString(3)))
+                .query((row, index) -> new HandoffState(row.getString(1), row.getLong(2), row.getString(3), row.getObject("session_id", UUID.class)))
                 .optional().orElseThrow(OrderingProblem::missing);
         if (current.version() != expectedVersion) {
             throw conflict("VERSION_CONFLICT", "The order version changed. Reload the ticket.");
         }
+        StaffDuty.requireWaiter(jdbc, actor.staffId(), actor.restaurantId(), current.session());
         if (!current.status().equals("READY") || !target.equals(current.mode().equals("DINE_IN") ? "SERVED" : "COLLECTED")) {
             throw conflict("INVALID_TRANSITION", "Handoff requires a ready order and the correct service mode.");
         }
@@ -526,7 +527,7 @@ class OrderingService {
         return readOrders("WHERE o.id = :id", Map.of("id", orderId)).getFirst().ticket(now);
     }
 
-    private record HandoffState(String status, long version, String mode) {}
+    private record HandoffState(String status, long version, String mode, UUID session) {}
 
     private long updateOrder(UUID orderId, Instant now) {
         long version = jdbc.sql("""

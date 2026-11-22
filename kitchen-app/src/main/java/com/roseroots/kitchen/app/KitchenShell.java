@@ -263,9 +263,11 @@ final class KitchenShell extends BorderPane {
     void connectStaffWorkspaces(SpringBootKitchenService service) {
         var signIn = new Button("Staff sign-in");
         var lock = new Button("Lock / switch staff");
-        staffControls.getChildren().setAll(signIn, lock);
+        var duty = new StaffDutyControls(service);
+        staffControls.getChildren().setAll(signIn, duty, lock);
         Runnable showStaff = () -> {
             var staff = service.signedInStaff();
+            duty.reflect(staff);
             signIn.setVisible(staff == null);
             signIn.setManaged(staff == null);
             lock.setVisible(staff != null);

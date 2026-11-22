@@ -61,6 +61,20 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
     private int readFailures;
     private volatile PendingAdvance pendingAdvance;
     private volatile StaffSession staff;
+    private volatile StaffSession dutyActor;
+    private volatile boolean onDuty;
+
+    public boolean waiterOnDuty() {
+        var actor = staff;
+        return actor != null && actor == dutyActor && "WAITER".equals(actor.role()) && onDuty;
+    }
+
+    public void displayDuty(StaffSession actor, boolean active) {
+        if (actor != staff || actor == dutyActor && active == onDuty) return;
+        onDuty = active;
+        dutyActor = actor;
+        notifyListeners();
+    }
 
     public record StaffSession(UUID id, String username, String role, boolean allergyReviewer,
                                java.time.Instant expiresAt, String token) {
@@ -103,8 +117,7 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
     public boolean workstation() { return credentials instanceof WorkstationCredential; }
     public StaffSession signedInStaff() { return staff; }
     public boolean canConfirmHandoff() {
-        var session = staff;
-        return session != null && "WAITER".equals(session.role()) && writesAvailable();
+        return waiterOnDuty() && writesAvailable();
     }
     @Override public boolean writesAvailable() {
         return (!workstation() || staff != null) && !stopped && status == Status.CONNECTED
@@ -596,6 +609,30 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
         });
     }
 
+    public CompletableFuture<JsonObject> staffDuty() {
+        return send("/api/v1/kitchen/staff-duty", null).thenApply(KitchenTicketJson::object);
+    }
+
+    public CompletableFuture<JsonObject> changeDuty(int hours, long version) {
+        var data = new JsonObject();
+        data.addProperty("hours", hours);
+        data.addProperty("expectedVersion", version);
+        return send("/api/v1/kitchen/staff-duty", data).thenApply(KitchenTicketJson::object);
+    }
+
+    public CompletableFuture<com.google.gson.JsonArray> eligibleWaiters(ConnectedAssistanceRequest row) {
+        return send("/api/v1/kitchen/assistance/" + row.id() + "/eligible-waiters", null)
+                .thenApply(raw -> com.google.gson.JsonParser.parseString(raw).getAsJsonArray());
+    }
+
+    public CompletableFuture<String> reassignAssistance(ConnectedAssistanceRequest row, UUID waiter, String reason) {
+        var data = new JsonObject();
+        data.addProperty("waiterId", waiter.toString());
+        data.addProperty("expectedVersion", row.version());
+        data.addProperty("reason", reason);
+        return send("/api/v1/kitchen/assistance/" + row.id() + "/reassign", data, "POST");
+    }
+
     public CompletableFuture<ConnectedAssistanceRequest> advanceAssistance(ConnectedAssistanceRequest displayed) {
         var next = displayed.status().next();
         var body = new JsonObject();
@@ -678,7 +715,10 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
 
     private CompletableFuture<String> send(String path, JsonObject body, String method) {
         boolean personalRead = path.startsWith("/api/v1/kitchen/history?") || path.startsWith("/api/v1/kitchen/reviews?");
-        var session = personalRead || body != null && !path.startsWith("/api/v1/kitchen/assistance") ? staff : null;
+        boolean dutyRead = path.equals("/api/v1/kitchen/staff-duty") || path.endsWith("/eligible-waiters");
+        boolean waiterQueue = path.startsWith("/api/v1/kitchen/assistance?") && staff != null
+                && "WAITER".equals(staff.role());
+        var session = personalRead || dutyRead || waiterQueue || body != null ? staff : null;
         return exchange(path, body, body == null ? "GET" : method, session, 200);
     }
 

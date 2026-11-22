@@ -59,10 +59,13 @@ class OrderingSecurity {
                         .hasAnyAuthority("KITCHEN", "KITCHEN_WORKSTATION", "PERSONAL_WAITER")
                         .requestMatchers(HttpMethod.GET, "/api/v1/kitchen/history")
                         .hasAnyAuthority("KITCHEN", "PERSONAL_WAITER")
+                        .requestMatchers("/api/v1/kitchen/staff-duty").hasAnyAuthority("PERSONAL_CHEF", "PERSONAL_WAITER")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/kitchen/assistance/{id}/eligible-waiters").hasAuthority("PERSONAL_SUPERVISOR")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/kitchen/assistance/{id}/reassign").hasAuthority("PERSONAL_SUPERVISOR")
                         .requestMatchers(HttpMethod.GET, "/api/v1/kitchen/assistance")
-                        .hasAnyAuthority("KITCHEN", "KITCHEN_WORKSTATION")
+                        .hasAnyAuthority("KITCHEN", "KITCHEN_WORKSTATION", "PERSONAL_WAITER")
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/kitchen/assistance/{id}")
-                        .hasAnyAuthority("KITCHEN", "KITCHEN_WORKSTATION")
+                        .hasAuthority("PERSONAL_WAITER")
                         .requestMatchers("/api/v1/kitchen/**").hasAuthority("KITCHEN")
                         .anyRequest().hasAuthority("TERMINAL"))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -155,6 +158,7 @@ class OrderingSecurity {
                                             authorities.add(new SimpleGrantedAuthority("PERSONAL_SESSION"));
                                             authorities.add(new SimpleGrantedAuthority("CHEF".equals(actor.staffRole())
                                                     ? "CHEF" : "PERSONAL_SUPERVISOR"));
+                                            if ("CHEF".equals(actor.staffRole())) authorities.add(new SimpleGrantedAuthority("PERSONAL_CHEF"));
                                         }
                                     }
                                     context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(

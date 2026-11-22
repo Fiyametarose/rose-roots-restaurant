@@ -286,6 +286,21 @@ class OrderingController {
                 integer(input, "expectedVersion", 1, MAX_SAFE)));
     }
 
+    @GetMapping("/kitchen/assistance/{id}/eligible-waiters")
+    ResponseEntity<String> eligibleWaiters(@AuthenticationPrincipal Actor actor, @PathVariable("id") String requestId) {
+        return response(200, assistance.eligibleWaiters(actor, id(requestId)));
+    }
+
+    @PostMapping(path = "/kitchen/assistance/{id}/reassign", consumes = JSON_MEDIA)
+    ResponseEntity<String> reassignAssistance(@AuthenticationPrincipal Actor actor, @PathVariable("id") String requestId,
+            HttpServletRequest request) {
+        var input = fields(body(request), "waiterId", "expectedVersion", "reason");
+        String why = text(input, "reason", 240).strip();
+        if (why.isEmpty()) throw OrderingProblem.bad("Enter a reassignment reason.");
+        return response(200, assistance.reassign(actor, id(requestId), id(input, "waiterId"),
+                integer(input, "expectedVersion", 1, MAX_SAFE), why));
+    }
+
     @ExceptionHandler(DataAccessException.class)
     ResponseEntity<String> storageProblem() {
         return problem(new OrderingProblem(503, "SERVICE_UNAVAILABLE", "Ordering storage is unavailable."));

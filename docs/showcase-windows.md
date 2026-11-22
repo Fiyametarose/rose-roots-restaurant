@@ -68,7 +68,7 @@ For an additional physical Customer device, add its reserved IP to the permitted
    ```
 
    Use each label's own credential for `Terminal2` and `Terminal3`. The installer stores the configuration in the Windows user's local application data and protects secrets using Windows DPAPI and file permissions. The optional Compose password file is readable only by the installation account and Windows SYSTEM so Docker can mount it. Secrets are excluded from the shortcuts and distributions. Running Install again with the same role and name preserves settings and credentials.
-7. In **Kitchen Configuration**, assign the two Chefs to active stations and start their shifts through the end of the showcase. A fresh database has seeded categories. Use **Add Dish** to create any missing showcase dishes, and **Edit Dish** to check each dish's station, base duration, optional upper duration and option workload. Include a priced option and accurate allergen declarations for the acceptance exercises. Configure only the dedicated showcase database. Use real orders and confirm cash only after collection.
+7. In **Kitchen Configuration**, assign the two Chefs to active stations and configure any Waiter tables. Chefs and Waiters start their own shifts after personal sign-in. A fresh database has seeded categories. Use **Add Dish** to create any missing showcase dishes, and **Edit Dish** to check each dish's station, base duration, optional upper duration and option workload. Include a priced option and accurate allergen declarations for the acceptance exercises. Configure only the dedicated showcase database. Use real orders and confirm cash only after collection.
 
 ### Initial Admin HTTPS launch
 

@@ -29,20 +29,14 @@ final class KitchenConfigurationWorkspace extends VBox {
             .withZone(ZoneId.systemDefault());
 
     private record Choice(String id, String label, JsonObject data) {}
-    private record Data(List<Choice> stations, List<Choice> chefs) {}
-    private enum ShiftLength {
-        FOUR(4), EIGHT(8), TWELVE(12);
-        final int hours;
-        ShiftLength(int hours) { this.hours = hours; }
-        @Override public String toString() { return hours + " hours"; }
-    }
-
+    private record Data(List<Choice> stations, List<Choice> chefs, List<Choice> waiters, List<Choice> tables) {}
     private final AdminApi api;
     private final Runnable expired;
     private final Button refresh = new Button("Refresh configuration");
     private final Label status = new Label();
     private final VBox stations = new VBox(14);
     private final VBox shifts = new VBox(12);
+    private final VBox service = new VBox(12);
     private final List<Runnable> clockUpdates = new ArrayList<>();
     private final Timeline clock = new Timeline(new KeyFrame(Duration.seconds(1), event -> tick()));
     private Instant serverTime = Instant.now();
@@ -55,7 +49,7 @@ final class KitchenConfigurationWorkspace extends VBox {
         status.setWrapText(true);
         status.setAccessibleText("Kitchen configuration status");
         var tabs = new TabPane(new Tab("Stations & assignments", stations),
-                new Tab("Chef shifts", shifts), new Tab("Order priority", new ManagerPriorityWorkspace(api, expired)));
+                new Tab("Chef shifts", shifts), new Tab("Waiter service", service), new Tab("Order priority", new ManagerPriorityWorkspace(api, expired)));
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         getChildren().addAll(new FlowPane(8, 5, refresh, status), tabs);
         refresh.setOnAction(event -> load("Configuration refreshed.", null));
@@ -72,7 +66,8 @@ final class KitchenConfigurationWorkspace extends VBox {
     private Instant now() { return serverTime.plusNanos(System.nanoTime() - sampledAt); }
 
     private void load(String success, String focusId) {
-        run(() -> new Data(choices(api.adminRows("stations"), "name"), choices(api.adminRows("chef-availability"), "username")),
+        run(() -> new Data(choices(api.adminRows("stations"), "name"), choices(api.adminRows("chef-availability"), "username"),
+                choices(api.adminRows("service-duty"), "username"), choices(api.adminRows("tables"), "displayNumber")),
                 data -> {
                     sampledAt = System.nanoTime();
                     serverTime = data.chefs().isEmpty() ? Instant.now()
@@ -80,6 +75,8 @@ final class KitchenConfigurationWorkspace extends VBox {
                     clockUpdates.clear();
                     stations.getChildren().setAll(heading("Stations and capacity"));
                     data.stations().forEach(station -> stations.getChildren().add(station(station, data.chefs())));
+                    service.getChildren().setAll(heading("Waiter duty and table assignments"));
+                    data.waiters().forEach(waiter -> service.getChildren().add(waiter(waiter, data.tables())));
                     shifts.getChildren().setAll(heading("Chef shifts and availability"));
                     data.chefs().forEach(chef -> shifts.getChildren().add(chef(chef)));
                     if (data.chefs().isEmpty()) shifts.getChildren().add(new Label("Create Chef accounts in Staff & Security."));
@@ -142,11 +139,6 @@ final class KitchenConfigurationWorkspace extends VBox {
         var state = new Label();
         var coverage = new Label();
         coverage.setWrapText(true);
-        var length = new ComboBox<ShiftLength>();
-        length.getItems().setAll(ShiftLength.values());
-        length.setValue(ShiftLength.EIGHT);
-        var lengthLabel = new Label("Shift length");
-        lengthLabel.setLabelFor(length);
         var action = new Button();
         String focusId = "chef-shift-" + chef.id();
         action.setId(focusId);
@@ -157,11 +149,10 @@ final class KitchenConfigurationWorkspace extends VBox {
             String label = dutyLabel(chef);
             if (on) label += " · Ends " + SHIFT_END.format(parseTime(value, "availableUntil"));
             state.setText(label);
-            action.setText(on ? "End Shift" : "Start Shift");
+            action.setText("Emergency End Shift");
             action.setUserData(on);
             action.setAccessibleText(action.getText() + " for " + chef.label());
-            action.setDisable(!eligible);
-            length.setDisable(!eligible || on);
+            action.setDisable(!eligible || !on);
             coverage.setText(unfinished == 0 ? "" : unfinished + " unfinished item(s) assigned."
                     + (on ? "" : " A Supervisor needs to reassign this work."));
         });
@@ -170,11 +161,50 @@ final class KitchenConfigurationWorkspace extends VBox {
         action.setOnAction(event -> {
             boolean ending = Boolean.TRUE.equals(action.getUserData());
             var body = version(value);
-            body.addProperty("minutes", ending ? 0 : length.getValue().hours * 60);
+            body.addProperty("minutes", 0);
             save("chef-availability/" + chef.id(), body,
                     chef.label() + (ending ? " is off duty." : " is on duty."), focusId);
         });
-        return new VBox(7, heading(chef.label()), state, coverage, new FlowPane(12, 8, lengthLabel, length, action));
+        return new VBox(7, heading(chef.label()), state, coverage, action);
+    }
+
+    private Node waiter(Choice waiter, List<Choice> tables) {
+        var data = waiter.data();
+        var state = new Label();
+        var end = new Button("Emergency End Shift");
+        clockUpdates.add(() -> {
+            var until = parseTime(data, "availableUntil");
+            boolean on = data.get("enabled").getAsBoolean() && until != null && until.isAfter(now());
+            state.setText(data.get("archived").getAsBoolean() ? "Archived"
+                    : !data.get("enabled").getAsBoolean() ? "Deactivated"
+                    : on ? "On Duty | Ends " + SHIFT_END.format(until) : "Off Duty");
+            end.setDisable(!on);
+        });
+        end.setOnAction(event -> run(() -> api.adminWrite("staff-duty/" + waiter.id() + "/end", "POST", version(data), 200),
+                ignored -> load("Waiter shift ended.", null)));
+        var selected = data.getAsJsonArray("tableIds");
+        var boxes = new java.util.LinkedHashMap<String, CheckBox>();
+        for (var table : tables) {
+            boolean assigned = selected.asList().stream().anyMatch(id -> id.getAsString().equals(table.id()));
+            if (!assigned && !table.data().get("enabled").getAsBoolean()) continue;
+            var box = new CheckBox(table.label());
+            box.setSelected(assigned);
+            boxes.put(table.id(), box);
+        }
+        var save = new Button("Save service area");
+        save.setDisable(data.get("archived").getAsBoolean());
+        save.setOnAction(event -> {
+            var body = version(data);
+            var ids = new JsonArray();
+            body.add("tableIds", ids);
+            boxes.forEach((id, box) -> { if (box.isSelected()) ids.add(id); });
+            save("service-duty/" + waiter.id(), body, "Waiter service area saved.", null);
+        });
+        var choices = new FlowPane(10, 8);
+        choices.getChildren().addAll(boxes.values());
+        return new VBox(8, heading(waiter.label()), state, end,
+                new Label("Select tables. No tables selected means restaurant-wide service, including pickup."),
+                choices, save);
     }
 
     private boolean onDuty(Choice chef) {
@@ -202,11 +232,13 @@ final class KitchenConfigurationWorkspace extends VBox {
     private <T> void run(Callable<T> task, Consumer<T> done) {
         stations.setDisable(true);
         shifts.setDisable(true);
+        service.setDisable(true);
         refresh.setDisable(true);
         status.setText("Contacting kitchen configuration…");
         AdminWorkspace.background(task, (result, error) -> {
             stations.setDisable(false);
             shifts.setDisable(false);
+            service.setDisable(false);
             refresh.setDisable(false);
             if (error == null) {
                 done.accept(result);

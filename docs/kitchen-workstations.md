@@ -6,11 +6,12 @@ Ordering API 1.0.0-draft.4 adds workstation bearer authentication to three exist
 | --- | --- |
 | `GET /kitchen/orders` | Read the restaurant's active tickets, preparation states, stations and allergy information. |
 | `GET /kitchen/assistance` | Read the restaurant's Assistance queue. |
-| `PATCH /kitchen/assistance/{id}` | Advance one step from SUBMITTED to ACKNOWLEDGED, IN_PROGRESS, then COMPLETED. Supply the displayed `expectedVersion` with `status`. |
+
+V24 makes Assistance writes available only to personally authenticated on-duty Waiters. Supervisors can reassign unfinished work. See [staff duty](staff-duty-v24.md).
 
 The existing seven request types, pagination and Customer session authorization remain in effect. Stale versions return `409 VERSION_CONFLICT`. An invalid step with the current version returns `409 INVALID_TRANSITION`. Reload the queue after a conflict or an uncertain response.
 
-A workstation credential never has individual Kitchen, allergy review, Supervisor, Customer terminal, or Manager authority. It cannot write preparation, priority, handoff, payments or staff data. It cannot access Kitchen history or reviews. Unknown, expired and revoked credentials return 401. Authorized credentials used outside their scope return 403 on the ordering API. Assistance audit rows retain the credential UUID and timestamp. For shared access that UUID resolves to the workstation record, including after revocation.
+A workstation credential never has individual Kitchen, allergy review, Supervisor, Customer terminal, or Manager authority. It cannot write preparation, priority, handoff, payments or staff data. It cannot access Kitchen history or reviews. Unknown, expired and revoked credentials return 401. Authorized credentials used outside their scope return 403 on the ordering API. Assistance audit rows retain the credential UUID and timestamp. Historical shared transitions retain the workstation credential UUID. Personal Waiter transitions also record the staff account ID.
 
 ## Provision and rotate
 
