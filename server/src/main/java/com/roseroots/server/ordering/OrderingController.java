@@ -203,6 +203,34 @@ class OrderingController {
                 .cacheControl(CacheControl.noStore()).body(error.body().toString());
     }
 
+    @PostMapping(path="/sessions/{session}/orders/{order}/items/{item}/preview", consumes=JSON_MEDIA)
+    ResponseEntity<String> previewItem(@AuthenticationPrincipal Actor actor, @PathVariable("session") String session,
+            @PathVariable("order") String order, @PathVariable("item") String item, HttpServletRequest request) {
+        var input = fields(body(request), "expectedItemVersion", "expectedOrderVersion", "replacement");
+        return response(200, ordering.previewItem(actor, id(session), id(order), id(item),
+                integer(input,"expectedItemVersion",1,MAX_SAFE), integer(input,"expectedOrderVersion",1,MAX_SAFE),
+                input.get("replacement")));
+    }
+
+    @PostMapping(path="/sessions/{session}/orders/{order}/items/{item}/edit", consumes=JSON_MEDIA)
+    ResponseEntity<String> editItem(@AuthenticationPrincipal Actor actor, @PathVariable("session") String session,
+            @PathVariable("order") String order, @PathVariable("item") String item,
+            @RequestHeader("Idempotency-Key") String key, HttpServletRequest request) {
+        var input = fields(body(request), "expectedItemVersion", "expectedOrderVersion", "replacement", "fingerprint");
+        return response(200, ordering.changeCustomerItem(actor,id(session),id(order),id(item),id(key),
+                integer(input,"expectedItemVersion",1,MAX_SAFE), integer(input,"expectedOrderVersion",1,MAX_SAFE),
+                input.get("replacement"),text(input,"fingerprint",64)));
+    }
+
+    @PostMapping(path="/sessions/{session}/orders/{order}/items/{item}/cancel", consumes=JSON_MEDIA)
+    ResponseEntity<String> cancelItem(@AuthenticationPrincipal Actor actor, @PathVariable("session") String session,
+            @PathVariable("order") String order, @PathVariable("item") String item,
+            @RequestHeader("Idempotency-Key") String key, HttpServletRequest request) {
+        var input = fields(body(request), "expectedItemVersion", "expectedOrderVersion");
+        return response(200, ordering.changeCustomerItem(actor,id(session),id(order),id(item),id(key),
+                integer(input,"expectedItemVersion",1,MAX_SAFE), integer(input,"expectedOrderVersion",1,MAX_SAFE), null,null));
+    }
+
     @PostMapping(path = "/assistance", consumes = JSON_MEDIA)
     ResponseEntity<String> submitAssistance(@AuthenticationPrincipal Actor actor, HttpServletRequest request,
             @RequestHeader(name = "Idempotency-Key", required = false) String key) {

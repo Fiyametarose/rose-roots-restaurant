@@ -46,17 +46,18 @@ public final class TicketCard extends VBox {
         FlowPane badges = new FlowPane(5, 3, priorityBadges(ticket, delayed), elapsed);
         getChildren().addAll(heading, badges,
                 label(type + "  ·  Ordered " + ORDERED.format(ticket.orderedAt()), "metadata"));
-        for (Item item : entry.items()) {
+        var activeItems = entry.items().stream().filter(item -> item.status() != Status.CANCELLED).toList();
+        for (Item item : activeItems) {
             getChildren().add(itemRow(item, advance == null || ticket.items().size() > 1 ? advanceItem : null));
         }
-        if (entry.items().stream().allMatch(item -> item.status() == Status.READY)) {
+        if (activeItems.stream().allMatch(item -> item.status() == Status.READY)) {
             String ready = ticket.status() != Status.READY ? "Station work ready"
                     : ticket.type() == Type.DINE_IN ? "Ready for table service" : "Ready for collection";
             getChildren().add(label(ready, "ready-note"));
         } else if (advance != null) {
             FlowPane actions = new FlowPane(6, 4);
             for (Status expected : new Status[]{Status.RECEIVED, Status.PREPARING}) {
-                if (entry.items().stream().anyMatch(item -> item.status() == expected)) {
+                if (activeItems.stream().anyMatch(item -> item.status() == expected)) {
                     String scope = entry.station() == null ? "ticket" : "station";
                     String text = expected == Status.RECEIVED
                             ? "Start all new " + scope + " items" : "Mark preparing " + scope + " items ready";

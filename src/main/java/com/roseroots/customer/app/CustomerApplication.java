@@ -130,7 +130,8 @@ public final class CustomerApplication extends Application {
         navigator.register(Route.ORDERS, () -> new OrdersScreen(settings, state, tracking, locale -> {
             state.setLocale(locale);
             goOrders.run();
-        }, goHome, goMenu, goCart, chooseCategory, false).withPayments(payments, paymentJournal));
+        }, goHome, goMenu, goCart, chooseCategory, false).withPayments(payments, paymentJournal)
+                .withItemChanges(backend == null ? null : new com.roseroots.customer.services.api.RestAcceptedItemChanges(backend), menuService));
         Runnable goAccepted = () -> navigator.show(Route.ORDER_ACCEPTED);
         navigator.register(Route.ORDER_ACCEPTED, () -> new OrderAcceptedScreen(settings, state, confirmation.accepted(),
                 locale -> { state.setLocale(locale); goAccepted.run(); }, goHome, goMenu, goCart, goOrders, chooseCategory));

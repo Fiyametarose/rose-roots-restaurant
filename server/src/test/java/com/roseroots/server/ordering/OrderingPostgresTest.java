@@ -1459,6 +1459,163 @@ class OrderingPostgresTest {
                 400, "BAD_REQUEST");
     }
 
+    @Test
+    void acceptedItemChangesRepriceReleaseAndPreserveOtherLinesAndSubmission() throws Exception {
+        String terminal = terminal(true);
+        String session = session(terminal, "DINE_IN", 201);
+        UUID firstDish = dish();
+        UUID replacement = dish();
+        UUID station = db.sql("SELECT id FROM kitchen_station WHERE code='HOT'").query(UUID.class).single();
+        db.sql("""
+                INSERT INTO kitchen_prep_profile(menu_item_id,station_id,duration_seconds,upper_duration_seconds)
+                VALUES (:first,:station,60,90),(:replacement,:station,75,100)
+                """).param("first",firstDish).param("replacement",replacement).param("station",station).update();
+        var draft = draft(session,firstDish);
+        draft.withArray("lines").add(draft(session,firstDish).at("/lines/0"));
+        var quote = json(send(terminal,"POST","/order-quotes",draft,null),200);
+        var submission = submitBody(draft,quote);
+        UUID submitKey = UUID.randomUUID();
+        db.sql("INSERT INTO kitchen_station_chef(station_id,chef_id) VALUES(:station,:chef) ON CONFLICT DO NOTHING")
+                .param("station",station).param("chef",PREP_CHEF).update();
+        db.sql("UPDATE staff_account SET available_until=now()+interval '1 hour' WHERE id=:chef")
+                .param("chef",PREP_CHEF).update();
+        var original = json(send(terminal,"POST","/orders",submission,submitKey),201);
+        String order = original.path("id").asText();
+        String item = original.at("/lines/0/id").asText();
+        assertTrue(original.at("/lines/0/customerChangeAllowed").asBoolean());
+        json(send(PREP_TOKEN,"POST","/kitchen/items/"+item+"/ownership",
+                object().put("action","CLAIMED").put("expectedVersion",1),null),200);
+        String path = "/sessions/"+session+"/orders/"+order+"/items/"+item;
+        var input = object().put("expectedOrderVersion",2).put("expectedItemVersion",2);
+        var line = input.putObject("replacement").put("menuItemId",replacement.toString()).put("quantity",2)
+                .put("preparationInstructions","Less hot");
+        String group = legacyId(replacement + "/group/", "sweetener");
+        line.putArray("selections").addObject().put("groupId",group)
+                .putArray("optionIds").add(legacyId(group + "/option/", "honey"));
+        problem(send(terminal(true),"POST",path+"/preview",input,null),404,"NOT_FOUND");
+        db.sql("""
+                INSERT INTO kitchen_option_workload(menu_item_id,group_id,option_id,lower_seconds,upper_seconds)
+                VALUES (:menu,:group,:option,10,20)
+                """).param("menu",replacement).param("group",UUID.fromString(group))
+                .param("option",UUID.fromString(legacyId(group + "/option/", "honey"))).update();
+        var preview = json(send(terminal,"POST",path+"/preview",input,null),200);
+        assertEquals(44050,preview.at("/pricing/extendedMinor").asLong());
+        var edit = input.deepCopy().put("fingerprint", preview.path("fingerprint").asText());
+        db.sql("UPDATE catalog_item SET price=211.25 WHERE id=:id").param("id",replacement).update();
+        problem(send(terminal,"POST",path+"/edit",edit,UUID.randomUUID()),409,"PRICE_CHANGED");
+        edit.put("fingerprint",json(send(terminal,"POST",path+"/preview",input,null),200).path("fingerprint").asText());
+        UUID editKey=UUID.randomUUID();
+        var outcome=json(send(terminal,"POST",path+"/edit",edit,editKey),200);
+        assertEquals(outcome,json(send(terminal,"POST",path+"/edit",edit,editKey),200));
+        problem(send(terminal,"POST",path+"/edit",edit.deepCopy().put("expectedItemVersion",1),editKey),409,"IDEMPOTENCY_CONFLICT");
+        var changed=get(terminal,"/orders/"+order,200);
+        assertEquals(replacement.toString(),changed.at("/lines/0/pricing/menuItemId").asText());
+        assertEquals(2,changed.at("/lines/0/pricing/quantity").asInt());
+        assertEquals(170L, db.sql("SELECT estimated_lower_seconds FROM accepted_order_item WHERE id=CAST(:id AS uuid)")
+                .param("id", item).query(Long.class).single());
+        assertEquals(original.at("/lines/1"),changed.at("/lines/1"));
+        assertEquals(original,json(send(terminal,"POST","/orders",submission,submitKey),200));
+        assertTrue(ticket(order).path("itemChefs").path(item).isMissingNode());
+        assertEquals(3,outcome.path("billVersion").asLong());
+        var bill = get(terminal,"/sessions/"+session+"/payable-balance",200);
+        assertEquals(65275L,bill.path("outstandingMinor").asLong());
+        var reviewedBeforePayment = input.deepCopy().put("expectedOrderVersion",3).put("expectedItemVersion",3);
+        var beforePayment = json(send(terminal,"POST",path+"/preview",reviewedBeforePayment,null),200);
+        reviewedBeforePayment.put("fingerprint",beforePayment.path("fingerprint").asText());
+        var pending = json(send(terminal,"POST","/sessions/"+session+"/payments",
+                object().put("expectedBillVersion",3).put("method","CASH"),UUID.randomUUID()),201);
+        var cancel=object().put("expectedOrderVersion",3).put("expectedItemVersion",3);
+        problem(send(terminal,"POST",path+"/cancel",cancel,UUID.randomUUID()),409,"PAYMENT_PENDING");
+        assertFalse(get(terminal,"/orders/"+order,200).at("/lines/0/customerChangeAllowed").asBoolean());
+        try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
+            managerLogin(manager);
+            String csrf=manager.send(request("/admin/csrf",null).GET().build(),HttpResponse.BodyHandlers.ofString()).body();
+            json(manager.send(managerPost("/admin/payments/"+pending.path("id").asText()+"/resolve-cash",csrf,
+                    object().put("expectedVersion",1).put("status","FAILED").put("reason","No collection")),HttpResponse.BodyHandlers.ofString()),200);
+        }
+        problem(send(terminal,"POST",path+"/edit",reviewedBeforePayment,UUID.randomUUID()),409,"PRICE_CHANGED");
+        UUID cancelKey=UUID.randomUUID();
+        var cancelled=json(send(terminal,"POST",path+"/cancel",cancel,cancelKey),200);
+        assertEquals(cancelled,json(send(terminal,"POST",path+"/cancel",cancel,cancelKey),200));
+        assertEquals(21025,get(terminal,"/sessions/"+session+"/bill",200).at("/totals/totalMinor").asLong());
+        String last=changed.at("/lines/1/id").asText();
+        json(send(terminal,"POST","/sessions/"+session+"/orders/"+order+"/items/"+last+"/cancel",
+                object().put("expectedOrderVersion",4).put("expectedItemVersion",1),UUID.randomUUID()),200);
+        assertEquals("CANCELLED",get(terminal,"/orders/"+order,200).path("status").asText());
+        assertFalse(get(STAFF_TOKEN,"/kitchen/orders",200).path("tickets").toString().contains(order));
+        assertEquals(0,get(terminal,"/sessions/"+session+"/bill",200).at("/totals/totalMinor").asLong());
+        assertEquals(3,db.sql("SELECT count(*) FROM accepted_item_change WHERE order_id=CAST(:id AS uuid)")
+                .param("id",order).query(Integer.class).single());
+    }
+
+    @Test
+    void chefStartAndCustomerCancellationSerializeOnTheOrder() throws Exception {
+        String terminal=terminal(true);
+        String session=session(terminal,"DINE_IN",201);
+        UUID menu=dish();
+        UUID station=db.sql("SELECT id FROM kitchen_station WHERE code='HOT'").query(UUID.class).single();
+        db.sql("INSERT INTO kitchen_prep_profile(menu_item_id,station_id,duration_seconds) VALUES (:menu,:station,60)")
+                .param("menu",menu).param("station",station).update();
+        db.sql("INSERT INTO kitchen_station_chef(station_id,chef_id) VALUES(:station,:chef) ON CONFLICT DO NOTHING")
+                .param("station",station).param("chef",PREP_CHEF).update();
+        db.sql("UPDATE staff_account SET available_until=now()+interval '1 hour' WHERE id=:chef")
+                .param("chef",PREP_CHEF).update();
+        String order=submitNew(terminal,session,menu);
+        String item=get(terminal,"/orders/"+order,200).at("/lines/0/id").asText();
+        json(send(PREP_TOKEN,"POST","/kitchen/items/"+item+"/ownership",
+                object().put("action","CLAIMED").put("expectedVersion",1),null),200);
+        String path="/sessions/"+session+"/orders/"+order+"/items/"+item+"/cancel";
+        var cancel=object().put("expectedItemVersion",2).put("expectedOrderVersion",2);
+        var start=client.sendAsync(http(PREP_TOKEN,"PATCH",itemPath(item),transition("PREPARING",2),null),
+                HttpResponse.BodyHandlers.ofString());
+        var drop=client.sendAsync(http(terminal,"POST",path,cancel,UUID.randomUUID()),HttpResponse.BodyHandlers.ofString());
+        var first=start.get(10,TimeUnit.SECONDS);
+        var second=drop.get(10,TimeUnit.SECONDS);
+        if (first.statusCode()==200) {
+            problem(second,409,"ITEM_PREPARATION_STARTED");
+            assertEquals("PREPARING",get(terminal,"/orders/"+order,200).path("status").asText());
+        } else {
+            problem(first,409,"VERSION_CONFLICT");
+            json(second,200);
+            assertEquals("CANCELLED",get(terminal,"/orders/"+order,200).path("status").asText());
+        }
+    }
+
+    @Test
+    void acceptedItemEditRevalidatesAllergensAndSettlementFreezesReceivedItems() throws Exception {
+        String customer=terminal(true);
+        String session=session(customer,"DINE_IN",201);
+        UUID safe=dish(), milk=dish();
+        db.sql("UPDATE catalog_item SET allergens='[]',ingredients='[\"Tea\"]' WHERE id=:id").param("id",safe).update();
+        var draft=draft(session,safe);
+        draft.withObject("/visitAllergy").put("kind","DISCLOSED").putArray("allergens").add("MILK");
+        var quote=json(send(customer,"POST","/order-quotes",draft,null),200);
+        var order=json(send(customer,"POST","/orders",submitBody(draft,quote),UUID.randomUUID()),201);
+        String prefix="/sessions/"+session+"/orders/"+order.path("id").asText()+"/items/"+order.at("/lines/0/id").asText();
+        var input=object().put("expectedItemVersion",1).put("expectedOrderVersion",1);
+        input.putObject("replacement").put("menuItemId",milk.toString()).put("quantity",1)
+                .put("preparationInstructions","").putArray("selections");
+        problem(send(customer,"POST",prefix+"/preview",input,null),422,"ALLERGEN_CONFLICT");
+
+        String paying=terminal(true);
+        String paidSession=session(paying,"DINE_IN",201);
+        String paidOrder=submitNew(paying,paidSession,milk);
+        String paidItem=get(paying,"/orders/"+paidOrder,200).at("/lines/0/id").asText();
+        var attempt=json(send(paying,"POST","/sessions/"+paidSession+"/payments",
+                object().put("method","CASH").put("expectedBillVersion",2),UUID.randomUUID()),201);
+        try (var manager=HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
+            managerLogin(manager);
+            String csrf=manager.send(request("/admin/csrf",null).GET().build(),HttpResponse.BodyHandlers.ofString()).body();
+            json(manager.send(managerPost("/staff/payments/"+attempt.path("id").asText()+"/confirm-cash",csrf,
+                    object().put("expectedVersion",1).put("expectedBillVersion",2)),HttpResponse.BodyHandlers.ofString()),200);
+        }
+        String paidPath="/sessions/"+paidSession+"/orders/"+paidOrder+"/items/"+paidItem;
+        problem(send(paying,"POST",paidPath+"/preview",input,null),409,"ALREADY_SETTLED");
+        problem(send(paying,"POST",paidPath+"/cancel",object().put("expectedOrderVersion",1).put("expectedItemVersion",1),
+                UUID.randomUUID()),409,"ALREADY_SETTLED");
+        assertFalse(get(paying,"/orders/"+paidOrder,200).at("/lines/0/customerChangeAllowed").asBoolean());
+    }
+
     private static UUID dish() {
         UUID id = UUID.randomUUID();
         db.sql("""

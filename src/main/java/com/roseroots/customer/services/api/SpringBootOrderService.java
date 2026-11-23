@@ -281,7 +281,13 @@ public final class SpringBootOrderService implements OrderService, WaitEstimateS
                         Ordering.Review.valueOf(string(line, "allergyReviewStatus")),
                         bool(line, "billable"),
                         line.has("reviewMessage") && !line.get("reviewMessage").isJsonNull()
-                                ? string(line, "reviewMessage") : "")), totals(json.getAsJsonObject("totals")));
+                                ? string(line, "reviewMessage") : "", version(line),
+                        line.has("customerChangeAllowed") && bool(line, "customerChangeAllowed"))),
+                totals(json.getAsJsonObject("totals")), version(json));
+    }
+
+    private static long version(JsonObject object) {
+        return object.has("version") ? object.getAsJsonPrimitive("version").getAsBigDecimal().longValueExact() : 0;
     }
 
     private static AllergyDeclaration readDeclaration(JsonObject value) {

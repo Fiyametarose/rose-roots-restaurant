@@ -171,7 +171,7 @@ class OrderingService {
             throw new OrderingProblem(422, "INVALID_SELECTION", "The order differs from its reviewed quote.");
         }
         var runningBill = jdbc.sql("""
-                SELECT count(*) AS rounds, COALESCE(sum(subtotal_minor), 0) AS subtotal
+                SELECT count(*) AS rounds, COALESCE(sum(payable_minor), 0) AS subtotal
                 FROM accepted_order WHERE session_id = :session
                 """).param("session", sessionId)
                 .query((row, index) -> new RunningBill(row.getInt("rounds"), row.getLong("subtotal"))).single();
@@ -275,6 +275,153 @@ class OrderingService {
         result.set("orders", list);
         result.set("totals", OrderingPricing.totals(subtotal));
         return result;
+    }
+
+    private record CustomerItem(UUID order, ItemState item, ObjectNode previous, long orderVersion, long billVersion) {}
+
+    @Transactional
+    public ObjectNode previewItem(Actor actor, UUID session, UUID order, UUID item, long itemVersion,
+                                  long orderVersion, JsonNode replacement) {
+        var visit = ownedSession(actor, session, true);
+        var current = customerItem(actor, session, order, item, itemVersion, orderVersion);
+        visit.requireOpen(now());
+        Payments.requireMutable(jdbc, session);
+        return itemPreview(session, item, current, replacement).response();
+    }
+
+    @Transactional
+    public ObjectNode changeCustomerItem(Actor actor, UUID session, UUID order, UUID item, UUID key,
+            long itemVersion, long orderVersion, JsonNode replacement, String reviewedFingerprint) {
+        var visit = ownedSession(actor, session, true);
+        byte[] fingerprint = digest(canonical(object().put("order", order.toString()).put("item", item.toString())
+                .put("itemVersion", itemVersion).put("orderVersion", orderVersion)
+                .put("reviewedFingerprint", reviewedFingerprint).set("replacement", replacement)).toString());
+        var replay = jdbc.sql("""
+                SELECT fingerprint,result::text FROM accepted_item_change WHERE session_id=:session AND idempotency_key=:key
+                """).param("session", session).param("key", key).query((row, index) -> {
+                    if (!java.security.MessageDigest.isEqual(fingerprint, row.getBytes(1))) {
+                        throw conflict("IDEMPOTENCY_CONFLICT", "The key was already used for a different item change.");
+                    }
+                    return (ObjectNode) parse(row.getString(2));
+                }).optional();
+        if (replay.isPresent()) return replay.get();
+        var current = customerItem(actor, session, order, item, itemVersion, orderVersion);
+        visit.requireOpen(now());
+        Payments.requireMutable(jdbc, session);
+        var time = now();
+        boolean cancel = replacement == null;
+        if (cancel) {
+            jdbc.sql("""
+                    UPDATE accepted_order_item SET preparation_status='CANCELLED',customer_cancelled=true,claimed_by=NULL,
+                        version=version+1,updated_by=:actor WHERE id=:id
+                    """).param("actor", actor.credentialId()).param("id", item).update();
+        } else {
+            var preview = itemPreview(session, item, current, replacement);
+            if (!preview.response().path("fingerprint").asText().equals(reviewedFingerprint)) {
+                throw conflict("PRICE_CHANGED", "The item or bill changed. Review a new preview before saving.");
+            }
+            var line = preview.line();
+            var profile = preview.profile();
+            var work = profile.workload(line);
+            jdbc.sql("""
+                    UPDATE accepted_order_item SET menu_item_id=:menu, pricing=CAST(:pricing AS jsonb),
+                        instructions=:instructions, allergy_risk=CAST(:risk AS jsonb),
+                        allergy_review_status=:review, station_id=:station, planned_duration_seconds=:duration,
+                        estimated_lower_seconds=:lower,estimated_upper_seconds=:upper,
+                        claimed_by=NULL,version=version+1,updated_by=:actor WHERE id=:id
+                    """).param("menu", line.menuItemId()).param("pricing", line.pricing().toString())
+                    .param("instructions", line.instructions()).param("risk", line.risk().toString())
+                    .param("review", line.risk().path("unresolved").booleanValue()
+                            ? "PENDING_ALLERGY_REVIEW" : "NOT_REQUIRED")
+                    .param("station", profile.station()).param("duration", profile.lower())
+                    .param("lower", work == null ? null : work.lower()).param("upper", work == null ? null : work.upper())
+                    .param("actor", actor.credentialId()).param("id", item).update();
+        }
+        if (current.item().chef() != null) {
+            preparationEvent(actor, item, order, current.item(), "RELEASED", null,
+                    cancel ? "CANCELLED" : "RECEIVED", cancel ? "Customer cancellation" : "Customer edit", time);
+        }
+        jdbc.sql("""
+                UPDATE accepted_order SET delay_at=(
+                    SELECT CASE WHEN count(*)=count(planned_duration_seconds)
+                        THEN accepted_at + make_interval(secs=>max(planned_duration_seconds)) END
+                    FROM accepted_order_item WHERE order_id=:order AND preparation_status<>'CANCELLED')
+                WHERE id=:order
+                """).param("order", order).update();
+        long nextOrder = updateOrder(order, time);
+        Payments.advanceBill(jdbc, session);
+        var result = object().put("itemId", item.toString()).put("orderId", order.toString())
+                .put("itemVersion", itemVersion+1).put("orderVersion", nextOrder).put("billVersion", current.billVersion()+1);
+        var after = itemSnapshot(item);
+        jdbc.sql("""
+                INSERT INTO accepted_item_change(session_id,order_id,item_id,idempotency_key,fingerprint,
+                    terminal_credential_id,action,before_snapshot,after_snapshot,result)
+                VALUES (:session,:order,:item,:key,:fingerprint,:actor,:action,
+                    CAST(:before AS jsonb),CAST(:after AS jsonb),CAST(:result AS jsonb))
+                """).param("session", session).param("order", order).param("item", item).param("key", key)
+                .param("fingerprint", fingerprint).param("actor", actor.credentialId())
+                .param("action", cancel ? "CANCEL" : "EDIT").param("before", current.previous().toString())
+                .param("after", after.toString()).param("result", result.toString()).update();
+        return result;
+    }
+
+    private CustomerItem customerItem(Actor actor, UUID session, UUID order, UUID item, long version, long orderVersion) {
+        var versions = jdbc.sql("""
+                SELECT o.version,s.bill_version FROM accepted_order o JOIN dining_session s ON s.id=o.session_id
+                JOIN accepted_order_item i ON i.order_id=o.id
+                WHERE s.id=:session AND o.id=:order AND i.id=:item AND s.restaurant_id=:restaurant FOR UPDATE OF o
+                """).param("session", session).param("order", order).param("item", item).param("restaurant", actor.restaurantId())
+                .query((row, index) -> new long[]{row.getLong(1),row.getLong(2)}).optional().orElseThrow(OrderingProblem::missing);
+        var before = itemSnapshot(item);
+        if (!"RECEIVED".equals(before.path("preparation_status").asText())) {
+            throw conflict("ITEM_PREPARATION_STARTED", "This item is no longer awaiting preparation.");
+        }
+        var state = itemAtVersion(item, version);
+        if (versions[0] != orderVersion) throw conflict("VERSION_CONFLICT", "The order changed. Reload it.");
+        return new CustomerItem(order, state, before, versions[0], versions[1]);
+    }
+
+    private ObjectNode itemSnapshot(UUID item) {
+        return (ObjectNode) jdbc.sql("SELECT to_jsonb(i)::text FROM accepted_order_item i WHERE id=:id")
+                .param("id", item).query(String.class).optional().map(OrderingJson::parse).orElseThrow(OrderingProblem::missing);
+    }
+
+    private record ItemPreview(OrderingPricing.Line line, PreparationProfiles.Profile profile, ObjectNode response) {}
+
+    private ItemPreview itemPreview(UUID session, UUID item, CustomerItem current, JsonNode replacement) {
+        var line = object().put("clientLineId", current.previous().path("pricing").path("clientLineId").asText());
+        line.setAll((ObjectNode) fields(replacement, "menuItemId", "quantity", "selections", "preparationInstructions"));
+        line.set("allergy", current.previous().get("allergy"));
+        var draft = object().put("sessionId", session.toString());
+        draft.set("visitAllergy", jdbc.sql("SELECT visit_allergy::text FROM accepted_order WHERE id=:id")
+                .param("id", current.order()).query(String.class).optional().map(OrderingJson::parse).orElseThrow());
+        draft.putArray("lines").add(line);
+        var priced = pricing.price(draft);
+        var result = priced.lines().getFirst();
+        long payable = jdbc.sql("SELECT COALESCE(sum(payable_minor),0) FROM accepted_order WHERE session_id=:session")
+                .param("session", session).query(Long.class).single();
+        OrderingPricing.amount(payable - current.previous().path("pricing").path("extendedMinor").asLong() + priced.subtotal());
+        var profile = PreparationProfiles.load(jdbc, priced.lines()).get(result.menuItemId());
+        if (profile == null || jdbc.sql("SELECT id FROM kitchen_station WHERE id=:id AND active FOR SHARE")
+                .param("id", profile.station()).query(UUID.class).optional().isEmpty()) {
+            throw conflict("PREPARATION_UNAVAILABLE", "This dish has no active preparation configuration.");
+        }
+        var workload = profile.workload(result);
+        var fingerprint = object().put("item",item.toString()).put("version",current.item().version())
+                .put("orderVersion",current.orderVersion()).put("billVersion",current.billVersion())
+                .put("station",profile.station().toString()).put("baseDuration",profile.lower());
+        if (workload != null) fingerprint.put("lower", workload.lower()).put("upper", workload.upper());
+        var paymentHistory = jdbc.sql("""
+                SELECT COALESCE(jsonb_agg(jsonb_build_array(id,version,status) ORDER BY id),'[]'::jsonb)::text
+                FROM payment_attempt WHERE session_id=:session
+                """).param("session", session).query(String.class).single();
+        fingerprint.set("paymentHistory", parse(paymentHistory));
+        fingerprint.set("proposal",line);
+        fingerprint.set("pricing",result.pricing());
+        fingerprint.set("allergyRisk",result.risk());
+        var response = object().put("fingerprint", java.util.HexFormat.of().formatHex(digest(canonical(fingerprint).toString())));
+        response.set("pricing",result.pricing());
+        return new ItemPreview(result, profile, response);
     }
 
     @Transactional
@@ -683,6 +830,8 @@ class OrderingService {
                             WHEN i.allergy_review_status = 'APPROVED_FOR_PREPARATION'
                             THEN jsonb_set(i.allergy_risk, '{unresolved}', 'false') ELSE i.allergy_risk END,
                         'version', i.version, 'billable', i.preparation_status <> 'CANCELLED',
+                        'customerChangeAllowed', i.preparation_status='RECEIVED' AND s.status='OPEN' AND s.expires_at>now()
+                            AND NOT EXISTS(SELECT 1 FROM payment_attempt p WHERE p.session_id=s.id AND p.status IN ('PENDING','SUCCEEDED')),
                         'reviewMessage', CASE i.allergy_review_status
                             WHEN 'APPROVED_FOR_PREPARATION' THEN 'The chef cleared this item for preparation.'
                             WHEN 'DECLINED' THEN 'The kitchen cannot safely prepare this item.' END,

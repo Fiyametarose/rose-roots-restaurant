@@ -58,6 +58,16 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
     private final Timeline freshness;
     private final VBox billPanel;
     private final java.util.Map<UUID, Label> estimates = new java.util.HashMap<>();
+    private com.roseroots.customer.services.api.RestAcceptedItemChanges itemChanges;
+    private com.roseroots.customer.services.MenuService itemMenu;
+
+    public OrdersScreen withItemChanges(com.roseroots.customer.services.api.RestAcceptedItemChanges changes,
+                                         com.roseroots.customer.services.MenuService menu) {
+        itemChanges = changes;
+        itemMenu = menu;
+        return this;
+    }
+
     private OrderTrackingService.Watch watch;
     private OrderHistory history;
     private Filter filter = Filter.ALL;
@@ -187,6 +197,7 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
             refreshEstimates();
             return;
         }
+        boolean availabilityChanged = connectionState != update.state();
         connectionState = update.state();
         var status = switch (connectionState) {
             case LOADING -> "orders.loading";
@@ -201,7 +212,13 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
             renderList();
             renderSummary();
         }
+        if (availabilityChanged && (snapshot == null || snapshot.equals(history))) renderList();
         refreshEstimates();
+    }
+
+    private void refreshAfterItemChange() {
+        if (watch != null) watch.close();
+        connect();
     }
 
     public OrdersScreen withPayments(com.roseroots.customer.services.PaymentService service,
@@ -288,7 +305,7 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
             box.getChildren().add(eta);
         }
         var items = new VBox(6);
-        order.lines().forEach(line -> items.getChildren().add(item(line)));
+        order.lines().forEach(line -> items.getChildren().add(item(order, line)));
         var first = order.lines().isEmpty() ? null : customer.menu().catalog().item(order.lines().getFirst().pricing().menuItemId().toString());
         if (first == null) {
             box.getChildren().add(items);
@@ -304,14 +321,15 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
         return box;
     }
 
-    private VBox item(Ordering.AcceptedLine line) {
+    private VBox item(Ordering.Accepted order, Ordering.AcceptedLine line) {
         var price = line.pricing();
         String detail = statusText(line.preparation());
         if (line.billable() && line.review() != Ordering.Review.DECLINED) detail += "  ·  " + money(price.extendedMinor());
         var item = new VBox(3, row(price.name() + "  ×" + price.quantity(), detail, "dish-description"));
         item.getStyleClass().add("orders-item");
         price.options().forEach(option -> item.getChildren().add(FoodCard.label(option.name(), "catalog-muted")));
-        if (line.review() != Ordering.Review.NOT_REQUIRED) {
+        if (line.review() == Ordering.Review.DECLINED
+                || line.preparation() != Ordering.Status.CANCELLED && line.review() != Ordering.Review.NOT_REQUIRED) {
             String key = "orders.review." + line.review().name().toLowerCase(Locale.ROOT);
             var reviewStyle = switch (line.review()) {
                 case APPROVED_FOR_PREPARATION -> "orders-review-approved";
@@ -328,6 +346,19 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
             item.getChildren().add(FoodCard.label(messages.text("custom.itemAllergies") + ": " + disclosure, "catalog-muted"));
         }
         if (!line.reviewMessage().isBlank()) item.getChildren().add(FoodCard.label(line.reviewMessage(), "dish-description"));
+        if (itemChanges != null && connectionState == OrderTrackingService.State.LIVE && line.changeAllowed()) {
+            var edit = new javafx.scene.control.Button(messages.text("orders.itemEdit"));
+            var cancel = new javafx.scene.control.Button(messages.text("orders.itemCancel"));
+            edit.setId("edit-item-" + line.id());
+            cancel.setId("cancel-item-" + line.id());
+            edit.setOnAction(event -> new com.roseroots.customer.components.AcceptedItemDialog(
+                    getScene().getWindow(), customer.locale(), itemChanges, itemMenu, order, line,
+                    false, this::refreshAfterItemChange).show());
+            cancel.setOnAction(event -> new com.roseroots.customer.components.AcceptedItemDialog(
+                    getScene().getWindow(), customer.locale(), itemChanges, itemMenu, order, line,
+                    true, this::refreshAfterItemChange).show());
+            item.getChildren().add(new javafx.scene.layout.FlowPane(6, 6, edit, cancel));
+        }
         return item;
     }
 

@@ -50,10 +50,20 @@ public final class Ordering {
     }
 
     public record AcceptedLine(UUID id, Price pricing, AllergyDeclaration allergy, String instructions,
-                               Status preparation, Review review, boolean billable, String reviewMessage) {}
+                               Status preparation, Review review, boolean billable, String reviewMessage,
+                               long version, boolean changeAllowed) {
+        public AcceptedLine(UUID id, Price pricing, AllergyDeclaration allergy, String instructions,
+                            Status preparation, Review review, boolean billable, String reviewMessage) {
+            this(id, pricing, allergy, instructions, preparation, review, billable, reviewMessage, 0, false);
+        }
+    }
 
     public record Accepted(UUID id, UUID sessionId, ServiceMode mode, Status status, Instant acceptedAt,
-                           AllergyDeclaration visitAllergy, List<AcceptedLine> lines, Totals totals) {
+                           AllergyDeclaration visitAllergy, List<AcceptedLine> lines, Totals totals, long version) {
+        public Accepted(UUID id, UUID sessionId, ServiceMode mode, Status status, Instant acceptedAt,
+                        AllergyDeclaration visitAllergy, List<AcceptedLine> lines, Totals totals) {
+            this(id, sessionId, mode, status, acceptedAt, visitAllergy, lines, totals, 0);
+        }
         public Accepted { lines = List.copyOf(lines); }
     }
 }
