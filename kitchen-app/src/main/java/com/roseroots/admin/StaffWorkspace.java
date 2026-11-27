@@ -1,5 +1,7 @@
 package com.roseroots.admin;
 
+import com.roseroots.kitchen.components.StaffDialogs;
+
 import com.google.gson.JsonObject;
 import java.util.concurrent.Callable;
 import java.util.function.Consumer;
@@ -118,6 +120,8 @@ final class StaffWorkspace extends VBox {
             var confirmation = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.CONFIRMATION,
                     "Revoke access for " + workstation.get("label").getAsString() + "?");
             confirmation.initOwner(getScene().getWindow());
+            StaffDialogs.theme(confirmation);
+            StaffDialogs.destructive(confirmation, javafx.scene.control.ButtonType.OK);
             if (confirmation.showAndWait().orElse(null) != javafx.scene.control.ButtonType.OK) return;
             clearWorkstationToken();
             run(() -> {
@@ -165,6 +169,8 @@ final class StaffWorkspace extends VBox {
             var confirmation = new Alert(Alert.AlertType.CONFIRMATION, message);
             confirmation.initOwner(getScene().getWindow());
             confirmation.setHeaderText(account.get("username").getAsString());
+            StaffDialogs.theme(confirmation);
+            if (!"ACTIVE".equals(state)) StaffDialogs.destructive(confirmation, ButtonType.OK);
             if (confirmation.showAndWait().orElse(null) == ButtonType.OK) save(account, state, null);
         });
         return button;
@@ -180,6 +186,7 @@ final class StaffWorkspace extends VBox {
         var confirm = new ButtonType(active ? "Set password" : "Activate", ButtonBar.ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().addAll(confirm, ButtonType.CANCEL);
         dialog.getDialogPane().lookupButton(confirm).disableProperty().bind(secret.textProperty().length().lessThan(12));
+        StaffDialogs.theme(dialog);
         if (dialog.showAndWait().orElse(null) == confirm) {
             save(account, "ACTIVE", secret.getText());
         }

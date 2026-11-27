@@ -1,5 +1,7 @@
 package com.roseroots.admin;
 
+import com.roseroots.kitchen.components.StaffDialogs;
+
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import java.io.IOException;
@@ -369,6 +371,8 @@ final class CatalogWorkspace extends VBox {
         dialog.initOwner(getScene().getWindow());
         dialog.setTitle(title);
         dialog.setHeaderText(title);
+        StaffDialogs.theme(dialog);
+        if (title.startsWith("Archive")) StaffDialogs.destructive(dialog, ButtonType.OK);
         return dialog.showAndWait().filter(ButtonType.OK::equals).isPresent();
     }
 

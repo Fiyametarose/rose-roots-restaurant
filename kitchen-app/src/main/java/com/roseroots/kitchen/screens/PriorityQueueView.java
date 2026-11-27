@@ -139,7 +139,7 @@ public final class PriorityQueueView extends ScrollPane {
             Ticket ticket = entry.ticket();
             Label elapsed = label("", "elapsed");
             timers.put(ticket, elapsed);
-            Label id = label(ticket.reference() + "  ·  " + ticket.destination(), "destination");
+            Label id = label(ticket.displayReference() + "  ·  " + ticket.destination(), "destination");
             HBox badges = new HBox(5, label(ticket.status().label, "normal"));
             if (ticket.rush()) {
                 badges.getChildren().add(label("RUSH", "rush"));
@@ -153,7 +153,7 @@ public final class PriorityQueueView extends ScrollPane {
             badges.getChildren().add(elapsed);
             ToggleButton row = new ToggleButton();
             row.setGraphic(new VBox(4, id, badges));
-            row.setAccessibleText(ticket.reference() + ", " + ticket.destination() + ", " + ticket.status().label
+            row.setAccessibleText(ticket.displayReference() + ", " + ticket.destination() + ", " + ticket.status().label
                     + (ticket.rush() ? ", Rush" : "") + (entry.delayed() ? ", Delayed" : ""));
             row.getStyleClass().add("priority-row");
             row.setMaxWidth(Double.MAX_VALUE);
@@ -177,7 +177,7 @@ public final class PriorityQueueView extends ScrollPane {
             feedback.setText("");
         }
         selected = ticket;
-        selection.setText(ticket == null ? "Select an unfinished order" : ticket.reference() + "  ·  " + ticket.destination());
+        selection.setText(ticket == null ? "Select an unfinished order" : ticket.displayReference() + "  ·  " + ticket.destination());
         if (ticket == null || ticket.rushHistory().isEmpty()) {
             changeInfo.setText("");
         } else {

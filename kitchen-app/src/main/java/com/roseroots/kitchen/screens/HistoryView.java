@@ -156,7 +156,7 @@ public final class HistoryView extends VBox {
             case SERVED, COLLECTED -> "normal";
             case CANCELLED -> "rush";
         };
-        FlowPane headline = new FlowPane(6, 4, label(ticket.reference(), "ticket-id"),
+        FlowPane headline = new FlowPane(6, 4, label(ticket.displayReference(), "ticket-id"),
                 label(ticket.destination(), "destination"), label(orderType, "metadata"),
                 label(text(completion.status()), badge));
         VBox card = new VBox(4, headline, label(items, "item-name"),

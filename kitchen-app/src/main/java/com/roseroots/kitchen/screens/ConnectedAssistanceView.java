@@ -1,5 +1,7 @@
 package com.roseroots.kitchen.screens;
 
+import com.roseroots.kitchen.components.StaffDialogs;
+
 import com.roseroots.kitchen.service.http.ConnectedAssistanceRequest;
 import com.roseroots.kitchen.service.http.ConnectedAssistanceRequest.State;
 import com.roseroots.kitchen.service.http.SpringBootKitchenService;
@@ -60,6 +62,7 @@ public final class ConnectedAssistanceView extends VBox {
             var ok = javafx.scene.control.ButtonType.OK;
             dialog.getDialogPane().getButtonTypes().setAll(ok, javafx.scene.control.ButtonType.CANCEL);
             dialog.getDialogPane().lookupButton(ok).disableProperty().bind(reason.textProperty().isEmpty());
+            StaffDialogs.theme(dialog);
             if (dialog.showAndWait().orElse(null) == ok && rest.signedInStaff() == actor) {
                 rest.reassignAssistance(row, waiters.getValue().id(), reason.getText().strip())
                         .whenComplete((ignored, error) -> Platform.runLater(() -> {

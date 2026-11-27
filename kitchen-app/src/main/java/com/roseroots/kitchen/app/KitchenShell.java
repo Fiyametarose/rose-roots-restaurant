@@ -1,5 +1,7 @@
 package com.roseroots.kitchen.app;
 
+import com.roseroots.kitchen.components.StaffDialogs;
+
 import com.roseroots.kitchen.model.StaffMember;
 import com.roseroots.kitchen.screens.AssistanceView;
 import com.roseroots.kitchen.screens.ConnectedAssistanceView;
@@ -31,7 +33,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.HBox;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
@@ -58,11 +60,12 @@ final class KitchenShell extends BorderPane {
     private final KitchenSync sync;
     private final Runnable unsubscribeSync;
     private final Label connection = label("", "connection");
+    private final Label staffHint = label("Sign in to use staff-only views and actions.", "connection");
     private Runnable backFromDetails;
     private final Label title = label("Kitchen Display Board", "title");
     private final Label wallClock = label("", "wall-clock");
     private final Timeline timer;
-    private final HBox staffControls = new HBox(5);
+    private final FlowPane staffControls = new FlowPane(6, 4);
 
     KitchenShell(KitchenService service, AssistanceService assistanceService, KitchenReviewService reviewService,
                  KitchenSync sync, List<StaffMember> staff, Consumer<String> selectProfile, Clock clock,
@@ -81,7 +84,7 @@ final class KitchenShell extends BorderPane {
         handoff = new HandoffView(service);
         priority = new PriorityQueueView(service, staff, selectProfile, clock);
         workspace.getStyleClass().add("workspace");
-        HBox header = new HBox(12, title, spacer(), wallClock);
+        FlowPane header = new FlowPane(12, 5, title, wallClock);
         header.setAlignment(Pos.CENTER_LEFT);
         header.getStyleClass().add("header");
         Label requestStatus = label("", "customer-note");
@@ -93,13 +96,19 @@ final class KitchenShell extends BorderPane {
         if (!service.local()) {
             refresh.getStyleClass().add("filter");
             refresh.setOnAction(event -> sync.refresh());
-            header.getChildren().add(refresh);
-            header.getChildren().add(staffControls);
+            var tools = new FlowPane(8, 5, refresh, staffControls);
+            tools.setAlignment(Pos.CENTER_LEFT);
+            heading.getChildren().add(1, tools);
         }
         workspace.getChildren().addAll(heading, live);
         VBox.setVgrow(live, Priority.ALWAYS);
         setCenter(workspace);
-        setLeft(navigation(workspace, toggleFullScreen, openAdmin, service.local()));
+        var navigation = new javafx.scene.control.ScrollPane(navigation(workspace, toggleFullScreen, openAdmin, service.local()));
+        navigation.getStyleClass().add("sidebar-scroll");
+        navigation.setFitToHeight(true);
+        navigation.setFitToWidth(true);
+        navigation.setHbarPolicy(javafx.scene.control.ScrollPane.ScrollBarPolicy.NEVER);
+        setLeft(navigation);
         connection.setText(sync.status().label);
         unsubscribeSync = sync.onOrdersChanged(() -> {
             connection.setText(sync.status().label);
@@ -202,7 +211,9 @@ final class KitchenShell extends BorderPane {
         admin.setOnAction(event -> openAdmin.run());
         VBox menu = new VBox(6, brand, liveButton, priorityButton, stationsButton,
                 assistanceButton, reviewsButton, handoffButton, historyButton,
-                spring, connection, fullScreen, admin);
+                spring, connection, staffHint, fullScreen, admin);
+        staffHint.setVisible(false);
+        staffHint.managedProperty().bind(staffHint.visibleProperty());
         menu.getStyleClass().add("sidebar");
         menu.setMinWidth(145);
         menu.setPrefWidth(152);
@@ -267,6 +278,7 @@ final class KitchenShell extends BorderPane {
         staffControls.getChildren().setAll(signIn, duty, lock);
         Runnable showStaff = () -> {
             var staff = service.signedInStaff();
+            staffHint.setVisible(staff == null && service.workstation());
             duty.reflect(staff);
             signIn.setVisible(staff == null);
             signIn.setManaged(staff == null);
@@ -295,6 +307,7 @@ final class KitchenShell extends BorderPane {
             dialog.getDialogPane().setContent(new VBox(7, username, password));
             var submit = new javafx.scene.control.ButtonType("Sign in", javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
             dialog.getDialogPane().getButtonTypes().addAll(submit, javafx.scene.control.ButtonType.CANCEL);
+            StaffDialogs.theme(dialog);
             if (dialog.showAndWait().orElse(null) != submit) {
                 password.clear();
                 return;
@@ -307,6 +320,7 @@ final class KitchenShell extends BorderPane {
                             var failure = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.WARNING,
                                     "Kitchen sign-in failed. Check your credentials or wait before trying again.");
                             failure.initOwner(getScene().getWindow());
+                            StaffDialogs.theme(failure);
                             failure.show();
                         }
                     }));
@@ -315,12 +329,6 @@ final class KitchenShell extends BorderPane {
         connectedAssistance = new ConnectedAssistanceView(service,
                 count -> assistanceButton.setText(count == 0 ? "Assistance" : "Assistance (" + count + ")"));
         connectedReviews = new ConnectedReviewsView(service);
-    }
-
-    private static Region spacer() {
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-        return spacer;
     }
 
     private static Label label(String text, String style) {

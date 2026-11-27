@@ -169,7 +169,15 @@ public final class LiveBoard extends VBox {
             if (entries.isEmpty()) {
                 list.getChildren().add(label("No " + status.label.toLowerCase(Locale.ROOT) + " tickets", "empty"));
             }
-            for (var entry : entries) {
+            var earlierThan = now.minusDays(1);
+            var groups = entries.stream().collect(java.util.stream.Collectors.partitioningBy(entry ->
+                    entry.ticket().orderedAt().isBefore(earlierThan) && !entry.ticket().rush()));
+            var earlier = groups.get(true);
+            var display = java.util.stream.Stream.concat(groups.get(false).stream(), earlier.stream()).toList();
+            for (var entry : display) {
+                if (!earlier.isEmpty() && entry == earlier.getFirst()) {
+                    list.getChildren().add(label("Earlier orders · still active", "lane-caption"));
+                }
                 TicketCard card = new TicketCard(entry, now, service.local() ? expected -> {
                     service.advance(entry.ticket().id(), entry.station(), expected);
                     redraw();

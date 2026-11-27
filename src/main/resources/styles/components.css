@@ -1,0 +1,144 @@
+/* Shared controls. Screen-specific styles can override these defaults. */
+.root, .combo-box-popup, .context-menu, .date-picker-popup, .tooltip {
+    -rr-ink: #18382c;
+    -rr-green: #174632;
+    -rr-green-hover: #225940;
+    -rr-cream: #fcf8ef;
+    -rr-paper: #fffdf8;
+    -rr-border: #a89a7e;
+    -rr-gold: #9a6a24;
+    -rr-wash: #f4e6c6;
+    -rr-danger: #872e34;
+    -fx-accent: -rr-green;
+    -fx-focus-color: -rr-gold;
+    -fx-faint-focus-color: transparent;
+    -fx-text-base-color: -rr-ink;
+}
+.button, .toggle-button, .choice-box, .combo-box-base, .date-picker > .arrow-button,
+.spinner > .increment-arrow-button, .spinner > .decrement-arrow-button {
+    -fx-background-color: -rr-cream;
+    -fx-border-color: -rr-border;
+    -fx-border-width: 1;
+    -fx-background-radius: 7;
+    -fx-border-radius: 7;
+    -fx-text-fill: -rr-ink;
+    -fx-padding: 6 11;
+}
+.button:hover, .toggle-button:hover, .choice-box:hover, .combo-box-base:hover {
+    -fx-background-color: -rr-wash;
+}
+.toggle-button:selected, .list-cell:filled:selected, .menu-item:focused {
+    -fx-background-color: -rr-wash;
+    -fx-text-fill: -rr-ink;
+}
+.menu-item:focused > .label, .list-cell:filled:selected { -fx-text-fill: -rr-ink; }
+.button:disabled, .toggle-button:disabled, .combo-box-base:disabled {
+    -fx-opacity: .66;
+    -fx-cursor: default;
+}
+.text-field, .password-field, .text-area, .spinner {
+    -fx-background-color: -rr-paper;
+    -fx-border-color: -rr-border;
+    -fx-border-width: 1;
+    -fx-background-radius: 7;
+    -fx-border-radius: 7;
+    -fx-text-fill: -rr-ink;
+    -fx-prompt-text-fill: #6b655b;
+}
+.text-field, .password-field { -fx-padding: 6 9; }
+.text-area .content { -fx-background-color: -rr-paper; -fx-background-radius: 7; }
+.spinner > .text-field, .date-picker > .text-field, .combo-box-base > .text-field {
+    -fx-border-color: transparent;
+}
+.button:focused, .toggle-button:focused, .check-box:focused > .box, .choice-box:focused,
+.combo-box-base:focused, .text-field:focused, .text-area:focused, .spinner:focused {
+    -fx-border-color: -rr-gold;
+    -fx-effect: dropshadow(gaussian, #9a6a244a, 4, .4, 0, 0);
+}
+.check-box > .box {
+    -fx-background-color: -rr-paper;
+    -fx-border-color: -rr-border;
+    -fx-background-radius: 4;
+    -fx-border-radius: 4;
+}
+.check-box:selected > .box { -fx-background-color: -rr-green; -fx-border-color: -rr-green; }
+.check-box:selected > .box > .mark { -fx-background-color: -rr-paper; }
+.context-menu, .combo-box-popup > .list-view, .date-picker-popup {
+    -fx-background-color: -rr-paper;
+    -fx-border-color: -rr-border;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+}
+.list-cell { -fx-text-fill: -rr-ink; }
+.combo-box-popup .list-cell:filled:hover { -fx-background-color: -rr-wash; }
+.date-picker-popup > .month-year-pane { -fx-background-color: -rr-wash; }
+.tooltip {
+    -fx-background-color: -rr-green;
+    -fx-text-fill: -rr-paper;
+    -fx-background-radius: 7;
+    -fx-padding: 7 10;
+    -fx-font-size: 12px;
+}
+.progress-indicator { -fx-progress-color: -rr-green; }
+.table-view, .list-view, .tab-pane > .tab-header-area > .tab-header-background {
+    -fx-background-color: -rr-paper;
+}
+.table-view > .column-header-background, .table-view .column-header, .table-view .filler,
+.tab-pane > .tab-header-area .tab {
+    -fx-background-color: -rr-cream;
+}
+.table-row-cell:filled:selected, .tab-pane > .tab-header-area .tab:selected {
+    -fx-background-color: -rr-wash;
+}
+.table-row-cell:filled:selected .table-cell { -fx-text-fill: -rr-ink; }
+.dialog-pane {
+    -fx-background-color: -rr-cream;
+    -fx-border-color: -rr-border;
+    -fx-border-width: 1;
+}
+.dialog-pane > .header-panel { -fx-background-color: -rr-wash; -fx-padding: 16 20; }
+.dialog-pane > .header-panel .label {
+    -fx-font-size: 17px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -rr-ink;
+    -fx-wrap-text: true;
+}
+.dialog-pane .scroll-pane, .dialog-pane .scroll-pane > .viewport {
+    -fx-background-color: -rr-cream;
+}
+.dialog-pane > .header-panel .dialog-indicator {
+    -fx-background-color: -rr-green;
+    -fx-background-radius: 18;
+    -fx-text-fill: -rr-paper;
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-alignment: center;
+    -fx-min-width: 30;
+    -fx-min-height: 30;
+    -fx-padding: 0;
+}
+.dialog-pane > .header-panel .dialog-indicator.attention { -fx-background-color: -rr-danger; }
+.dialog-pane > .content, .dialog-pane > .content.label { -fx-padding: 14 18; }
+.dialog-pane > .button-bar > .container { -fx-padding: 10 18 14 18; }
+.dialog-pane .button { -fx-min-height: 32; }
+.dialog-pane .button:default, .dialog-pane .button.dialog-primary {
+    -fx-background-color: -rr-green;
+    -fx-border-color: -rr-green;
+    -fx-text-fill: -rr-paper;
+}
+.dialog-pane .button:default:hover, .dialog-pane .button.dialog-primary:hover {
+    -fx-background-color: -rr-green-hover;
+}
+.dialog-pane .button.dialog-destructive, .dialog-pane .button.dialog-destructive:hover {
+    -fx-background-color: -rr-danger;
+    -fx-border-color: -rr-danger;
+    -fx-text-fill: -rr-paper;
+}
+.dialog-pane .button.dialog-destructive:hover { -fx-background-color: #a13d43; }
+.dialog-pane .button:focused { -fx-border-color: -rr-gold; }
+.dialog-pane .button.dialog-cancel {
+    -fx-background-color: -rr-cream;
+    -fx-border-color: -rr-border;
+    -fx-text-fill: -rr-ink;
+}
+.dialog-pane .button.dialog-cancel:hover { -fx-background-color: -rr-wash; }

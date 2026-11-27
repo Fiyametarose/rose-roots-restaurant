@@ -30,7 +30,7 @@ public final class ReceiptRecoveryDialog extends Dialog<Void> {
         setTitle(messages.text("recovery.title"));
         var pane = getDialogPane();
         pane.getStyleClass().add("assistance-dialog");
-        pane.getStylesheets().addAll(owner.getScene().getStylesheets());
+        pane.getStylesheets().add(getClass().getResource("/styles/theme.css").toExternalForm());
         if ("am".equals(messages.language())) pane.getStyleClass().add("ethiopic");
         messages.applyDirection(pane);
         pane.getButtonTypes().add(new ButtonType(messages.text("pay.close"), ButtonBar.ButtonData.CANCEL_CLOSE));

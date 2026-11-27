@@ -51,3 +51,9 @@ application {
 test {
     useJUnitPlatform()
 }
+
+tasks.named('processResources') {
+    from('../src/main/resources/styles/components.css') {
+        into 'styles'
+    }
+}

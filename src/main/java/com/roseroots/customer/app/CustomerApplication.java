@@ -301,6 +301,12 @@ public final class CustomerApplication extends Application {
         alert.initOwner(stage);
         alert.setTitle(messages.text("session.switchTitle"));
         alert.setHeaderText(messages.text("session.switchTitle"));
+        var indicator = new javafx.scene.control.Label("?");
+        indicator.getStyleClass().add("dialog-indicator");
+        alert.setGraphic(indicator);
+        alert.getDialogPane().lookupButton(ok).getStyleClass().add("dialog-destructive");
+        ((javafx.scene.control.Button) alert.getDialogPane().lookupButton(ok)).setDefaultButton(false);
+        alert.getDialogPane().lookupButton(cancel).getStyleClass().add("dialog-cancel");
         return alert.showAndWait().orElse(cancel) == ok;
     }
 }

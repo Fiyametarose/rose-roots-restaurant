@@ -1,5 +1,7 @@
 package com.roseroots.admin;
 
+import com.roseroots.kitchen.components.StaffDialogs;
+
 import com.google.gson.JsonObject;
 import java.math.BigDecimal;
 import java.util.concurrent.Callable;
@@ -56,6 +58,8 @@ final class CashPaymentsWorkspace extends VBox {
                 ButtonType.CANCEL, ButtonType.OK);
         prompt.initOwner(getScene().getWindow());
         prompt.setHeaderText("Confirm collected cash");
+        StaffDialogs.theme(prompt);
+        prompt.setTitle("Confirm collected cash");
         prompt.showAndWait().filter(button -> button == ButtonType.OK).ifPresent(button -> {
             var body = version(request);
             body.addProperty("expectedBillVersion", request.get("billVersion").getAsLong());
@@ -67,6 +71,8 @@ final class CashPaymentsWorkspace extends VBox {
         var prompt = new TextInputDialog();
         prompt.initOwner(getScene().getWindow());
         prompt.setHeaderText("Verify no cash was collected and record a reason");
+        StaffDialogs.theme(prompt);
+        StaffDialogs.destructive(prompt, ButtonType.OK);
         prompt.showAndWait().map(String::strip).ifPresent(reason -> {
             if (reason.isEmpty() || reason.length() > 240) {
                 status.setText("Enter a reason of 1–240 characters.");

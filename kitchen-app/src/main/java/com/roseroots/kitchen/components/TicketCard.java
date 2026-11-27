@@ -31,14 +31,14 @@ public final class TicketCard extends VBox {
         delayed = ticket.delayedAt(now);
         setSpacing(6);
         getStyleClass().add("ticket");
-        Label id = label(ticket.reference(), "ticket-id");
+        Label id = label(ticket.displayReference(), "ticket-id");
         if (ticket.server() != null) {
             id.setMaxWidth(190);
         }
         FlowPane heading = new FlowPane(6, 3, id, label(ticket.destination(), "destination"));
         Button details = new Button("Details");
         details.getStyleClass().addAll("item-action", "view-details");
-        details.setAccessibleText("View details for " + ticket.reference());
+        details.setAccessibleText("View details for " + ticket.displayReference());
         details.setOnAction(event -> openDetails.run());
         heading.getChildren().add(details);
         heading.setAlignment(Pos.CENTER_LEFT);
@@ -65,7 +65,7 @@ public final class TicketCard extends VBox {
                     action.setWrapText(true);
                     action.getStyleClass().add(expected == Status.RECEIVED ? "start" : "mark-ready");
                     action.setTooltip(new Tooltip(
-                            "Updates only eligible " + scope + " items for " + ticket.reference()
+                            "Updates only eligible " + scope + " items for " + ticket.displayReference()
                                     + (entry.station() == null ? "" : " at " + entry.station().label)));
                     action.setOnAction(event -> advance.accept(expected));
                     actions.getChildren().add(action);
@@ -96,7 +96,10 @@ public final class TicketCard extends VBox {
         HBox.setHgrow(name, Priority.ALWAYS);
         HBox row = new HBox(5, name);
         row.setAlignment(Pos.CENTER_LEFT);
-        VBox details = new VBox(2, row, label((item.station() == null ? "Station unavailable" : item.station().label) + "  ·  " + item.status().label, "metadata"));
+        String preparation = item.status() == Status.RECEIVED && item.server() != null && item.server().chefName() != null
+                ? "Claimed by " + item.server().chefName() : item.status().label;
+        VBox details = new VBox(2, row, label((item.station() == null ? "Station unavailable" : item.station().label)
+                + "  ·  " + preparation, "metadata"));
         if (!item.options().isBlank()) {
             details.getChildren().add(label("Options: " + item.options(), "item-note"));
         }
@@ -130,13 +133,15 @@ public final class TicketCard extends VBox {
     }
 
     public void updateElapsed(OffsetDateTime now) {
-        long seconds = Math.max(0, Duration.between(ticket.orderedAt(), now).toSeconds());
-        elapsed.setText("Elapsed " + elapsedText(ticket, now));
-        elapsed.setAccessibleText("Elapsed " + seconds / 60 + " minutes and " + seconds % 60 + " seconds");
+        String age = "Elapsed " + elapsedText(ticket, now);
+        elapsed.setText(age);
+        elapsed.setAccessibleText(age);
     }
 
     public static String elapsedText(Ticket ticket, OffsetDateTime now) {
         long seconds = Math.max(0, Duration.between(ticket.orderedAt(), now).toSeconds());
+        if (seconds >= 86400) return (seconds / 86400) + "d " + (seconds % 86400 / 3600) + "h";
+        if (seconds >= 3600) return (seconds / 3600) + "h " + (seconds % 3600 / 60) + "m";
         return String.format(Locale.ROOT, "%02d:%02d", seconds / 60, seconds % 60);
     }
 

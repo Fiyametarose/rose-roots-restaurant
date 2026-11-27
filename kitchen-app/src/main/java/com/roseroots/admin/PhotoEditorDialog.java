@@ -1,5 +1,7 @@
 package com.roseroots.admin;
 
+import com.roseroots.kitchen.components.StaffDialogs;
+
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.util.List;
@@ -92,8 +94,9 @@ final class PhotoEditorDialog {
         var content = content(label("Image Editor", "heading"), previews, tools, status);
         var scroll = new ScrollPane(content);
         scroll.setFitToWidth(true);
-        scroll.setPrefViewportWidth(880);
-        scroll.setPrefViewportHeight(565);
+        var bounds = StaffDialogs.usableBounds(owner);
+        scroll.setPrefViewportWidth(Math.min(880, bounds.getWidth() - 90));
+        scroll.setPrefViewportHeight(Math.min(565, bounds.getHeight() - 140));
         pane.setContent(scroll);
 
         java.util.function.Supplier<PhotoProcessing.Settings> settings = () -> new PhotoProcessing.Settings(
@@ -168,6 +171,7 @@ final class PhotoEditorDialog {
             });
         });
         dialog.setOnHidden(event -> debounce.stop());
+        StaffDialogs.theme(dialog);
         return dialog.showAndWait();
     }
 

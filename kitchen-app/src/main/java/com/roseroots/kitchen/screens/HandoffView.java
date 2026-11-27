@@ -1,5 +1,7 @@
 package com.roseroots.kitchen.screens;
 
+import com.roseroots.kitchen.components.StaffDialogs;
+
 import com.roseroots.kitchen.model.KitchenBoard;
 import com.roseroots.kitchen.model.Ticket;
 import com.roseroots.kitchen.model.Ticket.Type;
@@ -78,7 +80,7 @@ public final class HandoffView extends VBox {
                     .collect(Collectors.joining("  ·  "));
             String instruction = ticket.type() == Type.DINE_IN
                     ? "Ready for table service" : "Ready for collection · Verify pickup reference and packing";
-            VBox card = new VBox(5, label(ticket.destination() + "  ·  " + ticket.reference(), "destination"),
+            VBox card = new VBox(5, label(ticket.destination() + "  ·  " + ticket.displayReference(), "destination"),
                     label(summary, "item-name"), label(instruction, "ready-note"));
             card.getStyleClass().add("ticket");
             for (Ticket.Item item : readyItems) {
@@ -94,6 +96,7 @@ public final class HandoffView extends VBox {
                     var dialog = new Alert(Alert.AlertType.CONFIRMATION, action + " for " + ticket.destination() + "?",
                             ButtonType.OK, ButtonType.CANCEL);
                     dialog.initOwner(getScene().getWindow());
+                    StaffDialogs.theme(dialog);
                     dialog.showAndWait().filter(ButtonType.OK::equals).ifPresent(accepted -> service.handoff(ticket));
                 });
                 card.getChildren().add(confirm);

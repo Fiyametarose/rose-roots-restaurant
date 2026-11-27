@@ -43,9 +43,9 @@ final class FoodFeedbackWorkspace extends VBox {
         next.setDisable(true);
         var filters = new FlowPane(10, 8, field("Review type", type), field("Dish name", dish),
                 field("Rating", rating), field("From", from), field("Through", through));
-        getChildren().addAll(panel("Filters", new VBox(8, filters, button("Apply filters", this::refresh), status)),
-                panel("Dish ratings", summaries),
-                panel("Dish and order reviews", new VBox(8, new FlowPane(8, 6, previous, next), reviews)));
+        getChildren().addAll(panel("Filters", content(filters, button("Apply filters", this::refresh), status)),
+                panel("Dish ratings", content(summaries)),
+                panel("Dish and order reviews", content(new FlowPane(8, 6, previous, next), reviews)));
     }
 
     void refresh() {

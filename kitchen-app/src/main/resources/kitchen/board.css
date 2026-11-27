@@ -1,3 +1,5 @@
+@import "../styles/components.css";
+
 .board {
     forest: #0f3d29;
     deep-forest: #0b2e20;
@@ -77,6 +79,8 @@
     -fx-background-color: deep-forest;
     -fx-padding: 12 9;
 }
+.sidebar-scroll, .sidebar-scroll > .viewport { -fx-background-color: deep-forest; }
+.sidebar-scroll { -fx-border-width: 0; -fx-padding: 0; }
 .brand {
     -fx-padding: 3 0 12;
     -fx-border-width: 0 0 1;
@@ -87,10 +91,12 @@
 .navigation-button {
     -fx-alignment: CENTER_LEFT;
     -fx-background-color: transparent;
+    -fx-border-color: transparent;
     -fx-background-radius: 6;
     -fx-text-fill: ivory;
     -fx-padding: 8 9;
 }
+.navigation-button:focused { -fx-border-color: gold; }
 .navigation-button:selected { -fx-background-color: #f5e7c8; -fx-text-fill: forest; -fx-font-weight: bold; }
 .navigation-button:disabled { -fx-opacity: 0.58; }
 .connection {

@@ -42,27 +42,33 @@ public final class AcceptedItemDialog extends Dialog<Void> {
         initOwner(owner);
         setTitle(messages.text(cancel ? "orders.itemCancel" : "orders.itemEdit"));
         var pane = getDialogPane();
-        pane.getStylesheets().addAll(owner.getScene().getStylesheets());
+        pane.getStylesheets().add(getClass().getResource("/styles/theme.css").toExternalForm());
         pane.getStyleClass().add("assistance-dialog");
         if ("am".equals(messages.language())) pane.getStyleClass().add("ethiopic");
         messages.applyDirection(pane);
         pane.getButtonTypes().add(new ButtonType(messages.text("pay.close"), ButtonBar.ButtonData.CANCEL_CLOSE));
+        pane.lookupButton(pane.getButtonTypes().getFirst()).getStyleClass().add("dialog-cancel");
         pane.lookupButton(pane.getButtonTypes().getFirst()).disableProperty().bind(form.disableProperty());
         form.setPadding(new Insets(12));
         status.setWrapText(true);
-        var content = new VBox(8, new Label(item.pricing().name()), form, status);
+        var title = FoodCard.label(item.pricing().name(), "dish-panel-title");
+        title.setWrapText(true);
+        var content = new VBox(8, title, form, status);
         content.setPadding(new Insets(10));
         var scroll = new ScrollPane(content);
         scroll.setFitToWidth(true);
-        scroll.setPrefViewportWidth(470);
-        scroll.setPrefViewportHeight(cancel ? 180 : 430);
+        scroll.setPrefViewportWidth(Math.min(470, Math.max(280, owner.getWidth() - 52)));
+        scroll.setPrefViewportHeight(cancel ? 150 : Math.min(430, Math.max(220, owner.getHeight() - 160)));
         pane.setContent(scroll);
         quantity = new Spinner<>(1, 99, item.pricing().quantity());
         quantity.setId("accepted-item-quantity");
         submit.setId(cancel ? "confirm-item-cancel" : "preview-item-edit");
+        submit.getStyleClass().add(cancel ? "dialog-destructive" : "dialog-primary");
         if (cancel) {
             submit.setText(messages.text("orders.itemConfirmCancel"));
-            form.getChildren().setAll(new Label(messages.text("orders.itemCancelQuestion")), submit);
+            var warning = new Label(messages.text("orders.itemCancelQuestion"));
+            warning.setWrapText(true);
+            form.getChildren().setAll(warning, submit);
             submit.setOnAction(event -> run(() -> api.cancel(order,item,key), ignored -> successful()));
             return;
         }

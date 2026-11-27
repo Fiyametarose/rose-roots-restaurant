@@ -126,9 +126,9 @@ public final class StationsView extends VBox {
         Ticket ticket = entry.ticket();
         Button details = new Button("Details");
         details.getStyleClass().addAll("item-action", "view-details");
-        details.setAccessibleText("View details for " + ticket.reference() + " at " + entry.station().label);
+        details.setAccessibleText("View details for " + ticket.displayReference() + " at " + entry.station().label);
         details.setOnAction(event -> openDetails.accept(ticket.id()));
-        FlowPane heading = new FlowPane(6, 4, label(ticket.reference(), "ticket-id"),
+        FlowPane heading = new FlowPane(6, 4, label(ticket.displayReference(), "ticket-id"),
                 label(ticket.destination(), "destination"), details);
         heading.setAlignment(Pos.CENTER_LEFT);
         Label elapsed = label("", "elapsed");

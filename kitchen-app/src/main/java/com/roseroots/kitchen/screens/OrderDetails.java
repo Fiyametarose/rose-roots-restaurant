@@ -1,5 +1,7 @@
 package com.roseroots.kitchen.screens;
 
+import com.roseroots.kitchen.components.StaffDialogs;
+
 import com.roseroots.kitchen.components.TicketCard;
 import com.roseroots.kitchen.model.Ticket;
 import com.roseroots.kitchen.model.Ticket.Status;
@@ -70,7 +72,7 @@ public final class OrderDetails extends VBox {
         }
         String type = ticket.type() == Type.DINE_IN ? "Dine-in" : "Takeaway · Pack for pickup";
         Label destination = label(ticket.destination() + "  ·  " + type, "detail-destination");
-        HBox header = new HBox(10, label(ticket.reference(), "ticket-id"), destination);
+        HBox header = new HBox(10, label(ticket.displayReference(), "ticket-id"), destination);
         header.setAlignment(Pos.CENTER_LEFT);
         FlowPane progress = new FlowPane(7, 4);
         progress.getStyleClass().add("detail-progress");
@@ -185,6 +187,7 @@ public final class OrderDetails extends VBox {
                 if (requestedBy != remote.signedInStaff()) dialog.close();
             });
             dialog.setOnHidden(event -> unsubscribe.run());
+            StaffDialogs.theme(dialog);
             dialog.show();
         }));
     }
@@ -206,6 +209,7 @@ public final class OrderDetails extends VBox {
                 var alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.INFORMATION,
                         error == null ? "No other eligible Chef is available for this station." : "Eligible Chefs could not be loaded.");
                 alert.initOwner(getScene().getWindow());
+                StaffDialogs.theme(alert);
                 alert.show();
                 return;
             }
@@ -220,6 +224,7 @@ public final class OrderDetails extends VBox {
             dialog.getDialogPane().lookupButton(javafx.scene.control.ButtonType.OK).disableProperty().bind(
                     javafx.beans.binding.Bindings.createBooleanBinding(() -> chef.getValue() == null
                             || reason.getText().isBlank() || reason.getText().length() > 240, chef.valueProperty(), reason.textProperty()));
+            StaffDialogs.theme(dialog);
             if (dialog.showAndWait().orElse(null) == javafx.scene.control.ButtonType.OK && requestedBy == remote.signedInStaff()) {
                 remote.ownership(item, "REASSIGNED", chef.getValue().id(), reason.getText().strip());
             }
@@ -242,6 +247,8 @@ public final class OrderDetails extends VBox {
             String reason = dialog.getEditor().getText().strip();
             return reason.isBlank() || reason.length() > 240;
         }, dialog.getEditor().textProperty()));
+        StaffDialogs.theme(dialog);
+        if (!approve) StaffDialogs.destructive(dialog, javafx.scene.control.ButtonType.OK);
         dialog.showAndWait().ifPresent(reason -> service.reviewAllergy(ticketId, item, approve, reason.strip()));
     }
 

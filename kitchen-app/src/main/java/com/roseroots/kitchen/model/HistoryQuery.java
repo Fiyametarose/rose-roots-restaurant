@@ -16,7 +16,8 @@ public final class HistoryQuery {
                 .filter(ticket -> ticket.completion() != null)
                 .filter(ticket -> status == null || ticket.completion().status() == status)
                 .filter(ticket -> type == null || ticket.type() == type)
-                .filter(ticket -> matches(ticket.reference(), term) || matches(ticket.destination(), term)
+                .filter(ticket -> matches(ticket.reference(), term) || matches(ticket.displayReference(), term)
+                        || matches(ticket.destination(), term)
                         || ticket.items().stream().anyMatch(item -> matches(item.name(), term)))
                 .sorted(Comparator.comparing(HistoryQuery::completionTime).reversed().thenComparingLong(Ticket::id))
                 .toList();

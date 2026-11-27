@@ -149,6 +149,10 @@ public record Ticket(long id, Type type, String destination, OffsetDateTime orde
         return server == null ? "#A" + id : server.id().toString();
     }
 
+    public String displayReference() {
+        return server == null ? reference() : "#" + reference().substring(0, 8).toUpperCase(java.util.Locale.ROOT);
+    }
+
     public Status status() {
         return server == null ? statusOf(items) : server.status();
     }

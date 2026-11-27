@@ -1,5 +1,7 @@
 package com.roseroots.admin;
 
+import com.roseroots.kitchen.components.StaffDialogs;
+
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import java.math.BigDecimal;
@@ -117,6 +119,8 @@ final class VisitsWorkspace extends VBox {
         close.setOnAction(event -> {
             var prompt = new Alert(Alert.AlertType.CONFIRMATION, "Close the visit for " + reference + "?", ButtonType.CANCEL, ButtonType.OK);
             prompt.initOwner(getScene().getWindow());
+            StaffDialogs.theme(prompt);
+            prompt.setTitle("Close dining visit");
             prompt.showAndWait().filter(result -> result == ButtonType.OK).ifPresent(result -> {
                 var input = new JsonObject();
                 input.addProperty("expectedBillVersion", row.get("billVersion").getAsLong());

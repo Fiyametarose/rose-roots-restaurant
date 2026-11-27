@@ -60,7 +60,7 @@ public final class AdminWorkspace {
         window.initModality(Modality.WINDOW_MODAL);
         window.setTitle("Rose & Roots | Admin Panel");
         window.setMinWidth(760);
-        window.setMinHeight(550);
+        window.setMinHeight(420);
         Scene scene = new Scene(root, 1260, 780);
         scene.getStylesheets().add(getClass().getResource("/admin/admin.css").toExternalForm());
         scene.addEventFilter(KeyEvent.KEY_PRESSED, event -> recordInteraction());

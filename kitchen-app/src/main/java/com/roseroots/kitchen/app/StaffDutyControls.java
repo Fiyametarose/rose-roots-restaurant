@@ -12,10 +12,10 @@ import javafx.application.Platform;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
-import javafx.scene.layout.HBox;
+import javafx.scene.layout.FlowPane;
 import javafx.util.Duration;
 
-final class StaffDutyControls extends HBox {
+final class StaffDutyControls extends FlowPane {
     private final SpringBootKitchenService service;
     private final Label status = new Label();
     private final ComboBox<Integer> hours = new ComboBox<>();
@@ -26,8 +26,10 @@ final class StaffDutyControls extends HBox {
     private boolean busy;
 
     StaffDutyControls(SpringBootKitchenService service) {
-        super(6);
+        super(6, 4);
         this.service = service;
+        status.setWrapText(true);
+        status.setMaxWidth(290);
         hours.getItems().setAll(4, 8, 12);
         hours.setValue(8);
         hours.setAccessibleText("Shift duration in hours");
@@ -57,6 +59,7 @@ final class StaffDutyControls extends HBox {
         if (session == null || busy) return;
         var actor = session;
         busy = true;
+        change.setDisable(true);
         service.staffDuty().whenComplete((data, failure) -> Platform.runLater(() -> received(actor, data, failure)));
     }
 
@@ -65,6 +68,7 @@ final class StaffDutyControls extends HBox {
         var actor = session;
         busy = true;
         change.setDisable(true);
+        status.setText("Saving duty status…");
         service.changeDuty(state.get("onDuty").getAsBoolean() ? 0 : hours.getValue(), state.get("version").getAsLong())
                 .whenComplete((data, failure) -> Platform.runLater(() -> received(actor, data, failure)));
     }
@@ -75,6 +79,7 @@ final class StaffDutyControls extends HBox {
         state = failure == null ? data : null;
         service.displayDuty(actor, state != null && state.get("onDuty").getAsBoolean());
         render();
+        if (failure != null) status.setText("Duty status unavailable. Reconnecting…");
     }
 
     private void render() {

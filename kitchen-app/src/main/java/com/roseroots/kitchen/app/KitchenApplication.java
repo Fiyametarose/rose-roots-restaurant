@@ -1,5 +1,7 @@
 package com.roseroots.kitchen.app;
 
+import com.roseroots.kitchen.components.StaffDialogs;
+
 import com.roseroots.admin.AdminWorkspace;
 import com.roseroots.kitchen.model.AssistanceRequest;
 import com.roseroots.kitchen.service.AssistanceService;
@@ -38,7 +40,11 @@ public final class KitchenApplication extends Application {
         try {
             config = KitchenBackendConfig.read(environment);
         } catch (IllegalArgumentException ex) {
-            new Alert(Alert.AlertType.ERROR, ex.getMessage()).showAndWait();
+            var alert = new Alert(Alert.AlertType.ERROR, ex.getMessage());
+            alert.setTitle("Kitchen connection settings");
+            alert.setHeaderText("Kitchen could not start");
+            StaffDialogs.theme(alert);
+            alert.showAndWait();
             Platform.exit();
             return;
         }
@@ -62,7 +68,7 @@ public final class KitchenApplication extends Application {
         scene.getStylesheets().add(getClass().getResource("/kitchen/board.css").toExternalForm());
         stage.setTitle("Rose & Roots | Kitchen Display Board");
         stage.setMinWidth(755);
-        stage.setMinHeight(560);
+        stage.setMinHeight(420);
         stage.setScene(scene);
         stage.show();
     }

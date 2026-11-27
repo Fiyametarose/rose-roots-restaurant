@@ -1,5 +1,7 @@
 package com.roseroots.admin;
 
+import com.roseroots.kitchen.components.StaffDialogs;
+
 import com.google.gson.JsonObject;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
@@ -16,7 +18,6 @@ final class ReceiptRecoveryWorkspace extends Dialog<Void> {
     ReceiptRecoveryWorkspace(Window owner, AdminApi api, String receipt, String visit) {
         initOwner(owner);
         setTitle("Authorize recovery of a verified cash receipt");
-        getDialogPane().getStylesheets().addAll(owner.getScene().getStylesheets());
         getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
         var target = new ComboBox<Terminal>();
         target.setPromptText("Verified receiving terminal");
@@ -40,6 +41,7 @@ final class ReceiptRecoveryWorkspace extends Dialog<Void> {
         content.setPadding(new Insets(14));
         content.setPrefWidth(540);
         getDialogPane().setContent(content);
+        StaffDialogs.theme(this);
         var close = getDialogPane().lookupButton(ButtonType.CLOSE);
         AdminWorkspace.background(() -> api.adminRows("terminals"), (terminals, failure) -> {
             if (!isShowing()) return;
