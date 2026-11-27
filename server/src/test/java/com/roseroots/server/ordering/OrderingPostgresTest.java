@@ -288,6 +288,103 @@ class OrderingPostgresTest {
     }
 
     @Test
+    void foodFeedbackIsScopedToHandedOffAcceptedTargetsAndKeepsRestaurantMetricsSeparate() throws Exception {
+        String customer = terminal(true);
+        String session = session(customer, "DINE_IN", 201);
+        UUID menu = dish();
+        UUID otherMenu = dish();
+        db.sql("UPDATE catalog_item SET name='Second dish' WHERE id=:id").param("id", otherMenu).update();
+        var draft = draft(session, menu);
+        draft.withArray("lines").add(draft(session, otherMenu).at("/lines/0"));
+        var quote = json(send(customer, "POST", "/order-quotes", draft, null), 200);
+        var accepted = json(send(customer, "POST", "/orders", submitBody(draft, quote), UUID.randomUUID()), 201);
+        String order = accepted.path("id").asText();
+        String first = accepted.at("/lines/0/id").asText();
+        String second = accepted.at("/lines/1/id").asText();
+        String next = submitNew(customer, session, menu);
+        String nextItem = get(customer, "/orders/" + next, 200).at("/lines/0/id").asText();
+        String base = "/sessions/" + session + "/orders/";
+        String firstReview = base + order + "/items/" + first + "/feedback";
+        var body = object().put("rating", 1).put("comment", "Cold dish, please check");
+        UUID key = UUID.randomUUID();
+        problem(send(customer, "POST", firstReview, body, key), 422, "REVIEW_NOT_ELIGIBLE");
+        patch(first, "PREPARING", 1, 200);
+        problem(send(customer, "POST", firstReview, body, key), 422, "REVIEW_NOT_ELIGIBLE");
+        patch(first, "READY", 2, 200);
+        patch(second, "PREPARING", 1, 200);
+        patch(second, "READY", 2, 200);
+        problem(send(customer, "POST", firstReview, body, key), 422, "REVIEW_NOT_ELIGIBLE");
+        long version = get(customer, "/orders/" + order, 200).path("version").asLong();
+        json(send(HANDOFF_TOKEN, "POST", "/kitchen/orders/" + order + "/handoff", transition("SERVED", (int) version), null), 200);
+        assertTrue(get(customer, "/orders/" + order, 200).path("feedbackEligible").asBoolean());
+        problem(send(terminal(true), "POST", firstReview, body, key), 404, "NOT_FOUND");
+        problem(send(customer, "POST", base + next + "/items/" + first + "/feedback", body, key), 404, "NOT_FOUND");
+        problem(send(STAFF_TOKEN, "POST", firstReview, body, key), 403, "FORBIDDEN");
+        problem(send(customer, "POST", firstReview, body.deepCopy().put("rating", 6), key), 400, "BAD_REQUEST");
+        problem(send(customer, "POST", firstReview, body.deepCopy().put("comment", "A\u0007"), key), 400, "BAD_REQUEST");
+        var bill = get(customer, "/sessions/" + session + "/bill", 200);
+        long billVersion = db.sql("SELECT bill_version FROM dining_session WHERE id=CAST(:session AS uuid)")
+                .param("session", session).query(Long.class).single();
+        try (var workers = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var one = workers.submit(() -> send(customer, "POST", firstReview, body, key));
+            var two = workers.submit(() -> send(customer, "POST", firstReview, body, key));
+            var statuses = java.util.stream.IntStream.of(one.get().statusCode(), two.get().statusCode()).sorted().toArray();
+            assertArrayEquals(new int[]{200, 201}, statuses);
+            assertEquals(parse(one.get().body()), parse(two.get().body()));
+        }
+        problem(send(customer, "POST", firstReview, body.deepCopy().put("rating", 3), key), 409, "IDEMPOTENCY_CONFLICT");
+        problem(send(customer, "POST", firstReview, body, UUID.randomUUID()), 409, "REVIEW_ALREADY_EXISTS");
+        json(send(customer, "POST", base + order + "/items/" + second + "/feedback", object().put("rating", 5), UUID.randomUUID()), 201);
+        var orderReview = object().put("rating", 4).set("topics", array().add("ORDER_ACCURACY"));
+        var orderRating = json(send(customer, "POST", base + order + "/feedback", orderReview, UUID.randomUUID()), 201);
+        problem(send(customer, "POST", base + next + "/feedback", orderReview, UUID.randomUUID()), 422, "REVIEW_NOT_ELIGIBLE");
+        var billAfterReview = get(customer, "/sessions/" + session + "/bill", 200);
+        assertEquals(bill.path("totals"), billAfterReview.path("totals"));
+        assertEquals(bill.path("orders"), billAfterReview.path("orders"));
+        assertEquals(billVersion, db.sql("SELECT bill_version FROM dining_session WHERE id=CAST(:session AS uuid)")
+                .param("session", session).query(Long.class).single());
+        assertEquals(1, get(customer, "/orders/" + order, 200).at("/lines/0/feedbackRating").asInt());
+        assertEquals(4, get(customer, "/orders/" + order, 200).path("feedbackRating").asInt());
+        assertTrue(get(customer, "/orders/" + next, 200).path("feedbackRating").isNull());
+        assertTrue(get(customer, "/sessions/" + session + "/review", 200).path("review").isNull());
+        json(send(customer, "POST", "/sessions/" + session + "/reviews", object().put("rating", 3), UUID.randomUUID()), 201);
+        patch(nextItem, "PREPARING", 1, 200);
+        patch(nextItem, "READY", 2, 200);
+        json(send(HANDOFF_TOKEN, "POST", "/kitchen/orders/" + next + "/handoff", transition("SERVED", 3), null), 200);
+        db.sql("UPDATE catalog_item SET name='Renamed after service', archived=true WHERE id=:id").param("id", menu).update();
+        json(send(customer, "POST", base + next + "/items/" + nextItem + "/feedback", object().put("rating", 3), UUID.randomUUID()), 201);
+        String cancelled = submitNew(customer, session, dish());
+        var line = get(customer, "/orders/" + cancelled, 200).at("/lines/0/id").asText();
+        String cancelledPath = base + cancelled + "/items/" + line;
+        json(send(customer, "POST", cancelledPath + "/cancel",
+                object().put("expectedOrderVersion", 1).put("expectedItemVersion", 1), UUID.randomUUID()), 200);
+        problem(send(customer, "POST", cancelledPath + "/feedback", body, UUID.randomUUID()), 422, "REVIEW_NOT_ELIGIBLE");
+        problem(send(customer, "POST", base + cancelled + "/feedback", orderReview, UUID.randomUUID()), 422, "REVIEW_NOT_ELIGIBLE");
+        var kitchen = get(STAFF_TOKEN, "/kitchen/food-feedback", 200).path("reviews");
+        assertEquals(4, kitchen.size());
+        assertFalse(kitchen.toString().contains("Renamed after service"));
+        assertFalse(kitchen.get(0).has("sessionId"));
+        assertFalse(kitchen.get(0).has("internalResponse"));
+        problem(send(customer,"GET","/kitchen/food-feedback",null,null),403,"FORBIDDEN");
+        try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
+            managerLogin(manager);
+            var result = json(manager.send(request("/admin/food-feedback?type=DISH&dish=Test%20tea", null).GET().build(),
+                    HttpResponse.BodyHandlers.ofString()), 200);
+            assertEquals(2, result.path("reviews").size());
+            assertEquals(2, result.at("/dishes/0/count").asLong());
+            assertEquals(2, result.at("/dishes/0/average").asDouble());
+            var reviewDate = java.time.Instant.parse(orderRating.path("submittedAt").asText())
+                    .atZone(java.time.ZoneId.of("Africa/Nairobi")).toLocalDate();
+            var ordersOnly = json(manager.send(request("/admin/food-feedback?type=ORDER&rating=4&from="
+                            + reviewDate + "&to=" + reviewDate, null).GET().build(),
+                    HttpResponse.BodyHandlers.ofString()), 200);
+            assertEquals(1, ordersOnly.path("reviews").size());
+            assertEquals("ORDER", ordersOnly.at("/reviews/0/type").asText());
+            assertTrue(ordersOnly.path("dishes").isEmpty());
+        }
+    }
+
+    @Test
     void javaFxKitchenShowsUnratedAndNegativeFeedbackFromRealHttps() throws Exception {
         startFx();
         for (int index = 0; index < 2; index++) {

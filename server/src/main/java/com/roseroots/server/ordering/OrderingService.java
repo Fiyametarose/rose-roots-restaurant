@@ -815,6 +815,12 @@ class OrderingService {
                     o.rush, o.delayed_override, h.actor_staff_id, h.actor_role, h.previous_status AS handoff_previous_status,
                     h.status AS handoff_status, h.previous_version AS handoff_previous_version, h.version AS handoff_version,
                     waiter.username AS handoff_actor,
+                    (SELECT f.rating FROM accepted_order_feedback f WHERE f.order_id=o.id AND f.item_id IS NULL) AS feedback_rating,
+                    h.order_id IS NOT NULL
+                        AND EXISTS (SELECT 1 FROM accepted_order_item i WHERE i.order_id=o.id
+                            AND i.preparation_status IN ('SERVED','COLLECTED'))
+                        AND NOT EXISTS (SELECT 1 FROM accepted_order_item i WHERE i.order_id=o.id
+                            AND i.preparation_status NOT IN ('SERVED','COLLECTED','CANCELLED')) AS feedback_eligible,
                     (SELECT jsonb_object_agg(i.id, station.code) FROM accepted_order_item i
                      JOIN kitchen_station station ON station.id = i.station_id WHERE i.order_id = o.id) AS station_codes,
                     (SELECT jsonb_object_agg(i.id, jsonb_build_object('id', chef.id, 'username', chef.username,
@@ -830,6 +836,8 @@ class OrderingService {
                             WHEN i.allergy_review_status = 'APPROVED_FOR_PREPARATION'
                             THEN jsonb_set(i.allergy_risk, '{unresolved}', 'false') ELSE i.allergy_risk END,
                         'version', i.version, 'billable', i.preparation_status <> 'CANCELLED',
+                        'feedbackEligible', h.order_id IS NOT NULL AND i.preparation_status IN ('SERVED','COLLECTED'),
+                        'feedbackRating', (SELECT f.rating FROM accepted_order_feedback f WHERE f.item_id=i.id),
                         'customerChangeAllowed', i.preparation_status='RECEIVED' AND change_block.reason IS NULL,
                         'customerChangeBlockedReason', CASE
                             WHEN i.preparation_status='CANCELLED' THEN 'ITEM_CANCELLED'
@@ -855,6 +863,8 @@ class OrderingService {
             ObjectNode order = object().put("id", row.getString("id")).put("sessionId", row.getString("session_id"))
                     .put("mode", row.getString("mode")).put("status", row.getString("status"))
                     .put("acceptedAt", instant(row, "accepted_at").toString()).put("version", row.getLong("version"));
+            order.put("feedbackEligible", row.getBoolean("feedback_eligible"))
+                    .put("feedbackRating", row.getObject("feedback_rating", Integer.class));
             order.set("visitAllergy", parse(row.getString("visit_allergy")));
             order.set("lines", parse(row.getString("lines")));
             order.set("totals", OrderingPricing.totals(row.getLong("payable_minor")));

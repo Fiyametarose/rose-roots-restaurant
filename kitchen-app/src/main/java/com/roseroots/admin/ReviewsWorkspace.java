@@ -54,8 +54,25 @@ final class ReviewsWorkspace extends VBox {
         this.api = api;
         this.expired = expired;
         this.top = top;
-        getChildren().addAll(label("Reviews & Insights", "heading"),
-                label("Track customer satisfaction, explore feedback, and review follow-up status.", "muted"), view);
+        var food = new FoodFeedbackWorkspace(api, expired);
+        var content = new VBox(view);
+        var kind = new javafx.scene.control.ToggleGroup();
+        var restaurant = new javafx.scene.control.ToggleButton("Restaurant reviews");
+        var foodReviews = new javafx.scene.control.ToggleButton("Dish and order reviews");
+        restaurant.setToggleGroup(kind);
+        foodReviews.setToggleGroup(kind);
+        restaurant.setSelected(true);
+        kind.selectedToggleProperty().addListener((observable, previous, selected) -> {
+            if (selected == null) {
+                kind.selectToggle(previous);
+                return;
+            }
+            boolean showFood = selected == foodReviews;
+            content.getChildren().setAll(showFood ? food : view);
+            if (showFood) food.refresh();
+            top.run();
+        });
+        getChildren().addAll(label("Reviews & Insights", "heading"), new FlowPane(10, 8, restaurant, foodReviews), content);
         search.setPromptText("Comment, review ID, table or pickup");
         search.setOnAction(event -> apply());
         var filters = new FlowPane(10, 8, field("Search reviews", search), field("From", from), field("Through", to),

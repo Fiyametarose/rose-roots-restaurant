@@ -49,20 +49,24 @@ public final class Ordering {
         CUSTOMER_APPROVAL_REQUIRED, APPROVED_FOR_PREPARATION, DECLINED
     }
 
+    public record Feedback(boolean eligible, Integer rating) {}
+
     public record AcceptedLine(UUID id, Price pricing, AllergyDeclaration allergy, String instructions,
                                Status preparation, Review review, boolean billable, String reviewMessage,
-                               long version, boolean changeAllowed, String changeBlockedReason) {
+                               long version, boolean changeAllowed, String changeBlockedReason, Feedback feedback) {
         public AcceptedLine(UUID id, Price pricing, AllergyDeclaration allergy, String instructions,
                             Status preparation, Review review, boolean billable, String reviewMessage) {
-            this(id, pricing, allergy, instructions, preparation, review, billable, reviewMessage, 0, false, "");
+            this(id, pricing, allergy, instructions, preparation, review, billable, reviewMessage,
+                    0, false, "", new Feedback(false, null));
         }
     }
 
     public record Accepted(UUID id, UUID sessionId, ServiceMode mode, Status status, Instant acceptedAt,
-                           AllergyDeclaration visitAllergy, List<AcceptedLine> lines, Totals totals, long version) {
+                           AllergyDeclaration visitAllergy, List<AcceptedLine> lines, Totals totals, long version,
+                           Feedback feedback) {
         public Accepted(UUID id, UUID sessionId, ServiceMode mode, Status status, Instant acceptedAt,
                         AllergyDeclaration visitAllergy, List<AcceptedLine> lines, Totals totals) {
-            this(id, sessionId, mode, status, acceptedAt, visitAllergy, lines, totals, 0);
+            this(id, sessionId, mode, status, acceptedAt, visitAllergy, lines, totals, 0, new Feedback(false, null));
         }
         public Accepted { lines = List.copyOf(lines); }
     }

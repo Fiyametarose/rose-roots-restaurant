@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.roseroots.server.admin.ReviewSource.FollowUp;
 import com.roseroots.server.admin.ReviewSource.Topic;
 import java.security.Principal;
+import java.time.LocalDate;
 import java.util.EnumSet;
 import java.util.Set;
 import jakarta.servlet.http.HttpServletRequest;
@@ -12,6 +13,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataAccessException;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -31,12 +33,15 @@ class OrderingController {
     private final AssistanceRequests assistance;
     private final VisitReviews reviews;
     private final WaitEstimates estimates;
+    private final OrderFeedback feedback;
 
-    OrderingController(OrderingService ordering, AssistanceRequests assistance, VisitReviews reviews, WaitEstimates estimates) {
+    OrderingController(OrderingService ordering, AssistanceRequests assistance, VisitReviews reviews,
+                       WaitEstimates estimates, OrderFeedback feedback) {
         this.ordering = ordering;
         this.assistance = assistance;
         this.reviews = reviews;
         this.estimates = estimates;
+        this.feedback = feedback;
     }
 
     @PostMapping(path = "/wait-estimates", consumes = JSON_MEDIA)
@@ -295,6 +300,33 @@ class OrderingController {
             @RequestParam(name = "cursor", required = false) String cursor,
             @RequestParam(name = "limit", required = false) String limit) {
         return response(200, reviews.kitchen(actor, cursor, limit(limit)));
+    }
+
+    @PostMapping(path = {"/sessions/{session}/orders/{order}/feedback",
+            "/sessions/{session}/orders/{order}/items/{item}/feedback"}, consumes = JSON_MEDIA)
+    ResponseEntity<String> submitOrderFeedback(@AuthenticationPrincipal Actor actor,
+            @PathVariable("session") String session, @PathVariable("order") String order,
+            @PathVariable(name = "item", required = false) String item,
+            @RequestHeader(name = "Idempotency-Key", required = false) String key, HttpServletRequest request) {
+        return response(feedback.submit(actor, id(session), id(order), item == null ? null : id(item), id(key), body(request)));
+    }
+
+    @GetMapping("/kitchen/food-feedback")
+    ResponseEntity<String> kitchenFeedback(@AuthenticationPrincipal Actor actor,
+            @RequestParam(name = "offset", defaultValue = "0") int offset,
+            @RequestParam(name = "limit", defaultValue = "25") int limit) {
+        return response(200, feedback.report(actor.restaurantId(), "ALL", "", null, null, null, offset, limit));
+    }
+
+    @GetMapping("/admin/food-feedback")
+    ResponseEntity<String> managerFeedback(@RequestParam(name = "type", defaultValue = "ALL") String type,
+            @RequestParam(name = "dish", defaultValue = "") String dish,
+            @RequestParam(name = "rating", required = false) Integer rating,
+            @RequestParam(name = "from", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(name = "to", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(name = "offset", defaultValue = "0") int offset,
+            @RequestParam(name = "limit", defaultValue = "25") int limit) {
+        return response(200, feedback.report(null, type, dish, rating, from, to, offset, limit));
     }
 
     @PatchMapping(path = "/admin/reviews/{id}/follow-up", consumes = JSON_MEDIA)

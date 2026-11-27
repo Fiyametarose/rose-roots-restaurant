@@ -102,6 +102,11 @@ public final class SpringBootOrderService implements OrderService, WaitEstimateS
         return call("sessions/" + session + "/reviews", body, key, Function.identity());
     }
 
+    CompletionStage<JsonObject> postFoodFeedback(UUID session, UUID order, UUID item, JsonObject body, UUID key) {
+        String path = "sessions/" + session + "/orders/" + order + (item == null ? "" : "/items/" + item);
+        return call(path + "/feedback", body, key, Function.identity());
+    }
+
     CompletionStage<Optional<WaitEstimate>> estimateOrder(UUID order) {
         return get("orders/" + order + "/wait-estimate").thenApply(SpringBootOrderService::readEstimate);
     }
@@ -284,8 +289,15 @@ public final class SpringBootOrderService implements OrderService, WaitEstimateS
                                 ? string(line, "reviewMessage") : "", version(line),
                         line.has("customerChangeAllowed") && bool(line, "customerChangeAllowed"),
                         line.has("customerChangeBlockedReason") && !line.get("customerChangeBlockedReason").isJsonNull()
-                                ? string(line, "customerChangeBlockedReason") : "")),
-                totals(json.getAsJsonObject("totals")), version(json));
+                                ? string(line, "customerChangeBlockedReason") : "", feedback(line))),
+                totals(json.getAsJsonObject("totals")), version(json), feedback(json));
+    }
+
+    private static Ordering.Feedback feedback(JsonObject json) {
+        Integer rating = json.has("feedbackRating") && !json.get("feedbackRating").isJsonNull()
+                ? json.getAsJsonPrimitive("feedbackRating").getAsBigDecimal().intValueExact() : null;
+        if (rating != null && (rating < 1 || rating > 5)) throw new IllegalArgumentException("Invalid feedback rating");
+        return new Ordering.Feedback(json.has("feedbackEligible") && bool(json, "feedbackEligible"), rating);
     }
 
     private static long version(JsonObject object) {

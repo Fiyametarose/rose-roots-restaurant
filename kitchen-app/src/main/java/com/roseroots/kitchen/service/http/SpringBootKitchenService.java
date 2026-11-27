@@ -584,6 +584,10 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
         return reviewPage(null, new ArrayList<>(), new HashSet<>(), new HashSet<>());
     }
 
+    public CompletableFuture<JsonObject> foodFeedback(int offset) {
+        return send("/api/v1/kitchen/food-feedback?limit=25&offset=" + offset, null).thenApply(KitchenTicketJson::object);
+    }
+
     private CompletableFuture<List<ConnectedReview>> reviewPage(String cursor, List<ConnectedReview> rows,
             HashSet<String> cursors, HashSet<UUID> ids) {
         String suffix = cursor == null ? "" : "&cursor=" + URLEncoder.encode(cursor, StandardCharsets.UTF_8);
@@ -714,7 +718,8 @@ public final class SpringBootKitchenService implements KitchenService, KitchenSy
     }
 
     private CompletableFuture<String> send(String path, JsonObject body, String method) {
-        boolean personalRead = path.startsWith("/api/v1/kitchen/history?") || path.startsWith("/api/v1/kitchen/reviews?");
+        boolean personalRead = path.startsWith("/api/v1/kitchen/history?") || path.startsWith("/api/v1/kitchen/reviews?")
+                || path.startsWith("/api/v1/kitchen/food-feedback?");
         boolean dutyRead = path.equals("/api/v1/kitchen/staff-duty") || path.endsWith("/eligible-waiters");
         boolean waiterQueue = path.startsWith("/api/v1/kitchen/assistance?") && staff != null
                 && "WAITER".equals(staff.role());

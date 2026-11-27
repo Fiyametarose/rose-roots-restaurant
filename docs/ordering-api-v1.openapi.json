@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Rose & Roots shared ordering API",
-    "version": "1.0.0-draft.9",
+    "version": "1.0.0-draft.10",
     "description": "Review draft for Customer, Staff and Spring Boot. No endpoint in this document is declared implemented."
   },
   "servers": [
@@ -12,6 +12,351 @@
     }
   ],
   "paths": {
+    "/sessions/{session}/orders/{order}/feedback": {
+      "post": {
+        "operationId": "submitOrderFeedback",
+        "description": "Review an exact order after every non-cancelled item has been served or collected and at least one item was handed off.",
+        "security": [
+          {
+            "terminalBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "name": "order",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderFeedbackInput"
+              },
+              "example": {
+                "rating": 4,
+                "topics": [
+                  "ORDER_ACCURACY"
+                ],
+                "comment": "Everything arrived as ordered."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Identical replay.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "New feedback.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          }
+        }
+      }
+    },
+    "/sessions/{session}/orders/{order}/items/{item}/feedback": {
+      "post": {
+        "operationId": "submitDishFeedback",
+        "description": "Review an exact served or collected accepted item.",
+        "security": [
+          {
+            "terminalBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "name": "order",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "name": "item",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DishFeedbackInput"
+              },
+              "example": {
+                "rating": 5,
+                "comment": "Well prepared."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Identical replay.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "New feedback.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          }
+        }
+      }
+    },
+    "/kitchen/food-feedback": {
+      "get": {
+        "operationId": "kitchenFoodFeedback",
+        "description": "View restaurant-scoped food feedback without visit reviews or private Manager notes.",
+        "security": [
+          {
+            "staffBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Feedback page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FoodFeedbackPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          }
+        }
+      }
+    },
+    "/admin/food-feedback": {
+      "get": {
+        "operationId": "managerFoodFeedback",
+        "description": "Filter food feedback and dish-only summaries. Date bounds use the configured review time zone.",
+        "security": [
+          {
+            "managerCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ALL",
+                "DISH",
+                "ORDER"
+              ],
+              "default": "ALL"
+            }
+          },
+          {
+            "name": "dish",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 120
+            }
+          },
+          {
+            "name": "rating",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Feedback page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FoodFeedbackPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          }
+        }
+      }
+    },
     "/sessions/{session}/orders/{order}/items/{item}/preview": {
       "post": {
         "operationId": "previewAcceptedItem",
@@ -3345,6 +3690,202 @@
   },
   "components": {
     "schemas": {
+      "DishFeedbackInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rating"
+        ],
+        "properties": {
+          "rating": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      },
+      "OrderFeedbackInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rating"
+        ],
+        "properties": {
+          "rating": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "topics": {
+            "type": "array",
+            "uniqueItems": true,
+            "maxItems": 5,
+            "items": {
+              "type": "string",
+              "enum": [
+                "FOOD_QUALITY",
+                "TASTE",
+                "TEMPERATURE",
+                "ORDER_ACCURACY",
+                "PREPARATION_SPEED"
+              ]
+            }
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      },
+      "FeedbackRating": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "minimum": 1,
+        "maximum": 5
+      },
+      "FeedbackReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "orderId",
+          "itemId",
+          "rating",
+          "submittedAt"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "orderId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "itemId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "rating": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "submittedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        }
+      },
+      "FoodFeedbackPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "hasMore",
+          "reviews",
+          "dishes"
+        ],
+        "properties": {
+          "hasMore": {
+            "type": "boolean"
+          },
+          "reviews": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "type",
+                "dish",
+                "rating",
+                "comment",
+                "topics",
+                "orderReference",
+                "submittedAt"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "DISH",
+                    "ORDER"
+                  ]
+                },
+                "dish": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "rating": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 5
+                },
+                "comment": {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "topics": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "maxItems": 5,
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "FOOD_QUALITY",
+                      "TASTE",
+                      "TEMPERATURE",
+                      "ORDER_ACCURACY",
+                      "PREPARATION_SPEED"
+                    ]
+                  }
+                },
+                "orderReference": {
+                  "type": "string",
+                  "pattern": "^[A-F0-9]{8}$"
+                },
+                "submittedAt": {
+                  "$ref": "#/components/schemas/Timestamp"
+                }
+              }
+            }
+          },
+          "dishes": {
+            "type": "array",
+            "description": "Empty in Kitchen; Manager results use only dish ratings across all matching pages.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "dish",
+                "count",
+                "average"
+              ],
+              "properties": {
+                "dish": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "average": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 5
+                }
+              }
+            }
+          }
+        }
+      },
       "AcceptedItemReplacement": {
         "type": "object",
         "additionalProperties": false,
@@ -4096,6 +4637,8 @@
           "activeSubstitution"
         ],
         "properties": {
+          "feedbackEligible": { "type": "boolean", "description": "Authoritative handoff eligibility." },
+          "feedbackRating": { "$ref": "#/components/schemas/FeedbackRating" },
           "customerChangeBlockedReason": {
             "description": "Reason a customer cannot edit or cancel this line. Null for an eligible item.",
             "type": ["string", "null"],
@@ -4201,6 +4744,8 @@
           "totals"
         ],
         "properties": {
+          "feedbackEligible": { "type": "boolean", "description": "Authoritative handoff eligibility." },
+          "feedbackRating": { "$ref": "#/components/schemas/FeedbackRating" },
           "id": {
             "$ref": "#/components/schemas/Id"
           },

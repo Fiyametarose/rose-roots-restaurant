@@ -90,6 +90,10 @@ final class AdminApi {
         return JsonParser.parseString(send(endpoint("reviews?" + query).GET(), 200)).getAsJsonObject();
     }
 
+    JsonObject foodFeedback(String query) throws IOException, InterruptedException {
+        return JsonParser.parseString(send(endpoint("food-feedback?" + query).GET(), 200)).getAsJsonObject();
+    }
+
     JsonObject reviewFollowUp(java.util.UUID id, JsonObject payload) throws IOException, InterruptedException {
         var request = endpoint("reviews/" + id + "/follow-up").header("X-CSRF-TOKEN", csrf())
                 .header("Content-Type", "application/json")

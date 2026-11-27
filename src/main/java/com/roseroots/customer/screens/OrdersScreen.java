@@ -60,6 +60,12 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
     private final java.util.Map<UUID, Label> estimates = new java.util.HashMap<>();
     private com.roseroots.customer.services.api.RestAcceptedItemChanges itemChanges;
     private com.roseroots.customer.services.MenuService itemMenu;
+    private com.roseroots.customer.services.api.RestOrderFeedback feedback;
+
+    public OrdersScreen withFeedback(com.roseroots.customer.services.api.RestOrderFeedback service) {
+        feedback = service;
+        return this;
+    }
 
     public OrdersScreen withItemChanges(com.roseroots.customer.services.api.RestAcceptedItemChanges changes,
                                          com.roseroots.customer.services.MenuService menu) {
@@ -123,8 +129,9 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
         var review = CustomerShell.action(messages.text("review.action"), false, () ->
                 new com.roseroots.customer.components.ReviewDialog(getScene().getWindow(), customer).show());
         review.setId("open-review");
-        review.setMaxWidth(Double.MAX_VALUE);
-        billPanel = new VBox(11, billHeader, summary, more, bill, backToOrders, review);
+        review.visibleProperty().bind(filters.visibleProperty());
+        review.managedProperty().bind(review.visibleProperty());
+        billPanel = new VBox(11, billHeader, summary, more, bill, backToOrders);
         billPanel.getStyleClass().addAll("dish-information", "orders-bill-panel");
         var listScroll = scroll(cards);
         var billScroll = scroll(billPanel);
@@ -149,7 +156,7 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
             }
         });
         VBox.setVgrow(responsive, Priority.ALWAYS);
-        var titleRow = new FlowPane(26, 8, heading, filters);
+        var titleRow = new FlowPane(16, 8, heading, filters, review);
         titleRow.setAlignment(Pos.CENTER_LEFT);
         var body = new VBox(9, titleRow, notice, responsive);
         if (fixture) body.getChildren().add(0, label("orders.fixture", "customization-warning"));
@@ -317,6 +324,7 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
             HBox.setHgrow(items, Priority.ALWAYS);
             box.getChildren().add(row);
         }
+        if (feedback != null) box.getChildren().add(feedbackAction(order, null));
         return box;
     }
 
@@ -372,7 +380,33 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
             explanation.setId("item-change-reason-" + line.id());
             item.getChildren().add(explanation);
         }
+        if (feedback != null) item.getChildren().add(feedbackAction(order, line));
         return item;
+    }
+
+    private javafx.scene.Node feedbackAction(Ordering.Accepted order, Ordering.AcceptedLine line) {
+        boolean dish = line != null;
+        var eligibility = dish ? line.feedback() : order.feedback();
+        String action = messages.text(dish ? "feedback.dish" : "feedback.order");
+        if (eligibility.rating() != null) {
+            var number = java.text.NumberFormat.getIntegerInstance(customer.locale());
+            return FoodCard.label(action + "  ★ " + number.format(eligibility.rating()) + " / " + number.format(5),
+                    "catalog-muted");
+        }
+        if (!eligibility.eligible() || connectionState != OrderTrackingService.State.LIVE) {
+            String reason = connectionState != OrderTrackingService.State.LIVE ? "feedback.offline"
+                    : (dish ? line.preparation() : order.status()) == Ordering.Status.CANCELLED ? "feedback.cancelled"
+                    : dish ? "feedback.dishWait" : "feedback.orderWait";
+            return label(reason, "catalog-muted");
+        }
+        var button = CustomerShell.action(action, false, () -> {
+            var current = dish ? customer.menu().catalog().item(line.pricing().menuItemId().toString()) : null;
+            new com.roseroots.customer.components.OrderFeedbackDialog(getScene().getWindow(), customer.locale(),
+                    feedback, order, line, number(order), current == null ? "" : current.image(),
+                    this::refreshAfterItemChange).show();
+        });
+        button.setId((dish ? "rate-dish-" + line.id() : "rate-order-" + order.id()));
+        return button;
     }
 
     private VBox billCard(Ordering.Accepted order) {
