@@ -830,14 +830,25 @@ class OrderingService {
                             WHEN i.allergy_review_status = 'APPROVED_FOR_PREPARATION'
                             THEN jsonb_set(i.allergy_risk, '{unresolved}', 'false') ELSE i.allergy_risk END,
                         'version', i.version, 'billable', i.preparation_status <> 'CANCELLED',
-                        'customerChangeAllowed', i.preparation_status='RECEIVED' AND s.status='OPEN' AND s.expires_at>now()
-                            AND NOT EXISTS(SELECT 1 FROM payment_attempt p WHERE p.session_id=s.id AND p.status IN ('PENDING','SUCCEEDED')),
+                        'customerChangeAllowed', i.preparation_status='RECEIVED' AND change_block.reason IS NULL,
+                        'customerChangeBlockedReason', CASE
+                            WHEN i.preparation_status='CANCELLED' THEN 'ITEM_CANCELLED'
+                            WHEN i.preparation_status<>'RECEIVED' THEN 'PREPARATION_STARTED'
+                            ELSE change_block.reason END,
                         'reviewMessage', CASE i.allergy_review_status
                             WHEN 'APPROVED_FOR_PREPARATION' THEN 'The chef cleared this item for preparation.'
                             WHEN 'DECLINED' THEN 'The kitchen cannot safely prepare this item.' END,
                         'activeSubstitution', NULL
                     ) ORDER BY i.position) FROM accepted_order_item i WHERE i.order_id = o.id) AS lines
                 FROM accepted_order o JOIN dining_session s ON s.id = o.session_id
+                CROSS JOIN LATERAL (SELECT CASE
+                    WHEN EXISTS(SELECT 1 FROM payment_attempt p WHERE p.session_id=s.id AND p.status='SUCCEEDED')
+                        THEN 'ALREADY_SETTLED'
+                    WHEN EXISTS(SELECT 1 FROM payment_attempt p WHERE p.session_id=s.id AND p.status='PENDING')
+                        THEN 'PAYMENT_PENDING'
+                    WHEN s.status='EXPIRED' OR s.status='OPEN' AND s.expires_at<=now() THEN 'VISIT_EXPIRED'
+                    WHEN s.status<>'OPEN' THEN 'VISIT_CLOSED'
+                    END AS reason) change_block
                 LEFT JOIN order_handoff h ON h.order_id = o.id
                 LEFT JOIN staff_account waiter ON waiter.id = h.actor_staff_id
                 """ + clause).params(parameters).query((row, index) -> {

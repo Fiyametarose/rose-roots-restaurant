@@ -1483,6 +1483,7 @@ class OrderingPostgresTest {
         String order = original.path("id").asText();
         String item = original.at("/lines/0/id").asText();
         assertTrue(original.at("/lines/0/customerChangeAllowed").asBoolean());
+        assertTrue(original.at("/lines/0/customerChangeBlockedReason").isNull());
         json(send(PREP_TOKEN,"POST","/kitchen/items/"+item+"/ownership",
                 object().put("action","CLAIMED").put("expectedVersion",1),null),200);
         String path = "/sessions/"+session+"/orders/"+order+"/items/"+item;
@@ -1526,7 +1527,7 @@ class OrderingPostgresTest {
                 object().put("expectedBillVersion",3).put("method","CASH"),UUID.randomUUID()),201);
         var cancel=object().put("expectedOrderVersion",3).put("expectedItemVersion",3);
         problem(send(terminal,"POST",path+"/cancel",cancel,UUID.randomUUID()),409,"PAYMENT_PENDING");
-        assertFalse(get(terminal,"/orders/"+order,200).at("/lines/0/customerChangeAllowed").asBoolean());
+        assertEquals("PAYMENT_PENDING",get(terminal,"/orders/"+order,200).at("/lines/0/customerChangeBlockedReason").asText());
         try (var manager = HttpClient.newBuilder().sslContext(tls.trust()).cookieHandler(new CookieManager()).build()) {
             managerLogin(manager);
             String csrf=manager.send(request("/admin/csrf",null).GET().build(),HttpResponse.BodyHandlers.ofString()).body();
@@ -1613,7 +1614,25 @@ class OrderingPostgresTest {
         problem(send(paying,"POST",paidPath+"/preview",input,null),409,"ALREADY_SETTLED");
         problem(send(paying,"POST",paidPath+"/cancel",object().put("expectedOrderVersion",1).put("expectedItemVersion",1),
                 UUID.randomUUID()),409,"ALREADY_SETTLED");
-        assertFalse(get(paying,"/orders/"+paidOrder,200).at("/lines/0/customerChangeAllowed").asBoolean());
+        assertEquals("ALREADY_SETTLED",get(paying,"/orders/"+paidOrder,200).at("/lines/0/customerChangeBlockedReason").asText());
+    }
+
+    @Test
+    void myOrdersExplainsPreparationAndExpiredVisits() throws Exception {
+        String customer = terminal(true);
+        String session = session(customer, "DINE_IN", 201);
+        String first = submitNew(customer, session, dish());
+        String second = submitNew(customer, session, dish());
+        String item = get(customer, "/orders/" + first, 200).at("/lines/0/id").asText();
+        patch(item, "PREPARING", 1, 200);
+        assertEquals("PREPARATION_STARTED", get(customer, "/orders/" + first, 200)
+                .at("/lines/0/customerChangeBlockedReason").asText());
+        db.sql("UPDATE dining_session SET expires_at=created_at+interval '1 millisecond' WHERE id=CAST(:id AS uuid)")
+                .param("id", session).update();
+        var orders = get(customer, "/sessions/" + session + "/orders", 200).path("orders");
+        var expired = orders.valueStream().filter(order -> second.equals(order.path("id").asText())).findFirst().orElseThrow();
+        assertFalse(expired.at("/lines/0/customerChangeAllowed").asBoolean());
+        assertEquals("VISIT_EXPIRED", expired.at("/lines/0/customerChangeBlockedReason").asText());
     }
 
     private static UUID dish() {

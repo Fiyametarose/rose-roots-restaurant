@@ -130,7 +130,7 @@ public final class AcceptedItemDialog extends Dialog<Void> {
         if (selected == null) return;
         boolean sameDish = selected.id().equals(original.pricing().menuItemId().toString());
         for (var group : selected.customizationGroups()) {
-            options.getChildren().add(new Label(group.name().in(locale) + " (" + group.minimum() + "?" + group.maximum() + ")"));
+            options.getChildren().add(new Label(group.name().in(locale) + " (" + group.minimum() + "\u2013" + group.maximum() + ")"));
             var boxes = new LinkedHashMap<String, CheckBox>();
             selections.put(group.id(),boxes);
             for (var choice : group.choices()) {
@@ -174,7 +174,10 @@ public final class AcceptedItemDialog extends Dialog<Void> {
         String label = switch (code) {
             case "ITEM_PREPARATION_STARTED" -> "orders.itemStarted";
             case "ALLERGEN_CONFLICT" -> "orders.itemAllergen";
-            case "VERSION_CONFLICT", "PAYMENT_PENDING", "ALREADY_SETTLED", "SESSION_NOT_OPEN" -> "orders.itemStale";
+            case "VERSION_CONFLICT" -> "orders.itemStale";
+            case "PAYMENT_PENDING" -> "orders.change.pending";
+            case "ALREADY_SETTLED" -> "orders.change.settled";
+            case "SESSION_NOT_OPEN" -> "orders.change.ended";
             case "PRICE_CHANGED" -> "orders.itemReprice";
             case "CONNECTION_INTERRUPTED", "SERVICE_UNAVAILABLE" -> "orders.itemRetry";
             default -> "orders.itemUnavailable";

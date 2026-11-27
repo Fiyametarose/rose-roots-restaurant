@@ -174,7 +174,7 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
     }
 
     private void connect() {
-        if (session == null || !session.canSubmitOrders()) {
+        if (session == null || session.sessionId() == null || session.device().demo()) {
             receive(new OrderTrackingService.Update(OrderTrackingService.State.DISCONNECTED, null));
             return;
         }
@@ -193,6 +193,7 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
         if (snapshot != null && (session == null || !snapshot.sessionId().toString().equals(session.sessionId())
                 || snapshot.orders().stream().anyMatch(order -> order.mode() != session.mode()))) {
             connectionState = OrderTrackingService.State.ERROR;
+            renderList();
             notice.setText(messages.text("orders.error"));
             refreshEstimates();
             return;
@@ -207,12 +208,10 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
             case ERROR -> "orders.error";
         };
         notice.setText(messages.text(status));
-        if (snapshot != null && !snapshot.equals(history)) {
-            history = snapshot;
-            renderList();
-            renderSummary();
-        }
-        if (availabilityChanged && (snapshot == null || snapshot.equals(history))) renderList();
+        boolean dataChanged = snapshot != null && !snapshot.equals(history);
+        if (dataChanged) history = snapshot;
+        if (availabilityChanged || dataChanged) renderList();
+        if (dataChanged) renderSummary();
         refreshEstimates();
     }
 
@@ -358,6 +357,20 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
                     getScene().getWindow(), customer.locale(), itemChanges, itemMenu, order, line,
                     true, this::refreshAfterItemChange).show());
             item.getChildren().add(new javafx.scene.layout.FlowPane(6, 6, edit, cancel));
+        } else if (itemChanges != null) {
+            String reason = connectionState == OrderTrackingService.State.LIVE ? switch (line.changeBlockedReason()) {
+                case "PREPARATION_STARTED" -> "orders.change.preparing";
+                case "ITEM_CANCELLED" -> "orders.change.cancelled";
+                case "PAYMENT_PENDING" -> "orders.change.pending";
+                case "ALREADY_SETTLED" -> "orders.change.settled";
+                case "VISIT_EXPIRED" -> "orders.change.expired";
+                case "VISIT_CLOSED" -> "orders.change.closed";
+                default -> "orders.change.unavailable";
+            } : "orders.change.network";
+            var explanation = label(reason, "catalog-muted");
+            explanation.setWrapText(true);
+            explanation.setId("item-change-reason-" + line.id());
+            item.getChildren().add(explanation);
         }
         return item;
     }

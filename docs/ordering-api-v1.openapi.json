@@ -4096,6 +4096,11 @@
           "activeSubstitution"
         ],
         "properties": {
+          "customerChangeBlockedReason": {
+            "description": "Reason a customer cannot edit or cancel this line. Null for an eligible item.",
+            "type": ["string", "null"],
+            "enum": ["ITEM_CANCELLED", "PREPARATION_STARTED", "PAYMENT_PENDING", "ALREADY_SETTLED", "VISIT_EXPIRED", "VISIT_CLOSED", null]
+          },
           "customerChangeAllowed": {
             "type": "boolean",
             "description": "Server eligibility for changing this accepted item in an open, mutable visit."

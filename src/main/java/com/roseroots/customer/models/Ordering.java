@@ -51,10 +51,10 @@ public final class Ordering {
 
     public record AcceptedLine(UUID id, Price pricing, AllergyDeclaration allergy, String instructions,
                                Status preparation, Review review, boolean billable, String reviewMessage,
-                               long version, boolean changeAllowed) {
+                               long version, boolean changeAllowed, String changeBlockedReason) {
         public AcceptedLine(UUID id, Price pricing, AllergyDeclaration allergy, String instructions,
                             Status preparation, Review review, boolean billable, String reviewMessage) {
-            this(id, pricing, allergy, instructions, preparation, review, billable, reviewMessage, 0, false);
+            this(id, pricing, allergy, instructions, preparation, review, billable, reviewMessage, 0, false, "");
         }
     }
 

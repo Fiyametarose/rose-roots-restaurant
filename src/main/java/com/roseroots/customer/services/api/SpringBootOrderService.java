@@ -282,7 +282,9 @@ public final class SpringBootOrderService implements OrderService, WaitEstimateS
                         bool(line, "billable"),
                         line.has("reviewMessage") && !line.get("reviewMessage").isJsonNull()
                                 ? string(line, "reviewMessage") : "", version(line),
-                        line.has("customerChangeAllowed") && bool(line, "customerChangeAllowed"))),
+                        line.has("customerChangeAllowed") && bool(line, "customerChangeAllowed"),
+                        line.has("customerChangeBlockedReason") && !line.get("customerChangeBlockedReason").isJsonNull()
+                                ? string(line, "customerChangeBlockedReason") : "")),
                 totals(json.getAsJsonObject("totals")), version(json));
     }
 
