@@ -70,7 +70,16 @@ final class CashPaymentsWorkspace extends VBox {
     private void resolve(JsonObject request, boolean cancellation) {
         var prompt = new TextInputDialog();
         prompt.initOwner(getScene().getWindow());
+        String action = cancellation ? "Resolve cancellation" : "Record failed collection";
+        prompt.setTitle(action);
         prompt.setHeaderText("Verify no cash was collected and record a reason");
+        prompt.setContentText("Reason");
+        var submit = (Button) prompt.getDialogPane().lookupButton(ButtonType.OK);
+        submit.setText(action);
+        submit.disableProperty().bind(javafx.beans.binding.Bindings.createBooleanBinding(() -> {
+            String reason = prompt.getEditor().getText().strip();
+            return reason.isEmpty() || reason.length() > 240;
+        }, prompt.getEditor().textProperty()));
         StaffDialogs.theme(prompt);
         StaffDialogs.destructive(prompt, ButtonType.OK);
         prompt.showAndWait().map(String::strip).ifPresent(reason -> {

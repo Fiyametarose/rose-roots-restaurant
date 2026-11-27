@@ -372,7 +372,10 @@ final class CatalogWorkspace extends VBox {
         dialog.setTitle(title);
         dialog.setHeaderText(title);
         StaffDialogs.theme(dialog);
-        if (title.startsWith("Archive")) StaffDialogs.destructive(dialog, ButtonType.OK);
+        if (title.startsWith("Archive")) {
+            ((javafx.scene.control.Button) dialog.getDialogPane().lookupButton(ButtonType.OK)).setText("Archive dish");
+            StaffDialogs.destructive(dialog, ButtonType.OK);
+        }
         return dialog.showAndWait().filter(ButtonType.OK::equals).isPresent();
     }
 

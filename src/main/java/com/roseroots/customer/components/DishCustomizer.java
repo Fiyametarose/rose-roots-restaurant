@@ -158,8 +158,8 @@ public final class DishCustomizer extends VBox {
                         .toArray(javafx.beans.Observable[]::new)));
         getChildren().addAll(FoodCard.label(messages.text("custom.itemAllergies"), "dish-panel-title"),
                 FoodCard.label(messages.text("confirm.itemAllergyScope"), "catalog-muted"),
-                none, allergies, other, instructions, FoodCard.label(messages.text("custom.note"), "catalog-muted"),
-                remember, warning, total, add, notice);
+                none, allergies, warning, other, instructions, FoodCard.label(messages.text("custom.note"), "catalog-muted"),
+                remember, total, add, notice);
         selectors.values().forEach(group -> group.values().forEach(property -> property.addListener(o -> update.run())));
         count.textProperty().addListener(o -> update.run());
         selectedAllergens.values().forEach(box -> box.selectedProperty().addListener(o -> update.run()));

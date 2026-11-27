@@ -318,7 +318,9 @@ final class KitchenShell extends BorderPane {
                         signIn.setDisable(false);
                         if (error != null) {
                             var failure = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.WARNING,
-                                    "Kitchen sign-in failed. Check your credentials or wait before trying again.");
+                                    "Check your credentials or wait before trying again.");
+                            failure.setTitle("Kitchen sign-in");
+                            failure.setHeaderText("Kitchen sign-in failed");
                             failure.initOwner(getScene().getWindow());
                             StaffDialogs.theme(failure);
                             failure.show();

@@ -219,8 +219,10 @@ public final class OrderDetails extends VBox {
             var dialog = new javafx.scene.control.Dialog<javafx.scene.control.ButtonType>();
             dialog.initOwner(getScene().getWindow());
             dialog.setTitle("Reassign item");
+            dialog.setHeaderText("Choose a Chef and record the reason");
             dialog.getDialogPane().setContent(new VBox(8, chef, reason));
             dialog.getDialogPane().getButtonTypes().addAll(javafx.scene.control.ButtonType.OK, javafx.scene.control.ButtonType.CANCEL);
+            ((Button) dialog.getDialogPane().lookupButton(javafx.scene.control.ButtonType.OK)).setText("Reassign");
             dialog.getDialogPane().lookupButton(javafx.scene.control.ButtonType.OK).disableProperty().bind(
                     javafx.beans.binding.Bindings.createBooleanBinding(() -> chef.getValue() == null
                             || reason.getText().isBlank() || reason.getText().length() > 240, chef.valueProperty(), reason.textProperty()));

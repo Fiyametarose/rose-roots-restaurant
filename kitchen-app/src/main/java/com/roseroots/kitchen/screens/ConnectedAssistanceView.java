@@ -50,6 +50,7 @@ public final class ConnectedAssistanceView extends VBox {
             var dialog = new javafx.scene.control.Dialog<javafx.scene.control.ButtonType>();
             dialog.initOwner(getScene().getWindow());
             dialog.setTitle("Reassign assistance");
+            dialog.setHeaderText("Choose an on-duty Waiter and record the reason");
             var waiters = new javafx.scene.control.ComboBox<Waiter>();
             values.forEach(value -> {
                 var record = value.getAsJsonObject();
@@ -61,7 +62,12 @@ public final class ConnectedAssistanceView extends VBox {
             dialog.getDialogPane().setContent(new VBox(8, new Label("On-duty Waiter"), waiters, reason));
             var ok = javafx.scene.control.ButtonType.OK;
             dialog.getDialogPane().getButtonTypes().setAll(ok, javafx.scene.control.ButtonType.CANCEL);
-            dialog.getDialogPane().lookupButton(ok).disableProperty().bind(reason.textProperty().isEmpty());
+            var reassign = (Button) dialog.getDialogPane().lookupButton(ok);
+            reassign.setText("Reassign");
+            reassign.disableProperty().bind(javafx.beans.binding.Bindings.createBooleanBinding(() -> {
+                String text = reason.getText().strip();
+                return text.isEmpty() || text.codePointCount(0, text.length()) > 240;
+            }, reason.textProperty()));
             StaffDialogs.theme(dialog);
             if (dialog.showAndWait().orElse(null) == ok && rest.signedInStaff() == actor) {
                 rest.reassignAssistance(row, waiters.getValue().id(), reason.getText().strip())
