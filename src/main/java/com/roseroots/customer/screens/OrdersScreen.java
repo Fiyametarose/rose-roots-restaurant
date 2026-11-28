@@ -241,8 +241,14 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
         payment.managedProperty().bind(payment.visibleProperty());
         boolean available = service != null && session != null && session.sessionId() != null && !session.device().demo();
         payment.setDisable(!available);
-        if (!available) payment.setTooltip(new Tooltip(messages.text("pay.unavailable")));
         billPanel.getChildren().add(2, payment);
+        if (!available) {
+            var explanation = FoodCard.label(messages.text("pay.unavailable"), "catalog-muted");
+            explanation.setWrapText(true);
+            explanation.visibleProperty().bind(payment.visibleProperty());
+            explanation.managedProperty().bind(explanation.visibleProperty());
+            billPanel.getChildren().add(3, explanation);
+        }
         return this;
     }
 
@@ -312,7 +318,9 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
         }
         var items = new VBox(6);
         order.lines().forEach(line -> items.getChildren().add(item(order, line)));
-        var first = order.lines().isEmpty() ? null : customer.menu().catalog().item(order.lines().getFirst().pricing().menuItemId().toString());
+        var catalog = customer.menu().catalog();
+        var first = order.lines().isEmpty() || catalog == null ? null
+                : catalog.item(order.lines().getFirst().pricing().menuItemId().toString());
         if (first == null) {
             box.getChildren().add(items);
         } else {
@@ -400,7 +408,8 @@ public final class OrdersScreen extends javafx.scene.layout.StackPane {
             return label(reason, "catalog-muted");
         }
         var button = CustomerShell.action(action, false, () -> {
-            var current = dish ? customer.menu().catalog().item(line.pricing().menuItemId().toString()) : null;
+            var catalog = customer.menu().catalog();
+            var current = dish && catalog != null ? catalog.item(line.pricing().menuItemId().toString()) : null;
             new com.roseroots.customer.components.OrderFeedbackDialog(getScene().getWindow(), customer.locale(),
                     feedback, order, line, number(order), current == null ? "" : current.image(),
                     this::refreshAfterItemChange).show();

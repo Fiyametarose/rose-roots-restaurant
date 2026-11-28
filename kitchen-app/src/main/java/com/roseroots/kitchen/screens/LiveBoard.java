@@ -93,13 +93,20 @@ public final class LiveBoard extends VBox {
         row.getStyleClass().add("filters");
         ToggleButton all = filter("All Orders", group, () -> select(null));
         row.getChildren().add(all);
+        boolean local = service.local();
+        String unavailable = "Station filters are unavailable in connected mode.";
         for (Station value : Station.values()) {
             ToggleButton stationFilter = filter(value.label, group, () -> select(value));
-            if (!service.local()) {
+            if (!local) {
                 stationFilter.setDisable(true);
-                stationFilter.setTooltip(new javafx.scene.control.Tooltip("Station assignments are unavailable from this API."));
+                stationFilter.setAccessibleHelp(unavailable);
             }
             row.getChildren().add(stationFilter);
+        }
+        if (!local) {
+            var explanation = label(unavailable, "metadata");
+            explanation.setWrapText(true);
+            row.getChildren().add(explanation);
         }
         all.setSelected(true);
         return row;

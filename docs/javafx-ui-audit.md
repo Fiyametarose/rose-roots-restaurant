@@ -43,7 +43,7 @@ PASS means the real packaged UI was exercised on the disposable fixture, or the 
 | Customer | Network interruption in My Orders | PASS | Last-known order and bill, disconnected status and reconnect were visible |
 | Customer | Language selector | PASS | Actual combobox dropdown opened and inspected |
 | Customer | Menu sort, dish replacement and order-reference tooltip | PASS | Opened the actual dropdowns and full order-reference tooltip and visually inspected focus styling and overflow |
-| Customer | Unavailable-payment tooltip | NOT TESTED | The desktop check for this disabled-control state was blocked by the automatic approval service usage limit |
+| Customer | Running Bill with payment unavailable | PASS | Opened an accepted KSh 100 order on disposable PostgreSQL over HTTPS before the menu loaded. The test harness then used the packaged view's payment setup with the service absent. The action was disabled and the localized explanation was visible inline, without hover. Also fixed the reproduced crash when catalog images had yet to load. Evidence `2af9d1ab` |
 | Kitchen | Startup configuration error | PASS | Packaged warning with the shared red indicator |
 | Kitchen | Staff sign-in and failed sign-in | PASS | Credential modal and actual rejected credentials |
 | Kitchen | Shift duration and duty status | PASS | Start, end, automatic update and reconnect |
@@ -57,7 +57,10 @@ PASS means the real packaged UI was exercised on the disposable fixture, or the 
 | Kitchen | Assistance reassignment with no available Waiter or retrieval failure | PASS | An empty candidate list and simulated HTTPS 503 now show distinct inline messages, with a retry instruction for the failure |
 | Kitchen | Dine-in and pickup handoff | PASS | Restricted action explanation and both confirmations |
 | Kitchen | Board reconnection | PASS | Connection lost and restored after the disposable server restarted |
-| Kitchen | Dropdowns and tooltips | NOT TESTED | History and Reviews dropdowns were opened and captured. Dedicated popup checks for duty, reassignment and priority selectors and hover checks for the station and ticket-action tooltips remain open |
+| Kitchen | Staff duty duration and connected priority controls | PASS | Opened the 4-, 8- and 12-hour selector with 8 selected. Connected priority showed the reason field and Rush/Delayed actions. Evidence `4c711c20` |
+| Kitchen | Disabled connected station filters | PASS | The disabled-control hover did not display its explanation. The rebuilt board showed the explanation inline beside the station controls. Evidence `c777e65e` |
+| Kitchen | Chef and Waiter selectors | PASS | Opened both selectors with authorized candidates, captured the dropdowns and dismissed the owned dialogs. Escape closed both rebuilt popups. The selected-cell color lookup warnings were absent on retest. Evidence `c777e65e` |
+| Kitchen | Ticket-action tooltip pointer activation | NOT TESTED | The real local bulk-action tooltip rendered with the theme and readable text when opened programmatically. The Windows pointer check did not open it. Evidence `c777e65e` |
 | Manager | Sign-in and rejected credentials | PASS | Manager window and inline unauthorized response |
 | Manager | Deactivate, archive and restore staff | PASS | Each confirmation opened and its lifecycle action persisted |
 | Manager | Activate with new password | PASS | Credential modal and new authentication |
@@ -80,7 +83,8 @@ PASS means the real packaged UI was exercised on the disposable fixture, or the 
 | Manager | Receipt recovery grant revocation | PASS | Revoking the disposable grant cleared the displayed code and showed a clear success state. Evidence was captured after the code was removed |
 | Manager | Review insights and detail filters | PASS | Separate restaurant and dish/order reporting and filtering |
 | Manager | Date picker calendar | PASS | Opened, visually inspected and dismissed the actual calendar popup |
-| Manager | Other dropdowns and tooltips | NOT TESTED | Captured dropdowns for sections, roles, translations, tables, reviews, and dish editing. A full control-by-control sweep remains open |
+| Manager | Menu, branding, order history, Reviews, price/availability and dish editor selectors | PASS | Visually captured the remaining standard selectors, including order history filters, theme and option-group kind. In this sweep 18 dropdowns closed in response to Escape. Evidence `7b2a15eb` |
+| Manager | Photo aspect and receipt recovery terminal selectors | PASS | Opened the receiving-terminal dropdown from a disposable settled visit and the aspect dropdown on a fixture photo. Escape closed both popups. Evidence `b43bf06d` |
 | Manager | Choose logo or dish photo | NOT TESTED | Native Windows file pickers are exempt from application styling |
 
 ### Physical Windows display coverage
@@ -97,9 +101,9 @@ The visual sweep found a generic Kitchen sign-in warning, unclear reassignment a
 
 ## Release gate
 
-The client-only release remains staged while the remaining popup and tooltip coverage is open. The live V26 backend, database and installed client profiles stay in service until a separate client rollout. The follow-up reused the existing physical Windows DPI evidence and exercised the affected packaged windows on the same console without changing display settings.
+The client-only release remains staged pending the ticket-action hover and spoken accessibility checks. The live V26 backend, database and installed client profiles stay in service until a separate client rollout. The follow-up reused the existing physical Windows DPI evidence and exercised the affected packaged windows on the same console without changing display settings.
 
-Keyboard focus and Escape behavior were checked on the Welcome retry overlay. Screen-reader announcements for dynamic errors, payment status changes, and modal focus were not verified with Windows Narrator or NVDA.
+Keyboard focus and Escape behavior were checked on the Welcome retry overlay and on the scoped popup runs. Windows Narrator is installed, but this session has no usable speech recording or transcript. Spoken announcements for opening and closing dialogs, dynamic validation, payment-state changes and icon-only accessible names remain NOT TESTED. The keyboard results cover the JavaFX controls exercised and do not establish screen-reader behavior.
 
 Follow-up screenshots are stored locally under `kitchen-app/review/combined-evidence`. Run `bdce9f3b` covers the Welcome retry, checkout allergy conflict, cash cancellation, order tooltip, dish dropdown, station conflict, section visibility, dish restoration, duplicate-section rejection, and receipt recovery revocation. Run `4ae832b7` covers the Customer menu sort. Run `d648619e` covers the rebuilt Kitchen reassignment states and the History and Reviews dropdowns.
 

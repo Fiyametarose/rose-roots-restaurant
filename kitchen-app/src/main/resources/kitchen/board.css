@@ -172,7 +172,7 @@
     -fx-padding: 7 12;
 }
 .combo-box, .text-area { -fx-font-size: 12px; }
-.combo-box-popup .list-cell:filled:selected { -fx-background-color: forest; -fx-text-fill: ivory; }
+.combo-box-popup .list-cell:filled:selected { -fx-background-color: #0f3d29; -fx-text-fill: #faf5e7; }
 
 .station-count { -fx-background-color: #f5e7c8; -fx-background-radius: 5; -fx-padding: 2 5; -fx-font-size: 11px; }
 .station-card .item-start { -fx-background-color: forest; -fx-text-fill: ivory; }
