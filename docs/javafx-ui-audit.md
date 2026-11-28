@@ -28,21 +28,22 @@ PASS means the real packaged UI was exercised on the disposable fixture, or the 
 | --- | --- | --- | --- |
 | Customer | Leave visit and discard draft from the header | PASS | Switching service with a draft opened the destructive confirmation. Cancelling kept the draft |
 | Customer | Advanced menu filters and clear-cart overlays | PASS | Both in-scene overlays opened. Cancelling Clear Cart preserved the draft |
-| Customer | Welcome session retry overlay | NOT TESTED | Distinct failure branch with Retry and Cancel |
+| Customer | Welcome session retry overlay | PASS | A temporary HTTPS session failure opened the styled overlay. Try again received focus, Escape returned to Welcome, and retry after recovery opened Table 07 |
 | Customer | Accepted item editor | PASS | Server quote, amount preview, confirmation and updated order |
 | Customer | Accepted item cancellation | PASS | Destructive button, keyboard focus, Escape without submission, and a separate confirmed cancellation |
 | Customer | Allergy warning in customization | PASS | Known ingredient conflict warning rendered for a disclosed allergen |
-| Customer | Stale checkout quote with an allergen conflict | NOT TESTED | Distinct checkout error state |
+| Customer | Stale checkout quote with an allergen conflict | PASS | A catalog allergen changed after the initial quote. Checkout showed the blocked dish and declared allergen, kept the cart, and allowed a fresh quote after the fixture was corrected |
 | Customer | Dish review | PASS | Dish photo, rating, comment and saved rating |
 | Customer | Order review | PASS | Rating and comment, saved against a single order |
 | Customer | Restaurant review | PASS | Existing visit eligibility, submission and saved review |
 | Customer | Assistance entry and request status | PASS | Modal opened, status updates followed through completion |
 | Customer | Payment and issued receipt | PASS | Pending cash, Manager confirmation and verified receipt |
-| Customer | Request payment cancellation and show resolution | NOT TESTED | Substates within the payment dialog |
+| Customer | Request payment cancellation and show resolution | PASS | Pending cancellation remained distinct from staff cancellation. The outstanding amount stayed visible and a new cash attempt required a fresh selection |
 | Customer | Receipt recovery and interrupted redemption | PASS | Original and replacement terminal recovery. English, Amharic and Arabic RTL |
 | Customer | Network interruption in My Orders | PASS | Last-known order and bill, disconnected status and reconnect were visible |
 | Customer | Language selector | PASS | Actual combobox dropdown opened and inspected |
-| Customer | Other dropdowns and order-reference tooltips | NOT TESTED | A dedicated visual sweep remains open |
+| Customer | Menu sort, dish replacement and order-reference tooltip | PASS | Opened the actual dropdowns and full order-reference tooltip and visually inspected focus styling and overflow |
+| Customer | Unavailable-payment tooltip | NOT TESTED | The desktop check for this disabled-control state was blocked by the automatic approval service usage limit |
 | Kitchen | Startup configuration error | PASS | Packaged warning with the shared red indicator |
 | Kitchen | Staff sign-in and failed sign-in | PASS | Credential modal and actual rejected credentials |
 | Kitchen | Shift duration and duty status | PASS | Start, end, automatic update and reconnect |
@@ -50,36 +51,36 @@ PASS means the real packaged UI was exercised on the disposable fixture, or the 
 | Kitchen | Allergy decline | PASS | Destructive prompt opened and cancelled on the isolated visit |
 | Kitchen | Preparation history | PASS | Modal opened from a claimed item |
 | Kitchen | Chef reassignment | PASS | Eligible Chef and reason controls opened and cancelled |
-| Kitchen | Chef reassignment with no candidates or retrieval failure | NOT TESTED | Separate informational alert found in source |
+| Kitchen | Chef reassignment with no candidates or retrieval failure | PASS | A real empty result and a simulated HTTPS 503 showed distinct branded modal titles and fully visible recovery instructions |
 | Kitchen | Assistance status transitions | PASS | Acknowledge, start and complete with correct staff scope |
 | Kitchen | Assistance reassignment | PASS | Dedicated Waiter selection and reason modal opened and cancelled |
-| Kitchen | Assistance reassignment with no available Waiter or retrieval failure | NOT TESTED | Inline failure message is a separate case |
+| Kitchen | Assistance reassignment with no available Waiter or retrieval failure | PASS | An empty candidate list and simulated HTTPS 503 now show distinct inline messages, with a retry instruction for the failure |
 | Kitchen | Dine-in and pickup handoff | PASS | Restricted action explanation and both confirmations |
 | Kitchen | Board reconnection | PASS | Connection lost and restored after the disposable server restarted |
-| Kitchen | Dropdowns and tooltips | NOT TESTED | Selection and scoped actions exercised. Individual popup and tooltip rendering still needs a dedicated pass |
+| Kitchen | Dropdowns and tooltips | NOT TESTED | History and Reviews dropdowns were opened and captured. Dedicated popup checks for duty, reassignment and priority selectors and hover checks for the station and ticket-action tooltips remain open |
 | Manager | Sign-in and rejected credentials | PASS | Manager window and inline unauthorized response |
 | Manager | Deactivate, archive and restore staff | PASS | Each confirmation opened and its lifecycle action persisted |
 | Manager | Activate with new password | PASS | Credential modal and new authentication |
 | Manager | Set password on an already active account | PASS | Credential replacement warning displayed. Cancelling left the previous credential active |
 | Manager | Revoke shared workstation | PASS | Confirmation opened and cancelled |
 | Manager | Station assignments | PASS | Existing Hot Kitchen assignments saved through the Manager workspace on the disposable fixture |
-| Manager | Station configuration conflict response | NOT TESTED | Stale write has a separate inline error |
+| Manager | Station configuration conflict response | PASS | A concurrent version change on the disposable database rejected the save. The wrapped inline message directed the Manager to Refresh configuration |
 | Manager | Photo editor | PASS | Real editor opened from a fixture photo. Preview loading, ready images, controls and Cancel verified |
 | Manager | Catalog price and availability confirmation | PASS | Availability was changed in the editor and the confirmation was cancelled |
-| Manager | Catalog section visibility confirmation | NOT TESTED | Confirmation entry found in catalog workspace |
+| Manager | Catalog section visibility confirmation | PASS | Hiding a section names the action, explains the effect on nested content, and can be cancelled |
 | Manager | Archive dish confirmation | PASS | Destructive prompt opened and cancelled |
-| Manager | Restore dish confirmation | NOT TESTED | Distinct wording on the shared confirmation |
+| Manager | Restore dish confirmation | PASS | Rebuilt confirmation names Restore dish and Cancel. Cancelling leaves the fixture dish archived |
 | Manager | Catalog form validation | PASS | Saving without a price or availability change produced an inline message |
-| Manager | Failed catalog write | NOT TESTED | Server rejection message remains a separate visual case |
+| Manager | Failed catalog write | PASS | A duplicate section name triggered the real server conflict. The inline error was visible and the entered name remained in the form |
 | Manager | Cash confirmation | PASS | Trusted HTTPS workflow with the collected-cash warning |
 | Manager | Record failed collection | PASS | Reason prompt opened and cancelled during a pending cash attempt |
-| Manager | Resolve Customer cancellation | NOT TESTED | Shared reason prompt with a separate action label |
+| Manager | Resolve Customer cancellation | PASS | Reason-focused confirmation said to verify that cash had not been collected. Blank submission was disabled. Cancel kept the attempt pending, and a separate confirmed action cancelled it |
 | Manager | Close visit | PASS | Opened and cancelled the confirmation for a disposable visit without an outstanding balance |
 | Manager | Authorize verified receipt recovery, issue and reveal result | PASS | Manager modal exercised with disposable data. Evidence captured before displaying the recovery code |
-| Manager | Receipt recovery grant revocation | NOT TESTED | Inline action located inside the recovery modal |
+| Manager | Receipt recovery grant revocation | PASS | Revoking the disposable grant cleared the displayed code and showed a clear success state. Evidence was captured after the code was removed |
 | Manager | Review insights and detail filters | PASS | Separate restaurant and dish/order reporting and filtering |
 | Manager | Date picker calendar | PASS | Opened, visually inspected and dismissed the actual calendar popup |
-| Manager | Other dropdowns and tooltips | NOT TESTED | Full control-by-control visual pass remains open |
+| Manager | Other dropdowns and tooltips | NOT TESTED | Captured dropdowns for sections, roles, translations, tables, reviews, and dish editing. A full control-by-control sweep remains open |
 | Manager | Choose logo or dish photo | NOT TESTED | Native Windows file pickers are exempt from application styling |
 
 ### Physical Windows display coverage
@@ -96,7 +97,11 @@ The visual sweep found a generic Kitchen sign-in warning, unclear reassignment a
 
 ## Release gate
 
-Keep the client packages staged while required acceptance entries remain NOT TESTED. The live V26 backend, database and installed client profiles stay in service until a separate client rollout.
+The client-only release remains staged while the remaining popup and tooltip coverage is open. The live V26 backend, database and installed client profiles stay in service until a separate client rollout. The follow-up reused the existing physical Windows DPI evidence and exercised the affected packaged windows on the same console without changing display settings.
+
+Keyboard focus and Escape behavior were checked on the Welcome retry overlay. Screen-reader announcements for dynamic errors, payment status changes, and modal focus were not verified with Windows Narrator or NVDA.
+
+Follow-up screenshots are stored locally under `kitchen-app/review/combined-evidence`. Run `bdce9f3b` covers the Welcome retry, checkout allergy conflict, cash cancellation, order tooltip, dish dropdown, station conflict, section visibility, dish restoration, duplicate-section rejection, and receipt recovery revocation. Run `4ae832b7` covers the Customer menu sort. Run `d648619e` covers the rebuilt Kitchen reassignment states and the History and Reviews dropdowns.
 
 ## Separate Windows client rollout
 

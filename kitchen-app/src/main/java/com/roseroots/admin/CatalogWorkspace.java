@@ -195,7 +195,9 @@ final class CatalogWorkspace extends VBox {
                 change.addProperty("status", token(state.getValue()));
                 if (row == null || state.getValue().equals("Visible")
                         || text(row, "status").equals(token(state.getValue()))
-                        || confirm("Change section visibility", "This also affects the visibility of its nested sections and dishes.")) {
+                        || confirm(state.getValue().equals("Archived") ? "Archive section?" : "Hide section?",
+                                "This also affects the visibility of its nested sections and dishes.",
+                                state.getValue().equals("Archived") ? "Archive section" : "Hide section", true)) {
                     save(id.isEmpty() ? "POST" : "PATCH", "categories" + suffix(id), change, () -> load(null));
                 }
             } catch (IllegalArgumentException error) {
@@ -267,7 +269,9 @@ final class CatalogWorkspace extends VBox {
     }
 
     private void archive(JsonObject item) {
-        if (!confirm(archived(item) ? "Restore dish?" : "Archive dish?", text(item, "name"))) {
+        boolean restoring = archived(item);
+        String action = restoring ? "Restore dish" : "Archive dish";
+        if (!confirm(action + "?", text(item, "name"), action, !restoring)) {
             return;
         }
         var payload = new JsonObject();
@@ -367,13 +371,17 @@ final class CatalogWorkspace extends VBox {
     }
 
     private boolean confirm(String title, String detail) {
+        return confirm(title, detail, "Apply changes", false);
+    }
+
+    private boolean confirm(String title, String detail, String action, boolean destructive) {
         var dialog = new Alert(Alert.AlertType.CONFIRMATION, detail, ButtonType.CANCEL, ButtonType.OK);
         dialog.initOwner(getScene().getWindow());
         dialog.setTitle(title);
         dialog.setHeaderText(title);
         StaffDialogs.theme(dialog);
-        if (title.startsWith("Archive")) {
-            ((javafx.scene.control.Button) dialog.getDialogPane().lookupButton(ButtonType.OK)).setText("Archive dish");
+        ((javafx.scene.control.Button) dialog.getDialogPane().lookupButton(ButtonType.OK)).setText(action);
+        if (destructive) {
             StaffDialogs.destructive(dialog, ButtonType.OK);
         }
         return dialog.showAndWait().filter(ButtonType.OK::equals).isPresent();

@@ -44,7 +44,9 @@ public final class ConnectedAssistanceView extends VBox {
         rest.eligibleWaiters(row).whenComplete((values, failure) -> Platform.runLater(() -> {
             if (stopped || rest.signedInStaff() != actor || getScene() == null) return;
             if (failure != null || values.isEmpty()) {
-                status.setText("No eligible on-duty Waiter could be loaded.");
+                status.setText(failure == null
+                        ? "No eligible on-duty Waiter is available for this request."
+                        : "Could not load eligible Waiters. Check the connection and select Reassign to try again.");
                 return;
             }
             var dialog = new javafx.scene.control.Dialog<javafx.scene.control.ButtonType>();

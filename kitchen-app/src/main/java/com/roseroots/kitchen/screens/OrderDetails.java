@@ -207,8 +207,11 @@ public final class OrderDetails extends VBox {
             }
             if (chef.getItems().isEmpty()) {
                 var alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.INFORMATION,
-                        error == null ? "No other eligible Chef is available for this station." : "Eligible Chefs could not be loaded.");
+                        error == null ? "No other eligible Chef is available for this station."
+                                : "Check the connection, then select Reassign item again.");
                 alert.initOwner(getScene().getWindow());
+                alert.setTitle("Chef reassignment");
+                alert.setHeaderText(error == null ? "No eligible Chef available" : "Could not load eligible Chefs");
                 StaffDialogs.theme(alert);
                 alert.show();
                 return;
