@@ -1,5 +1,7 @@
 # Admin Phase 2C catalog import and handoff
 
+> Historical phase record. See the [documentation index](README.md) for the current architecture, development and deployment guides.
+
 ## Source inventory
 
 The import uses the local Customer checkout, branch `feature/customer`,
@@ -52,7 +54,7 @@ estimates should also be reviewed operationally.
    On this host the datasource is `jdbc:postgresql://127.0.0.1:5434/rose_roots`.
    Set `ROSE_IMAGE_DIR` to the dedicated persistent directory or use the same
    default as the backend.
-3. From the Admin repository root, use these PowerShell commands.
+3. From the integrated repository root, use these PowerShell commands.
 
 ```powershell
 .\gradlew.bat :server:importCustomerCatalog -PcatalogMode=inventory
@@ -61,7 +63,7 @@ estimates should also be reviewed operationally.
 ```
 
 Pass `-PcustomerCheckout=<path>` if the checkout is not at the default
-`../rose-roots-customer`. Inventory lists source inputs without connecting
+`customer/`. Inventory lists source inputs without connecting
 to PostgreSQL. Dry-run decodes the photos and validates rows, hierarchy,
 prices, options and currency, then reports prospective work. Neither
 inventory nor dry-run applies migrations or writes catalog and image data.

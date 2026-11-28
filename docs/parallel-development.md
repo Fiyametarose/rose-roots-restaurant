@@ -1,5 +1,7 @@
 # Parallel development and integration
 
+> Historical phase record. See the [documentation index](README.md) for the current architecture, development and deployment guides.
+
 Keep the verified Customer application at the repository root for now. All feature branches start from the same Customer baseline and retain its Java 21 toolchain, Gradle Wrapper and `com.roseroots.customer` package.
 
 | Branch | Local folder | Responsibility |

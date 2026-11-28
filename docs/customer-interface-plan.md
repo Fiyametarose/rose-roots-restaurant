@@ -1,5 +1,7 @@
 # Customer interface inventory and plan
 
+> Historical phase record. See the [documentation index](README.md) for the current architecture, development and deployment guides.
+
 The ten supplied PNGs and the offline gallery describe one landscape touchscreen journey. Welcome uses a food photograph, botanical artwork and large service choices. Most ordering screens share an evergreen category rail, a cream content area, a top bar with table or pickup context and customer actions, and a dark primary action. Gold outlines, serif headings, rounded controls and food photography repeat across the designs. Keep the customer session visible as content changes and keep focus and status legible without relying on color alone.
 
 | Reference | Design observed | Implementation |
@@ -38,7 +40,7 @@ The ten supplied PNGs and the offline gallery describe one landscape touchscreen
 - Drinks shares the food-grid layout. Its four tabs include **All drinks**, plus the three reference subcategories.
 - Dish Details keeps a large photo and overview next to an information panel. The panel shows food information, including sample preparation duration. Customization and Add to Cart are planned for the next milestone.
 - Assistance opens an information dialog. Requests, the bottom checkout bar and real terminal-session assignments are pending.
-- The 13 standalone demo images are under `src/main/resources/images/menu`. Main-course and drink photos are cropped from the supplied references. Four starter and dessert photos were generated with the built-in image tool from a prompt for a realistic 2-by-2 contact sheet featuring lentil sambusa, black-eyed pea salad, raspberry cheesecake and tropical fruit in warm restaurant lighting.
+- The 13 standalone demo images are under `customer/src/main/resources/images/menu`. Main-course and drink photos are cropped from the supplied references. Four starter and dessert photos were generated with the built-in image tool from a prompt for a realistic 2-by-2 contact sheet featuring lentil sambusa, black-eyed pea salad, raspberry cheesecake and tropical fruit in warm restaurant lighting.
 
 Image generation prompt
 
@@ -66,6 +68,6 @@ Menu and Details share a persistent cart summary and a separate Back to Welcome 
 
 `DiningSessionService` resolves an administrator-provisioned terminal and opens or resumes a visit by service mode. The Spring Boot boundary accepts neither a client-chosen table ID nor a session ID. The explicit demo fixture supports Table 07 and a separate takeaway pickup namespace. The demo provider keeps open visits in memory and returns a new ID after staff close. The visit model rejects order references from another visit and can sum server-confirmed amounts independently of the draft.
 
-The six new demo photos were generated with the built-in image tool and saved in `src/main/resources/images/menu`. The prompt was:
+The six new demo photos were generated with the built-in image tool and saved in `customer/src/main/resources/images/menu`. The prompt was:
 
 > One photorealistic upscale restaurant food photography contact sheet, 3 columns by 2 rows, six perfectly rectangular equal separate photographs edge to edge without gaps, margins or text. Top row left to right: Ethiopian beef tibs, seared small beef pieces with peppers in a dark bowl; South Sudanese groundnut vegetable stew with rice on side; international herb chicken with bright roast vegetables. Bottom row: Ethiopian azifa lentil salad with green herbs; international tomato bruschetta on toasted bread; international dark chocolate mousse in small glass with raspberries. Warm wood backdrop, deep green accents, natural light, centered individual dishes in each of six cells with balanced composition for landscape cards. No logos or writing.

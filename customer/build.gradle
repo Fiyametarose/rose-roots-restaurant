@@ -1,0 +1,35 @@
+plugins {
+    id 'application'
+}
+
+apply from: rootProject.file('gradle/javafx-desktop.gradle')
+
+base {
+    archivesName = 'rose-roots-customer'
+}
+
+application {
+    applicationName = 'rose-roots-customer'
+    mainModule = 'com.roseroots.customer'
+    mainClass = 'com.roseroots.customer.app.CustomerApplication'
+}
+
+tasks.named('test', Test) {
+    // Contract fixtures in docs/ are shared with the backend and team reviewers.
+    workingDir = rootProject.projectDir
+    inputs.file(rootProject.file('docs/ordering-api-v1.openapi.json'))
+}
+
+tasks.withType(JavaExec).configureEach {
+    workingDir = rootProject.projectDir
+}
+
+tasks.register('runDemo', JavaExec) {
+    group = 'application'
+    description = 'Launch Customer with a demo table and a working local cart.'
+    classpath = files(tasks.named('jar')) + configurations.runtimeClasspath
+    mainModule = application.mainModule
+    mainClass = application.mainClass
+    javaLauncher = javaToolchains.launcherFor(java.toolchain)
+    args '--demo-table'
+}

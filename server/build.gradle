@@ -2,13 +2,11 @@ plugins {
     id 'java'
     id 'org.springframework.boot' version '4.0.10'
 }
-repositories { mavenCentral() }
 tasks.named('processResources') {
-    from(rootProject.file('src/main/resources/images/rose-mark.png')) {
+    from(project(':customer').layout.projectDirectory.file('src/main/resources/images/rose-mark.png')) {
         into 'branding'
     }
 }
-java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
 dependencies {
     implementation platform(org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES)
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
@@ -26,13 +24,12 @@ dependencies {
 }
 def postgresIntegrationEnabled = providers.environmentVariable('ROSE_TEST_DB_URL').map { true }.orElse(false)
 test {
-    useJUnitPlatform()
     inputs.property('postgresIntegrationEnabled', postgresIntegrationEnabled)
     outputs.upToDateWhen { !postgresIntegrationEnabled.get() }
 }
 
 def customerCheckout = providers.gradleProperty('customerCheckout')
-        .map { rootProject.file(it) }.orElse(rootProject.file('../rose-roots-customer'))
+        .map { rootProject.file(it) }.orElse(project(':customer').layout.projectDirectory.asFile)
 def catalogMode = providers.gradleProperty('catalogMode').orElse('dry-run')
 sourceSets {
     customerCatalogImport {
@@ -59,7 +56,7 @@ tasks.named('compileCustomerCatalogImportJava', JavaCompile) {
 }
 tasks.register('importCustomerCatalog', JavaExec) {
     group = 'application'
-    description = 'Validate or import the catalog from the local Customer checkout.'
+    description = 'Validate or import the catalog from the Customer project or an explicitly selected checkout.'
     classpath = sourceSets.customerCatalogImport.runtimeClasspath
     mainClass = 'com.roseroots.server.catalog.CustomerCatalogImportMain'
     modularity.inferModulePath = false

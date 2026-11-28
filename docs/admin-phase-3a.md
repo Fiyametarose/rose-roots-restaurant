@@ -1,5 +1,7 @@
 # Admin Phase 3A Orders & Payments
 
+> Historical phase record. See the [documentation index](README.md) for the current architecture, development and deployment guides.
+
 ## Read-only audit
 
 The Customer checkout on `feature/customer` was at `e5f58fa`.

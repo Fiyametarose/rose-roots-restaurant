@@ -1,5 +1,7 @@
 # Admin Phase 4A · Restaurant Branding & Settings
 
+> Historical phase record. See the [documentation index](README.md) for the current architecture, development and deployment guides.
+
 The Kitchen application's Manager area now includes **Restaurant Branding**. The form edits the name, tagline, description, phone, email, address, logo and a validated theme preset. The public preview updates as the Manager edits. **Reset Unsaved Changes** restores the last loaded or saved values. **Reload saved settings** retrieves the most recent version from the server. Removing the logo and restoring the bundled logo are separate choices. Both take effect on save.
 
 ## Existing contracts and ownership
@@ -78,7 +80,7 @@ Members 1 and 2 can fetch `GET /api/v1/settings/public` at startup and again on 
 The initial 60-test baseline passed. The complete build and Customer and Kitchen/Admin Windows launcher distributions passed using:
 
 ```powershell
-.\gradlew.bat build :installDist :kitchen-app:installDist
+.\gradlew.bat build :customer:installDist :kitchen-app:installDist
 ```
 
 The final Gradle test results show 62 passed, 0 failed, and 0 skipped. PostgreSQL tests used disposable schemas. They cover anonymous and Kitchen access rejection, CSRF, public settings and logo retrieval, PNG alpha, JPEG replacement, missing and invalid images, failed updates, stale versions, removal, audit recording and restart persistence. A read-only catalog check on the Rose & Roots container found 19 dishes and beverages, 19 photograph records and seven categories in the persistent schema. FarmSra AI was outside the verification environment.

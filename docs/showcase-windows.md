@@ -13,10 +13,10 @@ The showcase uses the packaged Windows JavaFX Customer and Kitchen apps, the exi
 On the Windows build machine, select a Java 21 JDK and check `java -version` and `git rev-parse HEAD`. For a regression build, point `ROSE_TEST_DB_URL`, `ROSE_TEST_DB_USERNAME` and `ROSE_TEST_DB_PASSWORD` at a fresh disposable PostgreSQL 17 database before invoking Gradle. Tests can reset the database schema. Keep the test credentials in the build process environment.
 
 ```powershell
-.\gradlew.bat clean build :installDist :kitchen-app:installDist :server:bootJar
+.\gradlew.bat clean build :customer:installDist :kitchen-app:installDist :server:bootJar
 ```
 
-Copy `build\install\rose-roots-customer` to PC 1, `kitchen-app\build\install\kitchen-app` to PC 2, and `server\build\libs\server.jar` to PC 3. Copy `scripts\showcase.ps1` to each PC and `compose.yaml` to PC 3 if using Docker. Keep these files at stable local paths. Record the commit SHA and use `Get-FileHash -Algorithm SHA256` on the boot JAR and the two application JARs to check the copies. The server JAR contains Flyway V23.
+Copy `customer\build\install\rose-roots-customer` to PC 1, `kitchen-app\build\install\kitchen-app` to PC 2, and `server\build\libs\server.jar` to PC 3. Copy `scripts\showcase.ps1` to each PC and `compose.yaml` to PC 3 if using Docker. Keep these files at stable local paths. Record the commit SHA and use `Get-FileHash -Algorithm SHA256` on the boot JAR and the two application JARs to check the copies. The server JAR contains Flyway migrations through V26.
 
 ## LAN and HTTPS preflight
 
@@ -95,7 +95,7 @@ Bring the PCs onto the same trusted LAN, allow the backend's HTTPS port through 
 
 ## Connection checks and recovery
 
-1. On PC 3, start the Backend shortcut first. Wait for PostgreSQL readiness, Flyway completion through V23 or confirmation the schema is current, and Spring Boot's HTTPS listener. For Compose, run `docker --context desktop-linux ps --filter name=rose-roots-showcase-db` and check the healthy state and `127.0.0.1:55434` port mapping. Check `Get-NetTCPConnection -State Listen -LocalPort 8443,55434` on PC 3.
+1. On PC 3, start the Backend shortcut first. Wait for PostgreSQL readiness, Flyway completion through V26 or confirmation the schema is current, and Spring Boot's HTTPS listener. For Compose, run `docker --context desktop-linux ps --filter name=rose-roots-showcase-db` and check the healthy state and `127.0.0.1:55434` port mapping. Check `Get-NetTCPConnection -State Listen -LocalPort 8443,55434` on PC 3.
 2. From PCs 1 and 2, run `Resolve-DnsName rose-backend.example.test` for a DNS origin and `Test-NetConnection rose-backend.example.test -Port 8443`. Substitute the live origin host. A port failure points to binding, routing or firewall. A successful port probe verifies TCP only.
 3. With a verified public CA or self-signed lab certificate available to curl, run `curl.exe --fail --cacert .\rose-server.cer https://rose-backend.example.test:8443/api/v1/menu`. Expect HTTP 200. If the Windows curl build uses the Windows trust store instead, use the configured Java clients for the trust check. Keep hostname and certificate validation enabled.
 4. Start the installed Customer and Kitchen shortcuts. Check Customer's assigned table and Kitchen's connected indicator, then sign in to Manager. Java PKIX failures indicate a trust-chain or trust-store configuration problem. Hostname errors indicate a SAN or origin mismatch. Once HTTPS works, investigate 401 as an expired, revoked or wrong credential, and 403 as an authorization or scope issue. Verify clients cannot reach PC 3's PostgreSQL host port with `Test-NetConnection`.

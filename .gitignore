@@ -25,3 +25,4 @@ secrets.json
 *.p12
 *.jks
 hs_err_pid*
+/customer/build/

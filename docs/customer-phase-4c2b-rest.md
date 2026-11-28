@@ -7,10 +7,10 @@ A nonblank backend origin selects connected mode. Use the explicit flag to requi
 ```powershell
 $env:ROSE_ROOTS_BACKEND_URL = 'https://restaurant-pc.example:8443'
 $env:ROSE_ROOTS_TERMINAL_TOKEN_FILE = 'C:\secure\rose-roots-terminal.token'
-.\gradlew.bat run --args="--connected"
+.\gradlew.bat :customer:run --args="--connected"
 ```
 
-An unconfigured ordinary launch preserves the existing local draft mode. Explicit `--demo-table`, `--demo-takeaway` and `runDemo` choose the local demo even when an origin is configured. A connection, credential or API failure in connected mode leaves it disconnected and does not select local sessions or a fixture catalog. The Welcome retry stays on the same route. Menu and tracking refresh without blocking JavaFX. This phase uses REST polling while My Orders is open. The previous WSS transport and reconnect classes remain available for later integration.
+An unconfigured ordinary launch preserves the existing local draft mode. Explicit `--demo-table`, `--demo-takeaway` and `:customer:runDemo` choose the local demo even when an origin is configured. A connection, credential or API failure in connected mode leaves it disconnected and does not select local sessions or a fixture catalog. The Welcome retry stays on the same route. Menu and tracking refresh without blocking JavaFX. This phase uses REST polling while My Orders is open. The previous WSS transport and reconnect classes remain available for later integration.
 
 ## REST mapping
 

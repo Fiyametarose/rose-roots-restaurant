@@ -1,5 +1,7 @@
 # Admin Phase 2B food photographs
 
+> Historical phase record. See the [documentation index](README.md) for the current architecture, development and deployment guides.
+
 The Add / Edit Dish screen uses the existing catalog and Manager session.
 Choose or replace a JPEG or PNG photo, inspect the preview, then open the
 Image Editor to crop, zoom, reposition, rotate in quarter turns, or adjust

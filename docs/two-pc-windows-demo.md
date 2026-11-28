@@ -1,5 +1,7 @@
 # Two-PC Windows deployment and lecturer demonstration
 
+> Historical record. Use [Development and verification](development.md) for disposable development databases and the [Windows showcase guide](showcase-windows.md) for intentional deployment. The commands below can refer to an existing installation.
+
 The acceptance test requires two separate physical Windows PCs on the same private LAN. PC 1 runs Customer JavaFX. PC 2 runs Kitchen/Admin JavaFX, the shared Spring Boot backend and one PostgreSQL instance. Both clients use the same backend. Only Spring Boot has the application's database credentials. There is no inter-PC demonstration result yet.
 
 ## PC 2 setup for the backend and staff owners
@@ -20,11 +22,11 @@ The acceptance test requires two separate physical Windows PCs on the same priva
 
 ## PC 1 setup for Customer
 
-Build the Windows distribution using Java 21. Copy the complete `build/install/rose-roots-customer` directory to PC 1 and start it independently with Java 21 available. Set the address in the launch shell. Do not include credentials or the REST prefix in the URL.
+Build the Windows distribution using Java 21. Copy the complete `customer/build/install/rose-roots-customer` directory to PC 1 and start it independently with Java 21 available. Set the address in the launch shell. Do not include credentials or the REST prefix in the URL.
 
 ```powershell
 # Build on a Windows development machine.
-.\gradlew.bat build installDist
+.\gradlew.bat build :customer:installDist
 
 # Run on PC 1 from the installed distribution folder.
 $env:ROSE_ROOTS_BACKEND_URL = 'https://restaurant-pc.example:8443'

@@ -1,5 +1,7 @@
 # Rose & Roots database operations
 
+> Historical record. Use [Development and verification](development.md) for disposable development databases and the [Windows showcase guide](showcase-windows.md) for intentional deployment. The commands below can refer to an existing installation.
+
 For the three-PC showcase, use the [Windows showcase installer](showcase-windows.md). Its Compose project and loopback port are separate from the development instance described here.
 
 The [Compose file](../compose.yaml) runs PostgreSQL 17 in project
@@ -107,7 +109,7 @@ against this Rose & Roots instance after configuring the datasource above:
 $env:ROSE_TEST_DB_URL = $env:ROSE_DB_URL
 $env:ROSE_TEST_DB_USERNAME = $env:ROSE_DB_USERNAME
 $env:ROSE_TEST_DB_PASSWORD = $env:ROSE_DB_PASSWORD
-.\gradlew.bat build :installDist :kitchen-app:installDist
+.\gradlew.bat build :customer:installDist :kitchen-app:installDist
 ```
 
 During the audit, all 40 tests passed, including all three PostgreSQL

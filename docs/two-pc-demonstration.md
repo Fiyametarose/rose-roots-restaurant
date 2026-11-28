@@ -1,5 +1,7 @@
 # Two-PC Windows demonstration
 
+> Historical record. Use [Development and verification](development.md) for disposable development databases and the [Windows showcase guide](showcase-windows.md) for intentional deployment. The commands below can refer to an existing installation.
+
 For the integrated showcase use the [Windows showcase setup and startup guide](showcase-windows.md). The plan below predates the integrated REST polling workflows.
 
 | Computer | Processes | Network access |
@@ -98,10 +100,10 @@ with Java 21. Copy the respective distribution directory to each PC, keeping
 its `bin` and `lib` directories together.
 
 ```powershell
-.\gradlew.bat :installDist :kitchen-app:installDist
+.\gradlew.bat :customer:installDist :kitchen-app:installDist
 ```
 
-Use `build\install\rose-roots-customer` on PC 1 and
+Use `customer\build\install\rose-roots-customer` on PC 1 and
 `kitchen-app\build\install\kitchen-app` on PC 2.
 
 Use Java 21 on both PCs. For a lab certificate, import the verified public

@@ -1,5 +1,7 @@
 # Admin Phase 2A
 
+> Historical phase record. See the [documentation index](README.md) for the current architecture, development and deployment guides.
+
 For the later photograph workflow and its storage settings, see
 [Admin Phase 2B](admin-phase-2b.md).
 
@@ -170,7 +172,7 @@ infrastructure after successfully committed writes. Clients should refetch
 the authoritative public snapshot. The current Customer and Kitchen launchers
 require their owner-side integrations for the physical two-PC demonstration.
 
-Run `.\gradlew.bat build :installDist :kitchen-app:installDist` on Windows.
+Run `.\gradlew.bat build :customer:installDist :kitchen-app:installDist` on Windows.
 To include the PostgreSQL suite, set `ROSE_TEST_DB_URL`,
 `ROSE_TEST_DB_USERNAME`, and `ROSE_TEST_DB_PASSWORD` for a disposable PostgreSQL
 database with a role that can create schemas. The suite makes and cleans up

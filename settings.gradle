@@ -1,2 +1,2 @@
-rootProject.name = 'rose-roots-customer'
-include 'kitchen-app', 'server'
+rootProject.name = 'rose-roots-restaurant'
+include 'customer', 'kitchen-app', 'server'

@@ -2,58 +2,15 @@ plugins {
     id 'application'
 }
 
-repositories {
-    mavenCentral()
-}
-
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
-
-def javafxVersion = '21.0.8'
-def os = System.getProperty('os.name').toLowerCase(Locale.ROOT)
-def arch = System.getProperty('os.arch').toLowerCase(Locale.ROOT)
-def arm64 = arch in ['aarch64', 'arm64']
-def javafxPlatform
-if (os.startsWith('windows') && arch in ['amd64', 'x86_64']) {
-    javafxPlatform = 'win'
-} else if (os.startsWith('mac')) {
-    javafxPlatform = arm64 ? 'mac-aarch64' : 'mac'
-} else if (os.startsWith('linux')) {
-    javafxPlatform = arm64 ? 'linux-aarch64' : 'linux'
-} else {
-    throw new GradleException("Unsupported JavaFX platform: ${os} (${arch})")
-}
-
-dependencies {
-    implementation 'com.google.code.gson:gson:2.13.2'
-    ['base', 'graphics', 'controls'].each { module ->
-        implementation("org.openjfx:javafx-${module}:${javafxVersion}:${javafxPlatform}") {
-            transitive = false
-        }
-    }
-    testImplementation platform('org.junit:junit-bom:5.13.4')
-    testImplementation 'org.junit.jupiter:junit-jupiter'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-}
-
-tasks.withType(JavaCompile).configureEach {
-    options.encoding = 'UTF-8'
-}
+apply from: rootProject.file('gradle/javafx-desktop.gradle')
 
 application {
     mainModule = 'com.roseroots.kitchen'
     mainClass = 'com.roseroots.kitchen.app.KitchenApplication'
 }
 
-test {
-    useJUnitPlatform()
-}
-
 tasks.named('processResources') {
-    from('../src/main/resources/styles/components.css') {
+    from(project(':customer').layout.projectDirectory.file('src/main/resources/styles/components.css')) {
         into 'styles'
     }
 }

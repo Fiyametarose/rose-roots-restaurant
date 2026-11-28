@@ -1,5 +1,7 @@
 # Admin Phase 3B Reviews & Insights
 
+> Historical phase record. See the [documentation index](README.md) for the current architecture, development and deployment guides.
+
 ## Audit and ownership
 
 Customer at `e5f58fa` has no implemented review submission flow, review
